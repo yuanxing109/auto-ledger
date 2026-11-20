@@ -118,7 +118,7 @@ interface LedgerDao {
           AND (:category = '' OR category = :category)
           AND (
             :keyword = ''
-            OR note LIKE '%' || :keyword || '%'
+            OR remark LIKE '%' || :keyword || '%'
             OR category LIKE '%' || :keyword || '%'
             OR source LIKE '%' || :keyword || '%'
           )

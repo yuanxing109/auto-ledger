@@ -28,7 +28,7 @@
 | --- | --- | --- |
 | `settings/SettingsScreen.kt` | 1649 | 13 个设置页全在一个文件，最该拆 |
 | `ui/screen/ReportScreen.kt` | 1022 | 折线/柱状/环形三套自绘图表 |
-| `ui/screen/AddScreen.kt` | 807 | 自绘日历 + 自定义键盘 |
+| `ui/screen/AddScreen.kt` | 817 | 自绘日历 + 自定义键盘，保存走 `rememberCoroutineScope` |
 | `ui/screen/HomeScreen.kt` | 648 | 分页列表 + 预算卡 |
 | `ui/LedgerApp.kt` | 444 | 三 tab 壳 + AI 扫一扫 |
 | `screenshot/ScreenshotCaptureService.kt` | 276 | VirtualDisplay + ImageReader 抓帧 |
@@ -37,13 +37,16 @@
 | `service/SmsReceiver.kt` | 100 | `SMS_RECEIVED` 广播、长短信合并、goAsync |
 | `service/HealthJobService.kt` | 74 | JobScheduler 心跳，写回被关掉的通道 |
 | `util/SystemAccess.kt` | 245 | 9 项权限探测 + 跳转 + 自愈写回 |
-| `data/CsvImporter.kt` | 268 | 手写 CSV 状态机 + Excel 日期序列 |
-| `data/LedgerRepository.kt` | 144 | 写操作与去重入口 |
+| `data/CsvImporter.kt` | 268 | 手写 CSV 状态机 + Excel 日期序列（`import` 已改 suspend） |
+| `data/LedgerRepository.kt` | 192 | 全 suspend 仓库，聚合与游标分页入口 |
+| `data/LedgerDao.kt` | 133 | `pageBefore` 游标查询、`importRows`、三条聚合 SQL |
+| `viewmodel/HomeViewModel.kt` | 140 | 游标分页 + 首屏/追加页合并去重 |
+| `widget/LedgerWidgetProvider.kt` | 87 | `goAsync` + 聚合 SQL，主线程只拼 RemoteViews |
 
 ## 三条最该先修的问题
 
-1. `ui/screen/AddScreen.kt:205` 主键用 `System.currentTimeMillis()` + `REPLACE` → 同毫秒两笔会覆盖（应改 `id = 0` 自增）。
-2. `NotificationRules` 没有单元测试：15 条真实短信/通知文本还只跑在临时脚本里，改词表没人拦（`data/NotificationRules.kt`）。
-3. `release` 构建用 debug 签名且未混淆（`app/build.gradle.kts`），当前产物不能直接发布。
+1. `NotificationRules` 没有单元测试：15 条真实短信/通知文本还只跑在临时脚本里，改词表没人拦（`data/NotificationRules.kt`）。
+2. `release` 构建用 debug 签名且未混淆（`app/build.gradle.kts`），当前产物不能直接发布。
+3. 主键/分页/`runBlocking` 三项已修（`3d6e5fb`）；剩下 `CREATE UNIQUE INDEX` 无兜底（历史脏单号会首启崩溃）与 AI Key 明文存偏好。
 
 详见 [04 开发与扩展指南 · 已知问题清单](04-开发与扩展指南.md#4-已知问题清单)。

@@ -99,10 +99,12 @@ class LedgerNotificationListener : NotificationListenerService() {
 
     /** 同 group 下仍在通知栏里的其它通知；`activeNotifications` 由 NMS 实时维护。 */
     private fun collectGroupChildren(sbn: StatusBarNotification): List<StatusBarNotification> {
-        val group = sbn.group ?: sbn.notification?.group ?: return emptyList()
+        // StatusBarNotification.getGroup() 是 @hide，取公开的 Notification.getGroup()
+        val group = sbn.notification?.group ?: return emptyList()
+        if (group.isEmpty()) return emptyList()
         val actives = runCatching { activeNotifications.toList() }.getOrElse { return emptyList() }
         return actives.filter {
-            it.packageName == sbn.packageName && it.group == group && it.key != sbn.key
+            it.packageName == sbn.packageName && it.notification?.group == group && it.key != sbn.key
         }
     }
 

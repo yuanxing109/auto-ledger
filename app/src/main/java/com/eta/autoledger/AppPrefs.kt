@@ -18,6 +18,11 @@ class AppPrefs(context: Context) {
         get() = alipayState
         set(value) { alipayState = value; prefs.edit().putBoolean("alipay_enabled", value).apply() }
 
+    private var wechatState by mutableStateOf(prefs.getBoolean("wechat_enabled", true))
+    var wechatEnabled: Boolean
+        get() = wechatState
+        set(value) { wechatState = value; prefs.edit().putBoolean("wechat_enabled", value).apply() }
+
     private var otherState by mutableStateOf(prefs.getBoolean("other_enabled", true))
     var otherEnabled: Boolean
         get() = otherState
@@ -27,6 +32,18 @@ class AppPrefs(context: Context) {
     var screenshotEnabled: Boolean
         get() = screenshotState
         set(value) { screenshotState = value; prefs.edit().putBoolean("screenshot_enabled", value).apply() }
+
+    private var notifyAtState by mutableStateOf(prefs.getLong("last_notify_at", 0L))
+    /** 通知通道最近一次成功入库的时间，0 表示从未采集到。 */
+    var lastNotifyAt: Long
+        get() = notifyAtState
+        set(value) { notifyAtState = value; prefs.edit().putLong("last_notify_at", value).apply() }
+
+    private var smsAtState by mutableStateOf(prefs.getLong("last_sms_at", 0L))
+    /** 短信通道最近一次成功入库的时间，0 表示从未采集到。 */
+    var lastSmsAt: Long
+        get() = smsAtState
+        set(value) { smsAtState = value; prefs.edit().putLong("last_sms_at", value).apply() }
 
     private var dailyReminderState by mutableStateOf(prefs.getBoolean("daily_reminder", false))
     var dailyReminder: Boolean

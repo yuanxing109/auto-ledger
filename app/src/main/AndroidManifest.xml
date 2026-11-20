@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -7,6 +8,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- 引导用户把本应用加入电池优化白名单（ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 要求声明） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!--
+        自愈能力（模式 C）：adbd / Shizuku 用 `pm grant` 授权后，App 就能自己把
+        「通知使用权」「无障碍」写回，ROM 关掉开关也能被心跳任务救回来。
+        这是 signature|privileged 权限，侧载应用无法在运行时申请，只能由用户用 adb 授予。
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:allowBackup="true"
@@ -72,6 +84,28 @@
         <receiver
             android:name=".screenshot.ConfirmEntryReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".service.UndoBillReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".service.SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            自愈心跳：JobScheduler 每 15 分钟唤醒一次，只有拿到 WRITE_SECURE_SETTINGS 才真干活。
+            选 JobService 而不是常驻服务，是因为系统会主动拉起本进程，顺带给 NLS 一次重绑机会。
+        -->
+        <service
+            android:name=".service.HealthJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <receiver
             android:name=".reminder.ReminderReceiver"

@@ -102,6 +102,13 @@ object LedgerRepository {
         LedgerWidgetProvider.requestUpdate(context)
     }
 
+    /** 按 [LedgerEntry.externalId] 删除：自动记账的通知里只带了外部单号，没有自增主键。 */
+    fun deleteByExternalId(context: Context, externalId: String): Int {
+        val removed = runBlocking { dao(context).deleteByExternalId(externalId) }
+        LedgerWidgetProvider.requestUpdate(context)
+        return removed
+    }
+
     fun clear(context: Context) {
         runBlocking { dao(context).clear() }
         LedgerWidgetProvider.requestUpdate(context)

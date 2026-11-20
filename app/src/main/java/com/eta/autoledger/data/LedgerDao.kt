@@ -80,6 +80,9 @@ interface LedgerDao {
     @Query("DELETE FROM Bill WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("DELETE FROM Bill WHERE external_id = :externalId")
+    suspend fun deleteByExternalId(externalId: String)
+
     @Query("DELETE FROM Bill")
     suspend fun clear()
 }

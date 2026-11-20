@@ -1,10 +1,19 @@
 package com.eta.autoledger.settings
 
+import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
+import android.os.Build
+import androidx.compose.runtime.LaunchedEffect
+import com.eta.autoledger.util.SystemAccess
+import java.util.Date
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,6 +69,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -78,8 +88,10 @@ import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.CsvImporter
 import com.eta.autoledger.data.XlsxImporter
+import com.eta.autoledger.data.XlsxExporter
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.reminder.ReminderScheduler
+import com.eta.autoledger.service.LedgerNotificationListener
 import com.eta.autoledger.widget.LedgerWidgetProvider
 
 private val PageBg = Color(0xFFF2F7FF)
@@ -101,6 +113,7 @@ enum class SettingsPage(val title: String, val parent: SettingsPage?) {
     Export("导出数据", Main),
     Widget("添加桌面小部件", Main),
     Ai("AI 模型与自动化", Main),
+    SysAccess("系统权限与保活", Main),
 }
 
 @Composable
@@ -130,6 +143,7 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
         ) {
             when (page) {
                 SettingsPage.Main -> MainPage(onOpen = { page = it })
+                SettingsPage.SysAccess -> SystemAccessPage(prefs = prefs)
                 SettingsPage.Auto -> AutoPage(prefs = prefs, onImport = { page = SettingsPage.Import })
                 SettingsPage.Notifications -> NotificationsPage(
                     prefs = prefs,
@@ -230,6 +244,13 @@ private fun MainPage(onOpen: (SettingsPage) -> Unit) {
             ArrowPreference(title = "记账分类管理", summary = "管理支出、收入和其他分类", onClick = { onOpen(SettingsPage.Categories) })
         }
         SettingsCard {
+            ArrowPreference(
+                title = "系统权限与保活",
+                summary = "通知使用权、短信权限、电池白名单与通知渠道状态",
+                onClick = { onOpen(SettingsPage.SysAccess) },
+            )
+        }
+        SettingsCard {
             ArrowPreference(title = "功能管理", summary = "小部件、截屏记账与通知权限", onClick = { onOpen(SettingsPage.Features) })
             RowDivider()
             ArrowPreference(title = "预算管理", summary = "设置预算金额、周期与提醒", onClick = { onOpen(SettingsPage.Budget) })
@@ -237,7 +258,7 @@ private fun MainPage(onOpen: (SettingsPage) -> Unit) {
         SettingsCard {
             ArrowPreference(title = "导入数据", summary = "支持 Excel / CSV 账单", onClick = { onOpen(SettingsPage.Import) })
             RowDivider()
-            ArrowPreference(title = "导出数据", summary = "导出账单到邮箱", onClick = { onOpen(SettingsPage.Export) })
+ArrowPreference(title = "导出数据", summary = "导出 CSV / XLSX 账单文件", onClick = { onOpen(SettingsPage.Export) })
         }
         SettingsCard {
             ArrowPreference(title = "添加桌面小部件", summary = "在桌面展示今日与本月收支", onClick = { onOpen(SettingsPage.Widget) })
@@ -250,14 +271,40 @@ private fun MainPage(onOpen: (SettingsPage) -> Unit) {
 
 @Composable
 private fun AutoPage(prefs: AppPrefs, onImport: () -> Unit) {
+    val context = LocalContext.current
+    val ledgerListenerGranted = LedgerNotificationListener.isEnabled(context)
+    // 短信是危险权限，开关只是偏好，真正能不能收到广播看 RECEIVE_SMS 有没有授予
+    var smsGranted by remember { mutableStateOf(hasSmsPermission(context)) }
+    val smsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        smsGranted = granted
+        prefs.smsEnabled = granted
+        if (!granted) {
+            Toast.makeText(context, "未授予短信权限，短信记账不会生效", Toast.LENGTH_SHORT).show()
+        }
+    }
     SettingsPageColumn {
         HintText("读取收支信息，自动生成账单。")
         SettingsCard {
+            ArrowPreference(
+                title = "通知使用权",
+                summary = if (ledgerListenerGranted) "已开启，正在监听账单通知" else "未开启，点击授予通知使用权",
+                onClick = { LedgerNotificationListener.openSettings(context) },
+            )
+        }
+        SettingsCard {
             SwitchPreference(
-                title = "短信通知",
-                summary = "解析短信通知中的收支信息",
-                checked = prefs.smsEnabled,
-                onCheckedChange = { prefs.smsEnabled = it },
+                title = "短信记账",
+                summary = if (smsGranted) "解析银行与服务号短信里的收支信息" else "未授予短信权限，点击开关授权",
+                checked = prefs.smsEnabled && smsGranted,
+                onCheckedChange = { on ->
+                    when {
+                        !on -> prefs.smsEnabled = false
+                        smsGranted -> prefs.smsEnabled = true
+                        else -> smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                    }
+                },
             )
             RowDivider()
             SwitchPreference(
@@ -265,6 +312,13 @@ private fun AutoPage(prefs: AppPrefs, onImport: () -> Unit) {
                 summary = "解析支付宝账单通知",
                 checked = prefs.alipayEnabled,
                 onCheckedChange = { prefs.alipayEnabled = it },
+            )
+            RowDivider()
+            SwitchPreference(
+                title = "微信",
+                summary = "解析微信支付账单通知",
+                checked = prefs.wechatEnabled,
+                onCheckedChange = { prefs.wechatEnabled = it },
             )
             RowDivider()
             SwitchPreference(
@@ -885,12 +939,31 @@ private fun ImportPlatformCard(title: String, summary: String, modifier: Modifie
     }
 }
 
+/** 导出格式：CSV / XLSX 共用同一份筛选结果，只是编码器不同。 */
+private enum class ExportFormat(
+    val label: String,
+    val hint: String,
+    val extension: String,
+    val mime: String,
+) {
+    Csv("CSV", "体积小，表格软件直接打开", "csv", "text/csv"),
+    Xlsx("XLSX", "带列宽，Excel / WPS 原生格式", "xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+}
+
 @Composable
 private fun ExportPage() {
     val context = LocalContext.current
-    var start by remember { mutableStateOf("") }
-    var end by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val monthStart = remember {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.DAY_OF_MONTH, 1)
+        SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(cal.time)
+    }
+    val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(System.currentTimeMillis()) }
+    var start by remember { mutableStateOf(monthStart) }
+    var end by remember { mutableStateOf(today) }
+    var format by remember { mutableStateOf(ExportFormat.Csv) }
+    var working by remember { mutableStateOf(false) }
 
     fun pickDate(onSet: (String) -> Unit) {
         val c = Calendar.getInstance()
@@ -907,26 +980,40 @@ private fun ExportPage() {
         }
         SettingsCard {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("接收邮箱", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(6.dp))
-                BasicTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF4F7FD))
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 14.sp, color = TextPrimary),
-                    cursorBrush = SolidColor(AccentBlue),
-                    decorationBox = { inner ->
-                        Box {
-                            if (email.isEmpty()) Text("请输入接收邮箱", style = TextStyle(fontSize = 14.sp, color = TextSecondary))
-                            inner()
+                Text("导出格式", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ExportFormat.entries.forEach { item ->
+                        val selected = format == item
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (selected) Color(0xFFE8F0FF) else Color(0xFFF4F7FD))
+                                .border(
+                                    1.dp,
+                                    if (selected) AccentBlue else Color(0x00000000),
+                                    RoundedCornerShape(14.dp),
+                                )
+                                .clickable { format = item }
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                        ) {
+                            Text(
+                                item.label,
+                                style = TextStyle(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selected) AccentBlue else TextPrimary,
+                                ),
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(item.hint, style = TextStyle(fontSize = 11.sp, color = TextSecondary))
                         }
-                    },
-                )
+                    }
+                }
             }
         }
         Box(
@@ -934,25 +1021,76 @@ private fun ExportPage() {
                 .fillMaxWidth()
                 .height(52.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(AccentBlue)
-                .clickable {
-                    if (start.isEmpty() || end.isEmpty() || email.isBlank()) {
-                        Toast.makeText(context, "请填写开始时间、结束时间和邮箱", Toast.LENGTH_SHORT).show()
-                    } else {
-                        val entries = LedgerRepository.load(context)
-                        val csv = CsvImporter.export(entries)
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/csv"
-                            putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
-                            putExtra(Intent.EXTRA_TEXT, csv)
+                .background(if (working) Color(0xFF9DBBF7) else AccentBlue)
+                .clickable(enabled = !working) {
+                    if (start.isEmpty() || end.isEmpty()) {
+                        Toast.makeText(context, "请先选择开始时间和结束时间", Toast.LENGTH_SHORT).show()
+                        return@clickable
+                    }
+                    val targetFormat = format
+                    working = true
+                    scope.launch {
+                        val outcome = withContext(Dispatchers.IO) {
+                            runCatching<Pair<Int, File>?> {
+                                val from = LedgerRepository.parseTime("$start 00:00")?.timeInMillis ?: 0L
+                                val to = LedgerRepository.parseTime("$end 23:59")?.timeInMillis ?: Long.MAX_VALUE
+                                val entries = LedgerRepository.load(context)
+                                    .filter { entry ->
+                                        val stamp = if (entry.timeMillis > 0) {
+                                            entry.timeMillis
+                                        } else {
+                                            LedgerRepository.parseTime(entry.time)?.timeInMillis ?: 0L
+                                        }
+                                        stamp in from..to
+                                    }
+                                    .sortedByDescending { it.timeMillis }
+                                if (entries.isEmpty()) {
+                                    null
+                                } else {
+                                    val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+                                    val fileStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.CHINA)
+                                        .format(System.currentTimeMillis())
+                                    val file = File(dir, "账单_$fileStamp.${targetFormat.extension}")
+                                    if (targetFormat == ExportFormat.Csv) {
+                                        file.writeText("\uFEFF" + CsvImporter.export(entries), Charsets.UTF_8)
+                                    } else {
+                                        XlsxExporter.write(entries, file)
+                                    }
+                                    entries.size to file
+                                }
+                            }
                         }
-                        context.startActivity(Intent.createChooser(send, "导出账单"))
-                        Toast.makeText(context, "已生成 ${entries.size} 笔账单 CSV", Toast.LENGTH_SHORT).show()
+                        working = false
+                        outcome.onSuccess { payload ->
+                            if (payload == null) {
+                                Toast.makeText(context, "该时间段没有账单", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val (count, file) = payload
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file,
+                                )
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = targetFormat.mime
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    putExtra(Intent.EXTRA_TEXT, "账单一共 $count 笔（${targetFormat.label}）")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(send, "导出账单"))
+                                Toast.makeText(context, "已生成 $count 笔账单 ${targetFormat.label}", Toast.LENGTH_SHORT).show()
+                            }
+                        }.onFailure { error ->
+                            Toast.makeText(context, "导出失败：${error.message}", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Text("导出", style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White))
+            Text(
+                if (working) "正在导出…" else "导出",
+                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White),
+            )
         }
     }
 }
@@ -989,9 +1127,11 @@ private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
             RowDivider()
             ArrowPreference(title = "AI 模型与自动化", summary = "配置模型、Key 与 Prompt", onClick = onAi)
             RowDivider()
-            ArrowPreference(title = "通知使用权", summary = "系统设置中查看已授权的通知监听器", onClick = {
-                // 没有统一入口，保持为说明项
-            })
+            ArrowPreference(
+                title = "通知使用权",
+                summary = if (LedgerNotificationListener.isEnabled(context)) "已开启，正在监听账单通知" else "未开启，点击授予通知使用权",
+                onClick = { LedgerNotificationListener.openSettings(context) },
+            )
             RowDivider()
             ArrowPreference(
                 title = "无障碍截图（可选）",
@@ -1276,6 +1416,209 @@ private suspend fun fetchModels(baseUrl: String, key: String): Result<List<Strin
         }
     }
 }
+
+/** 只读信息行：标题在左、值在右，用于展示运行模式与最近采集时间。 */
+@Composable
+private fun InfoRow(title: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = TextStyle(fontSize = 15.sp, color = TextPrimary),
+            modifier = Modifier.weight(1f),
+        )
+        Text(text = value, style = TextStyle(fontSize = 13.sp, color = TextSecondary))
+    }
+}
+
+private fun formatStamp(value: Long): String =
+    if (value <= 0L) "从未" else SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date(value))
+
+/**
+ * 系统权限与保活体检页。
+ *
+ * 这些开关都没有 API 能直接申请（属于用户级设置），所以这里只做「读状态 + 一键跳转」，
+ * 并把两条采集通道的最近入账时间摊开，用于回答「为什么没记账」。
+ */
+@Composable
+private fun SystemAccessPage(prefs: AppPrefs) {
+    val context = LocalContext.current
+    var beat by remember { mutableIntStateOf(0) }
+
+    // 从系统设置返回时本页不会重建，用 1.5s 轮询把状态刷新回来
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1500)
+            beat++
+        }
+    }
+
+    val listenerOk = remember(beat) { SystemAccess.notificationListenerGranted(context) }
+    val accessOk = remember(beat) { SystemAccess.accessibilityGranted(context) }
+    val smsOk = remember(beat) { SystemAccess.smsGranted(context) }
+    val notifOk = remember(beat) { SystemAccess.notificationGranted(context) }
+    val batteryOk = remember(beat) { SystemAccess.batteryUnrestricted(context) }
+    val exactOk = remember(beat) { SystemAccess.exactAlarmAllowed(context) }
+    val autoChannelOk = remember(beat) { SystemAccess.channelEnabled(context, SystemAccess.CHANNEL_AUTO) }
+    val shotChannelOk = remember(beat) { SystemAccess.channelEnabled(context, SystemAccess.CHANNEL_SHOT_RESULT) }
+    val moduleOk = remember(beat) { SystemAccess.moduleActive(context) }
+    // 是否拿到 adb 授予的 WRITE_SECURE_SETTINGS —— 决定「一键修复」能否真写回
+    val secureOk = remember(beat) { SystemAccess.canWriteSecureSettings(context) }
+
+    val smsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            prefs.smsEnabled = true
+        } else {
+            Toast.makeText(context, "未授予短信权限，短信记账不会生效", Toast.LENGTH_SHORT).show()
+            prefs.smsEnabled = false
+        }
+        beat++
+    }
+
+    SettingsPageColumn {
+        HintText("自动记账靠下面这些系统开关。哪一项没开，对应通道就会静默失效——排查「为什么没记账」时按这个顺序看。")
+
+        SettingsCard {
+            ArrowPreference(
+                title = "一键修复",
+                summary = when {
+                    !secureOk -> "未授权自愈（先执行下方 adb 命令，再回来点这里）"
+                    listenerOk && accessOk -> "✅ 两条通道都正常，无需修复"
+                    else -> "点一下，把被系统关掉的通道写回去"
+                },
+                onClick = {
+                    if (!secureOk) {
+                        Toast.makeText(
+                            context,
+                            "需要先用 adb 授予 WRITE_SECURE_SETTINGS",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    } else {
+                        val (notifyFixed, accessFixed) = SystemAccess.ensureGrants(context)
+                        val fixed = if (notifyFixed) "已开启" else "仍失败"
+                        val accessText = if (accessFixed) "已开启" else "仍失败"
+                        Toast.makeText(
+                            context,
+                            "修复结果：通知使用权=$fixed，无障碍=$accessText",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        beat++
+                    }
+                },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "adb 授权自愈",
+                summary = if (secureOk) {
+                    "✅ 已授权：通道被系统关掉会自动写回"
+                } else {
+                    "${SystemAccess.adbGrantCommand(context)}\n（点一下复制命令，在电脑终端执行一次）"
+                },
+                onClick = {
+                    val command = SystemAccess.adbGrantCommand(context)
+                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                    runCatching {
+                        clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("adb", command))
+                    }
+                    Toast.makeText(context, "已复制 adb 命令", Toast.LENGTH_SHORT).show()
+                },
+            )
+        }
+
+        SettingsCard {
+            ArrowPreference(
+                title = "通知使用权",
+                summary = if (listenerOk) {
+                    "✅ 已开启（通知通道工作中）"
+                } else {
+                    "⚠️ 未开启（通知通道完全不工作；若开关是灰的，先到应用信息页「允许受限设置」）"
+                },
+                onClick = { SystemAccess.openNotificationListener(context) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "短信权限",
+                summary = if (smsOk) "✅ 已授权（短信通道工作中）" else "⚠️ 未授权（短信通道不工作）",
+                onClick = {
+                    if (smsOk) SystemAccess.openAppDetails(context)
+                    else smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "无障碍截图服务",
+                summary = if (accessOk) "✅ 已开启（截屏免录屏授权）" else "⚠️ 未开启（截屏记账走 MediaProjection 兜底）",
+                onClick = { SystemAccess.openAccessibility(context) },
+            )
+        }
+
+        SettingsCard {
+            ArrowPreference(
+                title = "电池优化白名单",
+                summary = if (batteryOk) "✅ 无限制（不会被省电策略限制）" else "⚠️ 受限（国产 ROM 可能解绑后台服务）",
+                onClick = { SystemAccess.openBattery(context) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "自启动 / 后台运行",
+                summary = "部分系统需要手动允许自启动与后台弹出界面",
+                onClick = {
+                    if (!SystemAccess.openAutoStart(context)) {
+                        Toast.makeText(context, "当前系统没有可直达的自启动页，请在应用详情里手动允许", Toast.LENGTH_LONG).show()
+                        SystemAccess.openAppDetails(context)
+                    }
+                },
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                RowDivider()
+                ArrowPreference(
+                    title = "精确闹钟",
+                    summary = if (exactOk) "✅ 已允许（日报/提醒准时）" else "⚠️ 未允许（提醒会推迟到系统空闲）",
+                    onClick = { SystemAccess.openExactAlarm(context) },
+                )
+            }
+        }
+
+        SettingsCard {
+            ArrowPreference(
+                title = "通知总开关",
+                summary = if (notifOk) "✅ 已开启" else "⚠️ 已关闭（入库通知与撤销按钮都不可用）",
+                onClick = { SystemAccess.openAppNotificationSettings(context) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "「自动记账」通知渠道",
+                summary = if (autoChannelOk) "✅ 已开启" else "⚠️ 被关闭（看不到新账单，但账单仍会入库）",
+                onClick = { SystemAccess.openChannel(context, SystemAccess.CHANNEL_AUTO) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "「识图记账」通知渠道",
+                summary = if (shotChannelOk) "✅ 已开启" else "⚠️ 被关闭（AI 识别结果无法确认入账）",
+                onClick = { SystemAccess.openChannel(context, SystemAccess.CHANNEL_SHOT_RESULT) },
+            )
+        }
+
+        SettingsCard {
+            InfoRow("运行模式", if (moduleOk) "Root 增强（LSPosed）" else "标准（通知 + 短信）")
+            RowDivider()
+            InfoRow("通知通道最近入账", formatStamp(prefs.lastNotifyAt))
+            RowDivider()
+            InfoRow("短信通道最近入账", formatStamp(prefs.lastSmsAt))
+        }
+
+        HintText("改完回到这一页，状态会在 1.5 秒内自动刷新。若「最近入账」长期显示「从未」，说明通道没通，先查上面标 ⚠️ 的项。")
+    }
+}
+
+/** 短信记账要的是危险权限 RECEIVE_SMS，没授予时开关不该显示为已开启。 */
+private fun hasSmsPermission(context: Context): Boolean =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
+        PackageManager.PERMISSION_GRANTED
 
 private suspend fun testConnection(baseUrl: String, key: String, model: String): Result<Unit> = withContext(Dispatchers.IO) {
     runCatching {

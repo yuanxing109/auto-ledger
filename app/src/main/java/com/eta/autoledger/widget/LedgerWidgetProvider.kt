@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.RemoteViews
 import com.eta.autoledger.MainActivity
 import com.eta.autoledger.R
@@ -38,7 +39,7 @@ open class LedgerWidgetProvider : AppWidgetProvider() {
                 val totals = LedgerRepository.widgetTotals(appContext)
                 appWidgetIds.forEach { id ->
                     val wide = widthOf(appWidgetManager, id) ?: prefersWide
-                    render(appContext, appWidgetManager, id, totals, wide)
+                    safeRender(appContext, appWidgetManager, id, totals, wide)
                 }
             } finally {
                 pending?.finish()
@@ -58,7 +59,7 @@ open class LedgerWidgetProvider : AppWidgetProvider() {
             try {
                 val totals = LedgerRepository.widgetTotals(appContext)
                 val wide = newOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) >= WIDE_MIN_WIDTH_DP
-                render(appContext, appWidgetManager, appWidgetId, totals, wide)
+                safeRender(appContext, appWidgetManager, appWidgetId, totals, wide)
             } finally {
                 pending?.finish()
             }
@@ -74,10 +75,15 @@ open class LedgerWidgetProvider : AppWidgetProvider() {
     }.getOrNull()
 
     companion object {
+        private const val TAG = "AutoLedger"
+
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-        /** 2×2 约 110dp、4×2 约 250dp，取中间值决定版式。 */
-        private const val WIDE_MIN_WIDTH_DP = 180
+        /**
+         * 版式阈值。2 列宽在多数 launcher 约 170~190dp、4 列约 250~330dp，
+         * 取 200dp 把 2×2 / 2×3 留在小版、3 列以上换宽版，避免临界抖动。
+         */
+        private const val WIDE_MIN_WIDTH_DP = 200
 
         /** 两种规格共用一份数据与一套拼装逻辑。 */
         fun render(
@@ -95,10 +101,9 @@ open class LedgerWidgetProvider : AppWidgetProvider() {
                     )
                     setTextViewText(R.id.widget_month_expense, money(totals.monthExpense))
                     setTextViewText(R.id.widget_month_income, money(totals.monthIncome))
-                    setTextViewText(
-                        R.id.widget_footer,
-                        "今日支出 ${money(totals.todayExpense)} · 收入 ${money(totals.todayIncome)} · 本月 ${totals.monthCount} 笔",
-                    )
+                    setTextViewText(R.id.widget_today_expense, "今日支出 ${money(totals.todayExpense)}")
+                    setTextViewText(R.id.widget_today_income, "今日收入 ${money(totals.todayIncome)}")
+                    setTextViewText(R.id.widget_month_count, "本月 ${totals.monthCount} 笔")
                     onClickOn(R.id.widget_title, openApp(context))
                 }
             } else {
@@ -108,12 +113,36 @@ open class LedgerWidgetProvider : AppWidgetProvider() {
                         SimpleDateFormat("MM/dd", Locale.CHINA).format(Calendar.getInstance().time),
                     )
                     setTextViewText(R.id.widget_amount, money(totals.todayExpense))
-                    setTextViewText(R.id.widget_month_expense, "本月支出 ${money(totals.monthExpense)}")
+                    setTextViewText(R.id.widget_month_expense, "支出 ${money(totals.monthExpense)}")
                     setTextViewText(R.id.widget_month_income, "收入 ${money(totals.monthIncome)}")
                     onClickOn(R.id.widget_amount, openApp(context))
                 }
             }
             manager.updateAppWidget(widgetId, views)
+        }
+
+        /**
+         * 宽版渲染失败时回退小版。
+         *
+         * RemoteViews 的 id 与布局不对应会在 launcher 侧才炸，这里兜住的是资源/拼装类异常；
+         * id 一致性靠 [render] 内两个分支各自只引用本版布局里的 id 来保证。
+         */
+        fun safeRender(
+            context: Context,
+            manager: AppWidgetManager,
+            widgetId: Int,
+            totals: WidgetTotals,
+            wide: Boolean,
+        ) {
+            if (!wide) {
+                render(context, manager, widgetId, totals, false)
+                return
+            }
+            runCatching { render(context, manager, widgetId, totals, true) }
+                .onFailure {
+                    Log.w(TAG, "宽版小部件渲染失败，回退 2×2：${it.message}")
+                    render(context, manager, widgetId, totals, false)
+                }
         }
 
         private fun RemoteViews.onClickOn(viewId: Int, intent: PendingIntent) {

@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.KeyboardType
@@ -529,7 +530,13 @@ private fun EntryRow(entry: EntryUi, onLongClick: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = entry.category, style = MiuixTheme.textStyles.title3)
+                Text(
+                    text = entry.category,
+                    style = MiuixTheme.textStyles.title3,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
                 Spacer(Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
@@ -545,8 +552,11 @@ private fun EntryRow(entry: EntryUi, onLongClick: () -> Unit) {
                 text = entry.noteLine,
                 style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.width(8.dp))
         Text(
             text = entry.amountText,
             style = MiuixTheme.textStyles.title2,

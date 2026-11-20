@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -60,6 +63,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -73,6 +77,7 @@ import com.eta.autoledger.data.Bucket
 import com.eta.autoledger.data.ReportAggregate
 import com.eta.autoledger.data.ReportRepository
 import com.eta.autoledger.data.LedgerRepository
+import com.eta.autoledger.data.LedgerEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -127,6 +132,7 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
     var offset by rememberSaveable { mutableIntStateOf(0) }
     var income by rememberSaveable { mutableStateOf(false) }
     var subCategory by rememberSaveable { mutableStateOf(false) }
+    var detailSlice by remember { mutableStateOf<CategorySlice?>(null) }
 
     LaunchedEffect(tab) { offset = 0 }
     val context = LocalContext.current
@@ -170,10 +176,16 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
                 income = income,
                 subCategory = subCategory,
                 onSubCategory = { subCategory = it },
+                onOpenSlice = { detailSlice = it },
             )
 
             Spacer(Modifier.height(12.dp))
         }
+    }
+
+    val range = remember(tab, offset) { ReportRepository.periodRange(tab, offset) }
+    detailSlice?.let { slice ->
+        CategoryDetailDialog(slice, range.first, range.second) { detailSlice = null }
     }
 }
 
@@ -676,6 +688,7 @@ private fun DonutCard(
     income: Boolean,
     subCategory: Boolean,
     onSubCategory: (Boolean) -> Unit,
+    onOpenSlice: (CategorySlice) -> Unit,
 ) {
     ReportCard {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -693,7 +706,7 @@ private fun DonutCard(
             DonutChart(slices = data.categories, income = income)
             Spacer(Modifier.height(8.dp))
             data.categories.sortedByDescending { it.amount }.forEachIndexed { index, slice ->
-                CategoryRow(rank = index + 1, slice = slice)
+                CategoryRow(rank = index + 1, slice = slice, onOpen = { onOpenSlice(slice) })
                 if (index != data.categories.lastIndex) Spacer(Modifier.height(12.dp))
             }
         }
@@ -852,8 +865,17 @@ private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
 }
 
 @Composable
-private fun CategoryRow(rank: Int, slice: CategorySlice) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun CategoryRow(rank: Int, slice: CategorySlice,
+    onOpen: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { onOpen() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
             text = "$rank",
             style = TextStyle(fontSize = 12.sp, color = TextSecondary),
@@ -1015,3 +1037,113 @@ private fun categoryColor(category: String): Color = when (category) {
     "提现", "充值" -> LedgerTheme.chart3
     else -> LedgerTheme.chart5
 }
+
+@Composable
+private fun CategoryDetailDialog(
+    slice: CategorySlice,
+    startMillis: Long,
+    endMillis: Long,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val entries by produceState<List<LedgerEntry>>(initialValue = emptyList(), slice.name, startMillis) {
+        LedgerRepository.search(
+            context,
+            minAmount = 0.0,
+            maxAmount = Double.MAX_VALUE,
+            start = startMillis,
+            end = endMillis,
+            type = "",
+            categories = listOf(slice.name),
+            keyword = "",
+            limit = 300,
+        ).collect { value = it }
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.88f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(LedgerTheme.surface)
+                .padding(16.dp),
+        ) {
+            Text(
+                text = "${slice.emoji} ${slice.name} 明细",
+                style = MiuixTheme.textStyles.title3,
+                color = TextPrimary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "%.2f%% · ¥ %,.2f · %d笔".format(slice.percent, slice.amount, slice.count),
+                style = MiuixTheme.textStyles.footnote1,
+                color = TextSecondary,
+            )
+            Spacer(Modifier.height(10.dp))
+            Box(modifier = Modifier.heightIn(max = 420.dp)) {
+                if (entries.isEmpty()) {
+                    Text("该分类在此期间没有账目", style = MiuixTheme.textStyles.body2, color = TextSecondary)
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(entries.size) { i -> DetailEntryRow(entries[i]) }
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "关闭",
+                style = MiuixTheme.textStyles.body1,
+                color = AccentBlue,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onDismiss() }
+                    .background(AccentSoft)
+                    .padding(vertical = 10.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailEntryRow(entry: LedgerEntry) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(LedgerTheme.inset)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = entry.note.ifBlank { entry.category },
+                style = MiuixTheme.textStyles.body2,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = detailTimeLabel(entry),
+                style = MiuixTheme.textStyles.footnote2,
+                color = TextSecondary,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        val sign = when (entry.type) {
+            "income" -> "+"
+            "other" -> ""
+            else -> "-"
+        }
+        Text(
+            text = sign + "¥" + "%,.2f".format(entry.amount),
+            style = MiuixTheme.textStyles.body1,
+            color = if (entry.type == "income") LedgerTheme.income else TextPrimary,
+        )
+    }
+}
+
+private fun detailTimeLabel(entry: LedgerEntry): String =
+    if (entry.timeMillis > 0) SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(entry.timeMillis)
+    else entry.time

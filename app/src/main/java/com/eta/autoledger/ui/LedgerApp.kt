@@ -18,6 +18,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -211,41 +212,47 @@ private fun AiActionSheet(onDismiss: () -> Unit, onCamera: () -> Unit, onGallery
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                    .background(LedgerTheme.surface)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
-            ) {
-                Text("识图记账", style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.text))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.88f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(LedgerTheme.surface)
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+        ) {
+                Text("识图记账", style = MiuixTheme.textStyles.title3, color = LedgerTheme.text)
                 Spacer(Modifier.height(6.dp))
-                Text("拍照或上传账单图片，交给已配置的 AI 解析。", style = TextStyle(fontSize = 12.sp, color = LedgerTheme.textSecondary))
+                Text("拍照或上传账单图片，交给已配置的 AI 解析。", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
                 Spacer(Modifier.height(16.dp))
-                SheetOption("📷", "拍照识图", onCamera)
-                Spacer(Modifier.height(10.dp))
-                SheetOption("🖼️", "上传图片识图", onGallery)
-            }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SheetOption("📷", "拍照识图", Modifier.weight(1f), onCamera)
+                    SheetOption("🖼️", "上传图片识图", Modifier.weight(1f), onGallery)
+                }
         }
     }
 }
 
 @Composable
-private fun SheetOption(emoji: String, label: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+private fun SheetOption(
+    emoji: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
             .background(LedgerTheme.inset)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(emoji, style = TextStyle(fontSize = 20.sp))
-        Spacer(Modifier.width(10.dp))
-        Text(label, style = TextStyle(fontSize = 14.sp, color = LedgerTheme.text))
+        Text(text = emoji, fontSize = 26.sp)
+        Spacer(Modifier.height(8.dp))
+        Text(text = label, style = MiuixTheme.textStyles.body1, color = LedgerTheme.text)
     }
 }
 
@@ -325,7 +332,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
         ) {
             Text(
                 text = "收支报表",
-                style = TextStyle(fontSize = 17.sp, color = LedgerTheme.text),
+                style = TextStyle(style = MiuixTheme.textStyles.title3,, color = LedgerTheme.text),
                 modifier = Modifier.align(Alignment.Center),
             )
         }
@@ -341,7 +348,10 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { onTab(index) }
+                        .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onTab(index) }
                         .padding(bottom = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -443,7 +453,11 @@ private fun BottomNavItem(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .clickable(onClick = onClick),
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(8.dp))

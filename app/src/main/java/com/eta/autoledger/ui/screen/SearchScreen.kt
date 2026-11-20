@@ -45,6 +45,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.LedgerEntry
@@ -154,17 +159,18 @@ fun SearchScreen(onClose: () -> Unit) {
                 .padding(start = 6.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "←",
-                fontSize = 22.sp,
-                color = LedgerTheme.text,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { onClose() }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            )
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Back,
+                    contentDescription = "返回",
+                    tint = LedgerTheme.text,
+                )
+            }
             Spacer(Modifier.width(2.dp))
-            Text("搜索账单", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.text)
+            Text("搜索账单", style = MiuixTheme.textStyles.title3, color = LedgerTheme.text)
         }
 
         // ② 全宽搜索框
@@ -476,10 +482,10 @@ private fun DayHeader(dayTitle: String, dayExpense: Double) {
             .padding(top = 6.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(dayTitle, fontSize = 12.sp, color = LedgerTheme.textSecondary)
+        Text(dayTitle, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
         Spacer(Modifier.weight(1f))
         if (dayExpense > 0) {
-            Text("支出 ${money(dayExpense)}", fontSize = 12.sp, color = LedgerTheme.textSecondary)
+            Text("支出 ${money(dayExpense)}", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
         }
     }
 }
@@ -501,8 +507,7 @@ private fun Chip(
     ) {
         Text(
             text = if (removable) "$label ✕" else label,
-            fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            style = MiuixTheme.textStyles.footnote1.copy(fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal),
             color = if (selected) LedgerTheme.accent else LedgerTheme.textSecondary,
         )
     }
@@ -523,14 +528,14 @@ private fun AmountBox(
             .padding(horizontal = 10.dp, vertical = 9.dp),
     ) {
         if (value.isEmpty()) {
-            Text(hint, fontSize = 13.sp, color = LedgerTheme.textTertiary)
+            Text(hint, style = MiuixTheme.textStyles.body2, color = LedgerTheme.textTertiary)
         }
         BasicTextField(
             value = value,
             onValueChange = { input -> onChange(input.filter { it.isDigit() || it == '.' }) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            textStyle = TextStyle(fontSize = 13.sp, color = LedgerTheme.text),
+            textStyle = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.text),
             cursorBrush = SolidColor(LedgerTheme.accent),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -556,8 +561,7 @@ private fun ResultRow(entry: LedgerEntry) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = entry.note.ifBlank { entry.category },
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
+                style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.Medium),
                 color = LedgerTheme.text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -565,7 +569,7 @@ private fun ResultRow(entry: LedgerEntry) {
             Spacer(Modifier.height(3.dp))
             Text(
                 text = "${entry.category} · $stamp · ${entry.source}",
-                fontSize = 12.sp,
+                style = MiuixTheme.textStyles.footnote1,
                 color = LedgerTheme.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -574,8 +578,7 @@ private fun ResultRow(entry: LedgerEntry) {
         Spacer(Modifier.width(10.dp))
         Text(
             text = (if (income) "+" else if (other) "" else "-") + "¥" + money(entry.amount),
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
+            style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold),
             color = when {
                 income -> LedgerTheme.income
                 other -> LedgerTheme.textSecondary

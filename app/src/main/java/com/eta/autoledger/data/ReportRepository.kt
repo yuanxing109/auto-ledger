@@ -23,6 +23,41 @@ data class ReportAggregate(
 
 object ReportRepository {
 
+    /** 与 observe 相同的周期口径，供明细钻取复用。 */
+    fun periodRange(tab: Int, offset: Int): Pair<Long, Long> {
+        val now = Calendar.getInstance()
+        fun startOfWeek(base: Calendar): Calendar = (base.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            val dow = get(Calendar.DAY_OF_WEEK)
+            add(Calendar.DAY_OF_YEAR, if (dow == Calendar.SUNDAY) -6 else Calendar.MONDAY - dow)
+        }
+        val periodStart: Calendar
+        val periodEnd: Calendar
+        when (tab) {
+            0 -> {
+                periodStart = startOfWeek(now).apply { add(Calendar.DAY_OF_YEAR, -offset * 7) }
+                periodEnd = (periodStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 7) }
+            }
+            1 -> {
+                periodStart = (now.clone() as Calendar).apply {
+                    set(Calendar.DAY_OF_MONTH, 1)
+                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                    add(Calendar.MONTH, -offset)
+                }
+                periodEnd = (periodStart.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
+            }
+            else -> {
+                periodStart = (now.clone() as Calendar).apply {
+                    set(Calendar.MONTH, 0); set(Calendar.DAY_OF_MONTH, 1)
+                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                    add(Calendar.YEAR, -offset)
+                }
+                periodEnd = (periodStart.clone() as Calendar).apply { add(Calendar.YEAR, 1) }
+            }
+        }
+        return Pair(periodStart.timeInMillis, periodEnd.timeInMillis)
+    }
+
     fun observe(context: Context, tab: Int, offset: Int, income: Boolean): Flow<ReportAggregate> {
         val now = Calendar.getInstance()
         fun startOfWeek(base: Calendar): Calendar = (base.clone() as Calendar).apply {

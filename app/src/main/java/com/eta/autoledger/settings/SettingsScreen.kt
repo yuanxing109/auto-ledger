@@ -441,15 +441,15 @@ private val initialExpense = listOf(
     "代付", "其他", "宠物", "人情社交", "亲子", "美容", "还债", "借出", "投资",
     "旅行", "红包", "教育", "医疗", "娱乐", "通讯", "交通", "住房", "购物",
     "餐饮", "消费", "转账",
-).map { ManagedCategory(it, Color(0xFF5B8DEF), "•") }
+).map { ManagedCategory(it, AccentBlue, "•") }
 
 private val initialIncome = listOf(
     "其他", "退款", "收债", "借入", "红包", "理财", "薪资", "转账",
-).map { ManagedCategory(it, Color(0xFF34C759), "•") }
+).map { ManagedCategory(it, LedgerTheme.income, "•") }
 
 private val initialOther = listOf(
     "代付", "提现", "充值", "还款",
-).map { ManagedCategory(it, Color(0xFFFF9F43), "•") }
+).map { ManagedCategory(it, LedgerTheme.warning, "•") }
 
 private val expenseNames = listOf(
     "代付", "其他", "宠物", "人情社交", "亲子", "美容", "还债", "借出", "投资",
@@ -520,7 +520,7 @@ private fun CategoriesPage() {
             onDismiss = { addingTo = null },
             onDelete = null,
             onSave = { newName ->
-                val item = ManagedCategory(newName, Color(0xFF5B8DEF), "•")
+                val item = ManagedCategory(newName, AccentBlue, "•")
                 when (list) {
                     expense -> { expense = expense + item; saveCategoryList(context, KEY_EXPENSE, expense) }
                     income -> { income = income + item; saveCategoryList(context, KEY_INCOME, income) }
@@ -626,12 +626,12 @@ private fun saveCategoryList(context: android.content.Context, key: String, list
 }
 
 private fun categoryColor(name: String): Color = when (name) {
-    "餐饮" -> Color(0xFFFF9F43)
-    "购物" -> Color(0xFFB57BFF)
+    "餐饮" -> LedgerTheme.warning
+    "购物" -> LedgerTheme.chart4
     "转账" -> AccentBlue
-    "交通" -> Color(0xFF5AC8FA)
-    "红包" -> Color(0xFFFF5E7A)
-    "薪资", "投资" -> Color(0xFF34C759)
+    "交通" -> LedgerTheme.chart5
+    "红包" -> LedgerTheme.chart6
+    "薪资", "投资" -> LedgerTheme.income
     else -> AccentBlue
 }
 
@@ -682,11 +682,11 @@ private fun CategoryEditDialog(
                                 .weight(1f)
                                 .height(42.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFFFFE9EC))
+                                .background(LedgerTheme.tint(LedgerTheme.danger))
                                 .clickable(onClick = onDelete),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("删除", style = TextStyle(fontSize = 13.sp, color = Color(0xFFFF5E7A)))
+                            Text("删除", style = TextStyle(fontSize = 13.sp, color = LedgerTheme.danger))
                         }
                     }
                     Box(
@@ -711,7 +711,7 @@ private fun CategoryEditDialog(
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("保存", style = TextStyle(fontSize = 13.sp, color = Color.White))
+                        Text("保存", style = TextStyle(fontSize = 13.sp, color = LedgerTheme.onAccent))
                     }
                 }
             }
@@ -828,7 +828,7 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                Text("保存", style = TextStyle(fontSize = 14.sp, color = Color.White))
+                Text("保存", style = TextStyle(fontSize = 14.sp, color = LedgerTheme.onAccent))
             }
         }
     }
@@ -881,7 +881,7 @@ private fun ImportPage() {
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Text("本地文件导入", style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White))
+            Text("本地文件导入", style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
         }
     }
 }
@@ -967,7 +967,7 @@ private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
                         ) { Text("取消", style = TextStyle(fontSize = 13.sp, color = TextSecondary)) }
                         Box(
                             modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFFFFE9EC)).clickable {
+                                .background(LedgerTheme.tint(LedgerTheme.danger)).clickable {
                                     scope.launch {
                                         LedgerRepository.clear(context)
                                     }
@@ -975,7 +975,7 @@ private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
                                     Toast.makeText(context, "已清空记账数据", Toast.LENGTH_SHORT).show()
                                 },
                             contentAlignment = Alignment.Center,
-                        ) { Text("清空", style = TextStyle(fontSize = 13.sp, color = Color(0xFFFF5E7A))) }
+                        ) { Text("清空", style = TextStyle(fontSize = 13.sp, color = LedgerTheme.danger)) }
                     }
                 }
             }
@@ -1042,7 +1042,7 @@ private fun AiPage(prefs: AppPrefs) {
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(if (loading) "获取中…" else "获取模型列表", style = TextStyle(fontSize = 12.sp, color = Color.White))
+                        Text(if (loading) "获取中…" else "获取模型列表", style = TextStyle(fontSize = 12.sp, color = LedgerTheme.onAccent))
                     }
                     Box(
                         modifier = Modifier
@@ -1115,7 +1115,7 @@ private fun AiPage(prefs: AppPrefs) {
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Text("保存配置", style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White))
+            Text("保存配置", style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
         }
     }
 
@@ -1402,7 +1402,7 @@ private fun DavField(
             if (value.isEmpty()) {
                 Text(
                     text = hint,
-                    style = TextStyle(fontSize = 12.sp, color = Color(0xFFB5BFCE)),
+                    style = TextStyle(fontSize = 12.sp, color = LedgerTheme.textTertiary),
                     maxLines = 1,
                 )
             }

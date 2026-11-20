@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 
 /** 扫描框 + AI 星芒，用来代替文字版「AI识图」按钮。 */
 val AiScanIcon: ImageVector by lazy {
+    // 注意：这里写死的 Color.Black 只是占位填充色，实际渲染时由调用方 Icon(tint = …) 覆盖。
     ImageVector.Builder(
         name = "AiScan",
         defaultWidth = 24.dp,

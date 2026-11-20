@@ -99,7 +99,7 @@ internal val PageBg: Color get() = LedgerTheme.page
 internal val AccentBlue: Color get() = LedgerTheme.accent
 internal val TextPrimary: Color get() = LedgerTheme.text
 internal val TextSecondary: Color get() = LedgerTheme.textSecondary
-internal val CardBorder: Color get() = LedgerTheme.cardBorder
+internal val CardBorder: Color get() = LedgerTheme.border
 
 @Composable
 internal fun SettingsPageColumn(content: @Composable () -> Unit) {

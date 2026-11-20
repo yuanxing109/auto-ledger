@@ -36,6 +36,12 @@ object LedgerRepository {
     fun observeCount(context: Context): Flow<Int> = dao(context).observeCount()
 
     /** 组合筛选，返回的是热 Flow：筛选条件一变，界面用新参数重新订阅即可。 */
+    /**
+     * 组合筛选。`categories` 为空表示不限分类。
+     *
+     * 空列表不能直接进 `IN (...)`（Room 会生成 `IN ()` 让 SQLite 报语法错误），
+     * 所以这里用 `categoryMode` + 占位元素把「不过滤」和「过滤」分开表达。
+     */
     fun search(
         context: Context,
         minAmount: Double,
@@ -43,11 +49,41 @@ object LedgerRepository {
         start: Long,
         end: Long,
         type: String,
-        category: String,
+        categories: List<String>,
         keyword: String,
         limit: Int = 300,
     ): Flow<List<LedgerEntry>> =
-        dao(context).search(minAmount, maxAmount, start, end, type, category, keyword, limit)
+        dao(context).search(
+            minAmount = minAmount,
+            maxAmount = maxAmount,
+            start = start,
+            end = end,
+            type = type,
+            categories = categories.ifEmpty { listOf("") },
+            categoryMode = if (categories.isEmpty()) 0 else 1,
+            keyword = keyword,
+            limit = limit,
+        )
+
+    suspend fun countSearch(
+        context: Context,
+        minAmount: Double,
+        maxAmount: Double,
+        start: Long,
+        end: Long,
+        type: String,
+        categories: List<String>,
+        keyword: String,
+    ): Int = dao(context).countSearch(
+        minAmount = minAmount,
+        maxAmount = maxAmount,
+        start = start,
+        end = end,
+        type = type,
+        categories = categories.ifEmpty { listOf("") },
+        categoryMode = if (categories.isEmpty()) 0 else 1,
+        keyword = keyword,
+    )
 
     fun observeSummary(context: Context): Flow<Summary> {
         val now = Calendar.getInstance()

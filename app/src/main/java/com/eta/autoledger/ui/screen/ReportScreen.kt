@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -92,21 +93,12 @@ private val CardBorder: Color get() = LedgerTheme.cardBorder
 private val TextPrimary: Color get() = LedgerTheme.text
 private val TextSecondary: Color get() = LedgerTheme.textSecondary
 private val AccentBlue: Color get() = LedgerTheme.accent
-private val AccentSoft = Color(0xFFEFF5FF)
-private val TrackGray = Color(0xFFEDF2FB)
+private val AccentSoft: Color get() = LedgerTheme.inset
+private val TrackGray: Color get() = LedgerTheme.divider
 
 private data class TrendPoint(val label: String, val value: Double)
 
-private val DonutPalette = listOf(
-    Color(0xFF6E9CF5),
-    Color(0xFFF2A96B),
-    Color(0xFF7EC8A9),
-    Color(0xFFC3A6E6),
-    Color(0xFFF49BB0),
-    Color(0xFFF0C567),
-    Color(0xFF7CC6E8),
-    Color(0xFF9CCB8A),
-)
+private val DonutPalette: List<Color> get() = LedgerTheme.chartSeries
 
 private data class CategorySlice(
     val name: String,
@@ -155,7 +147,8 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             PeriodRow(
@@ -246,7 +239,7 @@ private fun ModePill(income: Boolean, onMode: (Boolean) -> Unit) {
             ) {
                 Text(
                     text = label,
-                    style = TextStyle(fontSize = 12.sp, color = if (selected) Color.White else TextSecondary),
+                    style = TextStyle(fontSize = 12.sp, color = if (selected) LedgerTheme.onAccent else TextSecondary),
                 )
             }
         }
@@ -296,7 +289,7 @@ private fun SummaryCard(data: ReportData, tab: Int, income: Boolean) {
                 SummaryCell(
                     label = "${data.compareLabel}${if (income) "收入" else "支出"}（元）",
                     value = "%+,.2f".format(data.changeAmount),
-                    valueColor = AccentBlue,
+                    valueColor = if (data.changeAmount < 0) LedgerTheme.danger else TextSecondary,
                     modifier = Modifier.weight(1f),
                 )
                 SummaryCell(
@@ -354,7 +347,7 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
     var selected by remember(points) { mutableStateOf<Int?>(null) }
     val textMeasurer = rememberTextMeasurer()
     val lineColor = if (income) AccentBlue else AccentBlue
-    val gridColor = Color(0xFFE7EEFA)
+    val gridColor = LedgerTheme.divider
     val labelStyle = TextStyle(fontSize = 8.sp, color = TextSecondary)
     val bubbleWidth = with(density) { 108.dp.toPx() }
     val bubbleHeight = with(density) { 44.dp.toPx() }
@@ -458,7 +451,8 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                 }
                 points.forEachIndexed { index, point ->
                     val center = Offset(xAt(index), yAt(point.value, max))
-                    drawCircle(Color.White, radius = 4.dp.toPx(), center = center)
+                    // 端点用 onAccent：浅色主题下是白点压在蓝线上，深色主题下是深点压在亮蓝线上，两个方向都清晰
+                    drawCircle(LedgerTheme.onAccent, radius = 4.dp.toPx(), center = center)
                     drawCircle(lineColor, radius = 2.5.dp.toPx(), center = center)
                 }
             }
@@ -481,11 +475,11 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                     Column {
                         Text(
                             text = "${points[index].label}${if (income) "收入" else "支出"}",
-                            style = TextStyle(fontSize = 9.sp, color = Color(0xCCFFFFFF)),
+                            style = TextStyle(fontSize = 9.sp, color = LedgerTheme.onAccent.copy(alpha = 0.8f)),
                         )
                         Text(
                             text = "¥ %,.2f".format(points[index].value),
-                            style = TextStyle(fontSize = 11.sp, color = Color.White),
+                            style = TextStyle(fontSize = 11.sp, color = LedgerTheme.onAccent),
                         )
                     }
                 }
@@ -530,7 +524,7 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = TextStyle(fontSize = 8.sp, color = TextSecondary)
-    val gridColor = Color(0xFFE7EEFA)
+    val gridColor = LedgerTheme.divider
     val barColor = AccentBlue
     val padLeftDp = 44.dp
     val chartHeight = 176.dp
@@ -650,11 +644,11 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
                     Column {
                         Text(
                             text = "¥ %,.2f".format(points[index].value),
-                            style = TextStyle(fontSize = 11.sp, color = Color.White),
+                            style = TextStyle(fontSize = 11.sp, color = LedgerTheme.onAccent),
                         )
                         Text(
                             text = points[index].label,
-                            style = TextStyle(fontSize = 8.sp, color = Color(0xCCFFFFFF)),
+                            style = TextStyle(fontSize = 8.sp, color = LedgerTheme.onAccent.copy(alpha = 0.8f)),
                         )
                     }
                 }
@@ -725,7 +719,7 @@ private fun SubCategoryPill(subCategory: Boolean, onSelect: (Boolean) -> Unit) {
             ) {
                 Text(
                     text = label,
-                    style = TextStyle(fontSize = 10.sp, color = if (selected) Color.White else TextSecondary),
+                    style = TextStyle(fontSize = 10.sp, color = if (selected) LedgerTheme.onAccent else TextSecondary),
                 )
             }
         }
@@ -735,9 +729,9 @@ private fun SubCategoryPill(subCategory: Boolean, onSelect: (Boolean) -> Unit) {
 @Composable
 private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
     val textMeasurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(fontSize = 9.sp, color = Color(0xFF6B7280))
+    val labelStyle = TextStyle(fontSize = 9.sp, color = LedgerTheme.textSecondary)
     val centerAmountStyle = TextStyle(fontSize = 17.sp, color = TextPrimary)
-    val centerLabelStyle = TextStyle(fontSize = 9.sp, color = Color(0xFF9CA3AF))
+    val centerLabelStyle = TextStyle(fontSize = 9.sp, color = LedgerTheme.textTertiary)
     val total = slices.sumOf { it.amount }
     Box(modifier = Modifier.fillMaxWidth().height(272.dp)) {
         Canvas(modifier = Modifier.matchParentSize()) {
@@ -1006,18 +1000,18 @@ private fun categoryEmoji(category: String): String = when (category) {
 }
 
 private fun categoryColor(category: String): Color = when (category) {
-    "餐饮" -> Color(0xFFFF9F43)
-    "购物" -> Color(0xFFB57BFF)
+    "餐饮" -> LedgerTheme.chart3
+    "购物" -> LedgerTheme.chart4
     "转账" -> AccentBlue
-    "交通" -> Color(0xFF5AC8FA)
-    "红包" -> Color(0xFFFF5E7A)
-    "旅行" -> Color(0xFF32ADE6)
-    "医疗" -> Color(0xFFFF453A)
-    "教育" -> Color(0xFF7D7AFF)
-    "娱乐" -> Color(0xFFFFB340)
-    "薪资", "工资" -> Color(0xFF34C759)
-    "理财", "投资" -> Color(0xFFB57BFF)
-    "退款" -> Color(0xFF34C7A9)
-    "提现", "充值" -> Color(0xFFFFB340)
-    else -> Color(0xFF5B8DEF)
+    "交通" -> LedgerTheme.chart5
+    "红包" -> LedgerTheme.danger
+    "旅行" -> LedgerTheme.chart5
+    "医疗" -> LedgerTheme.danger
+    "教育" -> LedgerTheme.chart4
+    "娱乐" -> LedgerTheme.chart3
+    "薪资", "工资" -> LedgerTheme.chart2
+    "理财", "投资" -> LedgerTheme.chart4
+    "退款" -> LedgerTheme.chart2
+    "提现", "充值" -> LedgerTheme.chart3
+    else -> LedgerTheme.chart5
 }

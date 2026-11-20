@@ -70,16 +70,16 @@ import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.viewmodel.HomeViewModel
 import com.eta.autoledger.data.LedgerRepository
 
-private val HeroStart = Color(0xFF2E6BFF)
-private val HeroEnd = Color(0xFF6A9BFF)
+private val HeroStart: Color get() = LedgerTheme.accent
+private val HeroEnd: Color get() = LedgerTheme.accentPressed
 private val AccentBlue: Color get() = LedgerTheme.accent
-private val SourceSms = Color(0xFF5B8DEF)
-private val SourceWechat = Color(0xFF34C759)
-private val SourceMeituan = Color(0xFFFF9F43)
-private val SourceBank = Color(0xFFB57BFF)
-private val White70 = Color(0xB3FFFFFF)
-private val White20 = Color(0x33FFFFFF)
-private val White10 = Color(0x1AFFFFFF)
+private val SourceSms: Color get() = LedgerTheme.chart5
+private val SourceWechat: Color get() = LedgerTheme.chart2
+private val SourceMeituan: Color get() = LedgerTheme.chart3
+private val SourceBank: Color get() = LedgerTheme.chart4
+private val White70: Color get() = LedgerTheme.onAccent.copy(alpha = 0.7f)
+private val White20: Color get() = LedgerTheme.onAccent.copy(alpha = 0.2f)
+private val White10: Color get() = LedgerTheme.onAccent.copy(alpha = 0.1f)
 
 private data class EntryUi(
     val ledger: LedgerEntry,
@@ -196,7 +196,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                             .padding(bottom = 8.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(LedgerTheme.card)
-                            .border(0.5.dp, Color(0xFFE1ECFF), RoundedCornerShape(16.dp)),
+                            .border(0.5.dp, LedgerTheme.cardBorder, RoundedCornerShape(16.dp)),
                     ) {
                         EntryRow(entry, onLongClick = { editingEntry = entry.ledger })
                     }
@@ -243,7 +243,7 @@ private fun EntryEditDialog(
                 .padding(20.dp),
         ) {
             Column {
-                Text("编辑账目", style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1B1C1E)))
+                Text("编辑账目", style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.text))
                 Spacer(Modifier.height(12.dp))
                 EditField("金额", amount) { amount = it }
                 Spacer(Modifier.height(10.dp))
@@ -254,22 +254,22 @@ private fun EntryEditDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(
                         modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFFFE9EC)).clickable(onClick = onDelete),
+                            .background(LedgerTheme.tint(LedgerTheme.danger)).clickable(onClick = onDelete),
                         contentAlignment = Alignment.Center,
-                    ) { Text("删除", style = TextStyle(fontSize = 13.sp, color = Color(0xFFFF5E7A))) }
+                    ) { Text("删除", style = TextStyle(fontSize = 13.sp, color = LedgerTheme.danger)) }
                     Box(
                         modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(12.dp))
                             .background(LedgerTheme.inset).clickable(onClick = onDismiss),
                         contentAlignment = Alignment.Center,
-                    ) { Text("取消", style = TextStyle(fontSize = 13.sp, color = Color(0xFF8A94A6))) }
+                    ) { Text("取消", style = TextStyle(fontSize = 13.sp, color = LedgerTheme.textSecondary)) }
                     Box(
                         modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF2F6BFF)).clickable {
+                            .background(LedgerTheme.accent).clickable {
                                 val value = amount.toDoubleOrNull()
                                 if (value != null && value > 0) onSave(value, category, note)
                             },
                         contentAlignment = Alignment.Center,
-                    ) { Text("保存", style = TextStyle(fontSize = 13.sp, color = Color.White)) }
+                    ) { Text("保存", style = TextStyle(fontSize = 13.sp, color = LedgerTheme.onAccent)) }
                 }
             }
         }
@@ -279,7 +279,7 @@ private fun EntryEditDialog(
 @Composable
 private fun EditField(label: String, value: String, onChange: (String) -> Unit) {
     Column {
-        Text(label, style = TextStyle(fontSize = 11.sp, color = Color(0xFF8A94A6)))
+        Text(label, style = TextStyle(fontSize = 11.sp, color = LedgerTheme.textSecondary))
         Spacer(Modifier.height(4.dp))
         BasicTextField(
             value = value,
@@ -290,8 +290,8 @@ private fun EditField(label: String, value: String, onChange: (String) -> Unit) 
                 .background(LedgerTheme.inset)
                 .padding(horizontal = 10.dp, vertical = 9.dp),
             singleLine = true,
-            textStyle = TextStyle(fontSize = 14.sp, color = Color(0xFF1B1C1E)),
-            cursorBrush = SolidColor(Color(0xFF2F6BFF)),
+            textStyle = TextStyle(fontSize = 14.sp, color = LedgerTheme.text),
+            cursorBrush = SolidColor(LedgerTheme.accent),
         )
     }
 }
@@ -324,7 +324,7 @@ private fun BudgetCard(budget: Double, spent: Double) {
                         .fillMaxWidth(progress)
                         .height(8.dp)
                         .background(
-                            if (progress >= 0.9f) Color(0xFFFF5E7A)
+                            if (progress >= 0.9f) LedgerTheme.danger
                             else MiuixTheme.colorScheme.primary,
                         ),
                 )
@@ -397,7 +397,7 @@ private fun OverviewCard(
                             .background(White20)
                             .padding(horizontal = 10.dp, vertical = 5.dp),
                     ) {
-                        Text(text = dateLabel, style = MiuixTheme.textStyles.footnote2, color = Color.White)
+                        Text(text = dateLabel, style = MiuixTheme.textStyles.footnote2, color = LedgerTheme.onAccent)
                     }
                 }
 
@@ -406,7 +406,7 @@ private fun OverviewCard(
                     Text(
                         text = if (visible) "¥ %,.2f".format(todayExpense) else "¥ ****",
                         style = MiuixTheme.textStyles.title1,
-                        color = Color.White,
+                        color = LedgerTheme.onAccent,
                     )
                     IconButton(onClick = onToggle) {
                         Icon(
@@ -428,7 +428,7 @@ private fun OverviewCard(
                         Text(
                             text = if (visible) "¥ %,.2f".format(monthExpense) else "¥ ****",
                             style = MiuixTheme.textStyles.title4,
-                            color = Color.White,
+                            color = LedgerTheme.onAccent,
                         )
                     }
                     Box(modifier = Modifier.width(0.5.dp).height(30.dp).background(White20))
@@ -438,7 +438,7 @@ private fun OverviewCard(
                         Text(
                             text = if (visible) "¥ %,.2f".format(monthIncome) else "¥ ****",
                             style = MiuixTheme.textStyles.title4,
-                            color = Color.White,
+                            color = LedgerTheme.onAccent,
                         )
                     }
                 }
@@ -638,16 +638,16 @@ private fun categoryEmoji(category: String): String = when (category) {
 }
 
 private fun categoryColor(category: String): Color = when (category) {
-    "餐饮" -> Color(0xFFFF9F43)
-    "购物" -> Color(0xFFB57BFF)
+    "餐饮" -> LedgerTheme.chart3
+    "购物" -> LedgerTheme.chart4
     "转账" -> AccentBlue
-    "交通" -> Color(0xFF5AC8FA)
-    "红包" -> Color(0xFFFF5E7A)
-    "旅行" -> Color(0xFF32ADE6)
-    "医疗" -> Color(0xFFFF453A)
-    "教育" -> Color(0xFF7D7AFF)
-    "娱乐" -> Color(0xFFFFB340)
-    else -> Color(0xFF5B8DEF)
+    "交通" -> LedgerTheme.chart5
+    "红包" -> LedgerTheme.danger
+    "旅行" -> LedgerTheme.chart5
+    "医疗" -> LedgerTheme.danger
+    "教育" -> LedgerTheme.chart4
+    "娱乐" -> LedgerTheme.chart3
+    else -> LedgerTheme.chart5
 }
 
 private fun sourceColor(source: String): Color = when {
@@ -656,5 +656,5 @@ private fun sourceColor(source: String): Color = when {
     source.contains("美团") -> SourceMeituan
     source.contains("银行") -> SourceBank
     source.contains("截屏") -> AccentBlue
-    else -> Color(0xFF34C759)
+    else -> LedgerTheme.chart2
 }

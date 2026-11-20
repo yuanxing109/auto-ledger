@@ -64,7 +64,6 @@ import kotlinx.coroutines.launch
 
 private val PageBg: Color get() = LedgerTheme.page
 private val AccentBlue: Color get() = LedgerTheme.accent
-private val Gold = Color(0xFFF5B942)
 private val TextPrimary: Color get() = LedgerTheme.text
 private val TextSecondary: Color get() = LedgerTheme.textSecondary
 
@@ -75,47 +74,47 @@ private data class Category(
 )
 
 private val expenseCategories = listOf(
-    Category("其他", "⚪", Color(0xFF8E9BB3)),
-    Category("餐饮", "🍜", Color(0xFFFF9F43)),
-    Category("购物", "🛍️", Color(0xFFB57BFF)),
-    Category("转账", "💸", Color(0xFF2F6BFF)),
-    Category("交通", "🚌", Color(0xFF5AC8FA)),
-    Category("消费", "💳", Color(0xFFFF9F43)),
-    Category("人情社交", "👥", Color(0xFF5B8DEF)),
-    Category("娱乐", "🎮", Color(0xFFFFB340)),
-    Category("教育", "📚", Color(0xFF7D7AFF)),
-    Category("通讯", "📱", Color(0xFF5AC8FA)),
-    Category("美容", "💄", Color(0xFFFF7BA9)),
-    Category("医疗", "🏥", Color(0xFFFF453A)),
-    Category("红包", "🧧", Color(0xFFFF5E7A)),
-    Category("旅行", "✈️", Color(0xFF32ADE6)),
-    Category("宠物", "🐾", Color(0xFFC08A5A)),
-    Category("住房", "🏠", Color(0xFF8FD3C7)),
-    Category("代付", "🤝", Color(0xFFFFB340)),
-    Category("投资", "📈", Color(0xFFB57BFF)),
-    Category("借出", "📤", Color(0xFF5B8DEF)),
-    Category("还债", "💰", Color(0xFFFFB340)),
-    Category("亲子", "👨‍👩‍👧", Color(0xFFFF7BA9)),
-    Category("添加", "＋", Color(0xFF2F6BFF)),
+    Category("其他", "⚪", LedgerTheme.textSecondary),
+    Category("餐饮", "🍜", LedgerTheme.chart3),
+    Category("购物", "🛍️", LedgerTheme.chart4),
+    Category("转账", "💸", LedgerTheme.accent),
+    Category("交通", "🚌", LedgerTheme.chart5),
+    Category("消费", "💳", LedgerTheme.chart3),
+    Category("人情社交", "👥", LedgerTheme.accent),
+    Category("娱乐", "🎮", LedgerTheme.chart3),
+    Category("教育", "📚", LedgerTheme.chart4),
+    Category("通讯", "📱", LedgerTheme.chart5),
+    Category("美容", "💄", LedgerTheme.chart6),
+    Category("医疗", "🏥", LedgerTheme.danger),
+    Category("红包", "🧧", LedgerTheme.chart6),
+    Category("旅行", "✈️", LedgerTheme.chart5),
+    Category("宠物", "🐾", LedgerTheme.chart3),
+    Category("住房", "🏠", LedgerTheme.chart2),
+    Category("代付", "🤝", LedgerTheme.chart3),
+    Category("投资", "📈", LedgerTheme.chart4),
+    Category("借出", "📤", LedgerTheme.accent),
+    Category("还债", "💰", LedgerTheme.chart3),
+    Category("亲子", "👨‍👩‍👧", LedgerTheme.chart6),
+    Category("添加", "＋", LedgerTheme.accent),
 )
 
 private val incomeCategories = listOf(
-    Category("转账", "💳", Color(0xFF2F6BFF)),
-    Category("红包", "🧧", Color(0xFFFF5E7A)),
-    Category("退款", "↩️", Color(0xFF34C7A9)),
-    Category("其他", "⚪", Color(0xFF8E9BB3)),
-    Category("薪资", "💼", Color(0xFF34C759)),
-    Category("理财", "📈", Color(0xFFB57BFF)),
-    Category("借入", "📥", Color(0xFFFF9F43)),
-    Category("收债", "📤", Color(0xFF5AC8FA)),
-    Category("添加", "＋", Color(0xFF2F6BFF)),
+    Category("转账", "💳", LedgerTheme.accent),
+    Category("红包", "🧧", LedgerTheme.chart6),
+    Category("退款", "↩️", LedgerTheme.chart2),
+    Category("其他", "⚪", LedgerTheme.textSecondary),
+    Category("薪资", "💼", LedgerTheme.income),
+    Category("理财", "📈", LedgerTheme.chart4),
+    Category("借入", "📥", LedgerTheme.chart3),
+    Category("收债", "📤", LedgerTheme.chart5),
+    Category("添加", "＋", LedgerTheme.accent),
 )
 
 private val otherCategories = listOf(
-    Category("提现", "💵", Color(0xFFFFB340)),
-    Category("还款", "💳", Color(0xFF5B8DEF)),
-    Category("充值", "⚡", Color(0xFFFFC44D)),
-    Category("代付", "🤝", Color(0xFFFF7BA9)),
+    Category("提现", "💵", LedgerTheme.chart3),
+    Category("还款", "💳", LedgerTheme.accent),
+    Category("充值", "⚡", LedgerTheme.chart3),
+    Category("代付", "🤝", LedgerTheme.chart6),
 )
 
 private fun categoriesFor(context: android.content.Context, type: Int): List<Category> =
@@ -471,7 +470,7 @@ private fun DateTimeDialog(
                                             text = value.toString(),
                                             style = TextStyle(
                                                 fontSize = 13.sp,
-                                                color = if (selected) Color.White else TextPrimary,
+                                                color = if (selected) LedgerTheme.onAccent else TextPrimary,
                                             ),
                                         )
                                     }
@@ -489,7 +488,7 @@ private fun DateTimeDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(0.5.dp)
-                        .background(Color(0xFFE7EEFA)),
+                        .background(LedgerTheme.divider),
                 )
                 Spacer(Modifier.height(8.dp))
 
@@ -533,7 +532,7 @@ private fun DateTimeDialog(
                             .clickable { onConfirm(year, month, day, hour, minute) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(text = "确认", style = TextStyle(fontSize = 14.sp, color = Color.White))
+                        Text(text = "确认", style = TextStyle(fontSize = 14.sp, color = LedgerTheme.onAccent))
                     }
                 }
             }
@@ -590,7 +589,12 @@ private fun AmountCard(
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = amount,
-                    style = TextStyle(fontSize = 34.sp, color = if (amount == "0.00") TextSecondary else TextPrimary),
+                    style = TextStyle(
+                        fontSize = 34.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFeatureSettings = "tnum",
+                        color = if (amount == "0.00") LedgerTheme.textTertiary else LedgerTheme.text,
+                    ),
                 )
             }
 
@@ -620,7 +624,7 @@ private fun AmountCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(0.5.dp)
-                    .background(Color(0xFFE7EEFA)),
+                    .background(LedgerTheme.divider),
             )
             Spacer(Modifier.height(6.dp))
 
@@ -723,7 +727,7 @@ private fun CategoryCell(
             text = category.name,
             style = TextStyle(
                 fontSize = 10.sp,
-                color = if (selected) AccentBlue else TextSecondary,
+                color = if (selected) TextPrimary else TextSecondary,
             ),
         )
     }
@@ -746,7 +750,7 @@ private fun Keyboard(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(0.5.dp)
-                .background(Color(0xFFE7EEFA)),
+                .background(LedgerTheme.divider),
         )
         Spacer(Modifier.height(10.dp))
 
@@ -769,14 +773,14 @@ private fun Keyboard(
                         label = key,
                         modifier = Modifier.weight(1f),
                         background = when {
-                            isDone -> Gold
-                            isAgain -> LedgerTheme.inset
-                            isAux -> Color(0xFFEAF0F9)
-                            else -> Color(0xFFF7F9FD)
+                            isDone -> LedgerTheme.accent
+                            isAgain -> Color.Transparent
+                            isAux -> LedgerTheme.divider
+                            else -> LedgerTheme.surfaceVariant
                         },
                         contentColor = when {
-                            isDone -> Color(0xFF3D2A00)
-                            isAgain -> TextSecondary
+                            isDone -> LedgerTheme.onAccent
+                            isAgain -> LedgerTheme.accent
                             else -> TextPrimary
                         },
                         style = TextStyle(

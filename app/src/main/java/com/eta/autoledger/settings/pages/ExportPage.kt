@@ -147,10 +147,10 @@ internal fun ExportPage() {
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(if (selected) LedgerTheme.inset else LedgerTheme.inset)
+                                .background(if (selected) LedgerTheme.tint(LedgerTheme.accent) else LedgerTheme.surfaceVariant)
                                 .border(
                                     1.dp,
-                                    if (selected) AccentBlue else Color(0x00000000),
+                                    if (selected) AccentBlue else CardBorder,
                                     RoundedCornerShape(14.dp),
                                 )
                                 .clickable { format = item }
@@ -176,7 +176,7 @@ internal fun ExportPage() {
                 .fillMaxWidth()
                 .height(52.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(if (working) Color(0xFF9DBBF7) else AccentBlue)
+                .background(if (working) LedgerTheme.tint(LedgerTheme.accent) else AccentBlue)
                 .clickable(enabled = !working) {
                     if (start.isEmpty() || end.isEmpty()) {
                         Toast.makeText(context, "请先选择开始时间和结束时间", Toast.LENGTH_SHORT).show()
@@ -244,7 +244,12 @@ internal fun ExportPage() {
         ) {
             Text(
                 if (working) "正在导出…" else "导出",
-                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White),
+                style = TextStyle(
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    // working 态底是 tint(accent) 的浅色块，onAccent 的白字压不住，改用主色文字
+                    color = if (working) LedgerTheme.accent else LedgerTheme.onAccent,
+                ),
             )
         }
     }

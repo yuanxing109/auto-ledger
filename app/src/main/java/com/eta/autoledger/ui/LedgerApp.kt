@@ -81,7 +81,6 @@ private data class Tab(
     val icon: ImageVector,
 )
 
-private val ReportBg = Color(0xFFF2F7FF)
 
 @Composable
 fun LedgerApp(openAiSettings: Boolean = false) {
@@ -228,13 +227,13 @@ private fun AiActionSheet(onDismiss: () -> Unit, onCamera: () -> Unit, onGallery
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                    .background(Color.White)
+                    .background(LedgerTheme.surface)
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 18.dp),
             ) {
-                Text("识图记账", style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1B1C1E)))
+                Text("识图记账", style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.text))
                 Spacer(Modifier.height(6.dp))
-                Text("拍照或上传账单图片，交给已配置的 AI 解析。", style = TextStyle(fontSize = 12.sp, color = Color(0xFF8A94A6)))
+                Text("拍照或上传账单图片，交给已配置的 AI 解析。", style = TextStyle(fontSize = 12.sp, color = LedgerTheme.textSecondary))
                 Spacer(Modifier.height(16.dp))
                 SheetOption("📷", "拍照识图", onCamera)
                 Spacer(Modifier.height(10.dp))
@@ -257,7 +256,7 @@ private fun SheetOption(emoji: String, label: String, onClick: () -> Unit) {
     ) {
         Text(emoji, style = TextStyle(fontSize = 20.sp))
         Spacer(Modifier.width(10.dp))
-        Text(label, style = TextStyle(fontSize = 14.sp, color = Color(0xFF1B1C1E)))
+        Text(label, style = TextStyle(fontSize = 14.sp, color = LedgerTheme.text))
     }
 }
 
@@ -305,6 +304,8 @@ private fun LedgerTopBar(
                     Icon(
                         imageVector = AiScanIcon,
                         contentDescription = "AI识图",
+                        // ImageVector 里的 SolidColor 会被 tint 覆盖；不显式给色时默认 LocalContentColor（黑），深色主题下会消失
+                        tint = LedgerTheme.text,
                     )
                 }
                 if (isHome) {
@@ -325,7 +326,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ReportBg)
+            .background(LedgerTheme.surface)
             .statusBarsPadding(),
     ) {
         Box(
@@ -335,7 +336,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
         ) {
             Text(
                 text = "收支报表",
-                style = TextStyle(fontSize = 17.sp, color = Color(0xFF1B1C1E)),
+                style = TextStyle(fontSize = 17.sp, color = LedgerTheme.text),
                 modifier = Modifier.align(Alignment.Center),
             )
         }
@@ -360,7 +361,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
                         style = TextStyle(
                             fontSize = 14.sp,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (selected) Color(0xFF1B1C1E) else Color(0xFF8A94A6),
+                            color = if (selected) LedgerTheme.text else LedgerTheme.textSecondary,
                         ),
                     )
                     Spacer(Modifier.height(5.dp))
@@ -369,7 +370,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
                             .width(18.dp)
                             .height(3.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(if (selected) Color(0xFF2F6BFF) else Color.Transparent),
+                            .background(if (selected) LedgerTheme.accent else Color.Transparent),
                     )
                 }
                 if (index < 2) {
@@ -377,7 +378,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
                         modifier = Modifier
                             .width(0.5.dp)
                             .height(12.dp)
-                            .background(Color(0xFFE1ECFF)),
+                            .background(LedgerTheme.divider),
                     )
                 }
             }
@@ -432,6 +433,7 @@ private fun LedgerBottomBar(selected: Int, onSelect: (Int) -> Unit) {
                 Icon(
                     imageVector = MiuixIcons.Add,
                     contentDescription = "记一笔",
+                    // Miuix FAB 底色取 colorScheme.primary（深蓝），白图标在两种主题下都够对比度
                     tint = Color.White,
                 )
             }

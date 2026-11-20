@@ -115,7 +115,7 @@ interface LedgerDao {
         WHERE amount BETWEEN :minAmount AND :maxAmount
           AND timestamp >= :start AND timestamp < :end
           AND (:type = '' OR type = :type)
-          AND (:category = '' OR category = :category)
+          AND (:categoryMode = 0 OR category IN (:categories))
           AND (
             :keyword = ''
             OR remark LIKE '%' || :keyword || '%'
@@ -132,10 +132,43 @@ interface LedgerDao {
         start: Long,
         end: Long,
         type: String,
-        category: String,
+        categories: List<String>,
+        categoryMode: Int,
         keyword: String,
         limit: Int,
     ): Flow<List<LedgerEntry>>
+
+    /**
+     * 与 [search] 同条件的一次性命中数，给筛选面板实时显示「应用 (N 条)」。
+     *
+     * Room 对空 `List` 会生成 `IN ()`，SQLite 直接语法错误，所以调用方必须在
+     * 不筛选时传 `categoryMode = 0` 且 `categories = listOf("")` 占位。
+     */
+    @Query(
+        """
+        SELECT COUNT(*) FROM Bill
+        WHERE amount BETWEEN :minAmount AND :maxAmount
+          AND timestamp >= :start AND timestamp < :end
+          AND (:type = '' OR type = :type)
+          AND (:categoryMode = 0 OR category IN (:categories))
+          AND (
+            :keyword = ''
+            OR remark LIKE '%' || :keyword || '%'
+            OR category LIKE '%' || :keyword || '%'
+            OR source LIKE '%' || :keyword || '%'
+          )
+        """,
+    )
+    suspend fun countSearch(
+        minAmount: Double,
+        maxAmount: Double,
+        start: Long,
+        end: Long,
+        type: String,
+        categories: List<String>,
+        categoryMode: Int,
+        keyword: String,
+    ): Int
 
     @Query("SELECT external_id, time_text, amount, type FROM Bill")
     suspend fun importRows(): List<ImportRow>

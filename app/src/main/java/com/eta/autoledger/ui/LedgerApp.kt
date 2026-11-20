@@ -140,7 +140,7 @@ fun LedgerApp(openAiSettings: Boolean = false) {
                 initialPage = settingsPage,
                 onClose = { showSettings = false },
             )
-            return@MiuixTheme
+            return@AppTheme
         }
         var reportTab by rememberSaveable { mutableIntStateOf(1) }
         val tabs = listOf(

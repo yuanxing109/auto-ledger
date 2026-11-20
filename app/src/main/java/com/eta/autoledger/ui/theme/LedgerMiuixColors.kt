@@ -1,127 +1,142 @@
 package com.eta.autoledger.ui.theme
 
-import androidx.compose.ui.graphics.Color
 import top.yukonga.miuix.kmp.theme.Colors
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 /**
- * 把 [LedgerPalette] 的 21 个语义色灌进 Miuix 的 [Colors]。
+ * 把项目 token 灌进 Miuix 的 53 个色槽。
  *
- * 这是「全局只有一个色源」的关键一步：Miuix 自己的 `lightColorScheme()` 是小米蓝
- * `#3482FF` 一套，本项目自绘部分用的是 `#2563EB` 一套，两套同时存在时同屏就会出现
- * 两种蓝、两种灰 —— 这就是用户说的「全局不统一」。
+ * 为什么用 `lightColorScheme(...)` 的命名参数，而不是 `lightColorScheme().apply { primary = … }`：
+ * `Colors` 里 53 个 `var` 的 setter 全是 `internal`（库内部可见），外部模块只能走工厂函数的
+ * 构造参数赋值。工厂函数 53 个参数**全带默认值**，所以这里只覆盖用得着的 40 个，
+ * 剩下 13 个（`disabled*`、`slider*`）保留 Miuix 官方推导值 —— 它们只影响禁用态与滑块，
+ * 与项目色板没有语义冲突。
  *
- * 做法：以官方 scheme 为底（53 个槽里我们只覆盖真正影响视觉的 34 个，其余保留官方
- * 值，避免漏槽导致某控件配色断裂），逐槽替换成项目色板。
+ * 命名必须精确：`surfaceContainerVariant` 不存在，正确的是 `onSurfaceContainerVariant`
+ * （CI 曾在这一点上报 `Unresolved reference`）。
  *
- * 只覆盖这些槽的理由：
- * - `disabled*` 系列（10 个）由官方按主色推导，覆盖反而容易与真实禁用态不一致；
- * - `sliderKeyPoint*` 与 `sliderBackground`（3 个）只影响滑块，P3 调 SliderPreference 时再看；
- * - `secondaryContainer*` 系列（4 个）在 Miuix 里是灰底标签，官方中性灰在我们的近黑底上可直接用；
- * - `primaryContainer` / `tertiaryContainer*` 保留给 chip、选中态，用项目色的 12% 叠层。
+ * 覆盖原则：**Miuix 组件看起来就该像这个 App 自己画的**。所以：
+ * - `primary/onPrimary` ← `accent/onAccent`（主按钮、FAB、开关、下划线）
+ * - `background/onBackground` ← `page/text`（页面底色）
+ * - `surface*` 五档容器全部映射到 `surface/surfaceVariant/inset`，不再让 Miuix 自己算五档灰
+ * - `outline/dividerLine` ← `border/divider`（深色靠描边分层，不靠阴影）
+ * - `error*` ← `danger` + 12% 淡底
  */
-
-/** 浅色主题下的 Miuix 配色。 */
 internal fun ledgerLightColors(): Colors {
     val p = LedgerPalette.light
-    return lightColorScheme().apply {
-        primary = p.accent
-        onPrimary = p.onAccent
-        primaryVariant = p.accentPressed
-        onPrimaryVariant = p.onAccent
-        primaryContainer = LedgerPalette.tint(p.accent, 0.12f, isDark = false)
-        onPrimaryContainer = p.accent
+    return lightColorScheme(
+        primary = p.accent,
+        onPrimary = p.onAccent,
+        primaryVariant = p.accentPressed,
+        onPrimaryVariant = p.onAccent,
+        primaryContainer = LedgerPalette.tint(p.accent, 0.16f, false),
+        onPrimaryContainer = p.onAccent,
 
-        secondary = p.surfaceVariant
-        onSecondary = p.text
-        secondaryVariant = p.inset
-        onSecondaryVariant = p.textSecondary
+        secondary = p.surfaceVariant,
+        onSecondary = p.text,
+        secondaryVariant = p.surfaceVariant,
+        onSecondaryVariant = p.textSecondary,
+        secondaryContainer = p.surfaceVariant,
+        onSecondaryContainer = p.text,
+        secondaryContainerVariant = p.surfaceVariant,
+        onSecondaryContainerVariant = p.textSecondary,
 
-        tertiaryContainer = LedgerPalette.tint(p.income, 0.12f, isDark = false)
-        onTertiaryContainer = p.income
-        tertiaryContainerVariant = LedgerPalette.tint(p.income, 0.08f, isDark = false)
+        tertiaryContainer = p.surfaceVariant,
+        onTertiaryContainer = p.text,
+        tertiaryContainerVariant = p.surfaceVariant,
 
-        background = p.page
-        onBackground = p.text
-        onBackgroundVariant = p.textSecondary
+        background = p.page,
+        onBackground = p.text,
+        onBackgroundVariant = p.textSecondary,
 
-        surface = p.surface
-        onSurface = p.text
-        surfaceVariant = p.surfaceVariant
-        onSurfaceSecondary = p.textSecondary
-        onSurfaceVariantSummary = p.textSecondary
-        onSurfaceVariantActions = p.textTertiary
-        disabledOnSurface = p.textTertiary.copy(alpha = 0.38f)
+        surface = p.surface,
+        onSurface = p.text,
+        surfaceVariant = p.surfaceVariant,
+        onSurfaceSecondary = p.textSecondary,
+        onSurfaceVariantSummary = p.textSecondary,
+        onSurfaceVariantActions = p.accent,
+        disabledOnSurface = p.textTertiary,
 
-        surfaceContainer = p.surface
-        onSurfaceContainer = p.text
-        surfaceContainerVariant = p.inset
-        onSurfaceContainerVariant = p.textSecondary
-        surfaceContainerHigh = p.surfaceVariant
-        onSurfaceContainerHigh = p.text
-        surfaceContainerHighest = p.surfaceVariant
-        onSurfaceContainerHighest = p.textSecondary
+        surfaceContainer = p.surface,
+        onSurfaceContainer = p.text,
+        onSurfaceContainerVariant = p.surfaceVariant,
+        surfaceContainerHigh = p.surfaceVariant,
+        onSurfaceContainerHigh = p.text,
+        surfaceContainerHighest = p.surfaceVariant,
+        onSurfaceContainerHighest = p.text,
 
-        outline = p.border
-        dividerLine = p.divider
-        windowDimming = p.scrim
+        outline = p.border,
+        dividerLine = p.divider,
+        windowDimming = p.scrim,
 
-        error = p.danger
-        onError = Color.White
-        errorContainer = LedgerPalette.tint(p.danger, 0.10f, isDark = false)
-        onErrorContainer = p.danger
-    }
+        error = p.danger,
+        onError = p.onAccent,
+        errorContainer = LedgerPalette.tint(p.danger, 0.12f, false),
+        onErrorContainer = p.danger,
+    )
 }
 
-/** 深色主题下的 Miuix 配色。槽位与浅色一一对应，值取深色表。 */
+/** 深色版：同一套映射规则，色值来自 `LedgerPalette.dark`。 */
 internal fun ledgerDarkColors(): Colors {
     val p = LedgerPalette.dark
-    return darkColorScheme().apply {
-        primary = p.accent
-        onPrimary = p.onAccent
-        primaryVariant = p.accentPressed
-        onPrimaryVariant = p.onAccent
-        primaryContainer = LedgerPalette.tint(p.accent, 0.12f, isDark = true)
-        onPrimaryContainer = p.accent
+    return darkColorScheme(
+        primary = p.accent,
+        onPrimary = p.onAccent,
+        primaryVariant = p.accentPressed,
+        onPrimaryVariant = p.onAccent,
+        primaryContainer = LedgerPalette.tint(p.accent, 0.16f, true),
+        onPrimaryContainer = p.onAccent,
 
-        secondary = p.surfaceVariant
-        onSecondary = p.text
-        secondaryVariant = p.inset
-        onSecondaryVariant = p.textSecondary
+        secondary = p.surfaceVariant,
+        onSecondary = p.text,
+        secondaryVariant = p.surfaceVariant,
+        onSecondaryVariant = p.textSecondary,
+        secondaryContainer = p.surfaceVariant,
+        onSecondaryContainer = p.text,
+        secondaryContainerVariant = p.surfaceVariant,
+        onSecondaryContainerVariant = p.textSecondary,
 
-        tertiaryContainer = LedgerPalette.tint(p.income, 0.12f, isDark = true)
-        onTertiaryContainer = p.income
-        tertiaryContainerVariant = LedgerPalette.tint(p.income, 0.08f, isDark = true)
+        tertiaryContainer = p.surfaceVariant,
+        onTertiaryContainer = p.text,
+        tertiaryContainerVariant = p.surfaceVariant,
 
-        background = p.page
-        onBackground = p.text
-        onBackgroundVariant = p.textSecondary
+        background = p.page,
+        onBackground = p.text,
+        onBackgroundVariant = p.textSecondary,
 
-        surface = p.surface
-        onSurface = p.text
-        surfaceVariant = p.surfaceVariant
-        onSurfaceSecondary = p.textSecondary
-        onSurfaceVariantSummary = p.textSecondary
-        onSurfaceVariantActions = p.textTertiary
-        disabledOnSurface = p.textTertiary.copy(alpha = 0.38f)
+        surface = p.surface,
+        onSurface = p.text,
+        surfaceVariant = p.surfaceVariant,
+        onSurfaceSecondary = p.textSecondary,
+        onSurfaceVariantSummary = p.textSecondary,
+        onSurfaceVariantActions = p.accent,
+        disabledOnSurface = p.textTertiary,
 
-        surfaceContainer = p.surface
-        onSurfaceContainer = p.text
-        surfaceContainerVariant = p.inset
-        onSurfaceContainerVariant = p.textSecondary
-        surfaceContainerHigh = p.surfaceVariant
-        onSurfaceContainerHigh = p.text
-        surfaceContainerHighest = p.surfaceVariant
-        onSurfaceContainerHighest = p.textSecondary
+        surfaceContainer = p.surface,
+        onSurfaceContainer = p.text,
+        onSurfaceContainerVariant = p.surfaceVariant,
+        surfaceContainerHigh = p.surfaceVariant,
+        onSurfaceContainerHigh = p.text,
+        surfaceContainerHighest = p.surfaceVariant,
+        onSurfaceContainerHighest = p.text,
 
-        outline = p.border
-        dividerLine = p.divider
-        windowDimming = p.scrim
+        outline = p.border,
+        dividerLine = p.divider,
+        windowDimming = p.scrim,
 
-        error = p.danger
-        onError = p.onAccent
-        errorContainer = LedgerPalette.tint(p.danger, 0.12f, isDark = true)
-        onErrorContainer = p.danger
-    }
+        error = p.danger,
+        onError = p.onAccent,
+        errorContainer = LedgerPalette.tint(p.danger, 0.12f, true),
+        onErrorContainer = p.danger,
+    )
 }
+
+/** 预留：让外部知道哪些槽是"故意不覆盖"的，写文档/复查时对得上。 */
+internal val MiuixSlotsIntentionallyDefault: Set<String> = setOf(
+    "disabledPrimary", "disabledOnPrimary", "disabledPrimaryButton",
+    "disabledOnPrimaryButton", "disabledPrimarySlider",
+    "disabledSecondary", "disabledOnSecondary", "disabledSecondaryVariant",
+    "disabledOnSecondaryVariant",
+    "sliderKeyPoint", "sliderKeyPointForeground", "sliderBackground",
+)

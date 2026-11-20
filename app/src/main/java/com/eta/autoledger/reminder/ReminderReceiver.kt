@@ -9,13 +9,29 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.eta.autoledger.MainActivity
 import com.eta.autoledger.data.LedgerRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val kind = intent.getStringExtra(EXTRA_KIND) ?: EXTRA_KIND_DAILY
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "记账提醒"
-        val text = buildSummary(context, kind)
+        // 汇总要走 SQL 聚合，放到 IO 协程里；goAsync() 让系统等这一小段异步工作。
+        val pending = goAsync()
+        scope.launch {
+            try {
+                val text = buildSummary(context, kind)
+                post(context, title, text)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    private fun post(context: Context, title: String, text: String) {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "记账提醒", NotificationManager.IMPORTANCE_HIGH),
@@ -38,8 +54,7 @@ class ReminderReceiver : BroadcastReceiver() {
         runCatching { manager.notify(2000, notification) }
     }
 
-    private fun buildSummary(context: Context, kind: String): String {
-        val entries = LedgerRepository.load(context)
+    private suspend fun buildSummary(context: Context, kind: String): String {
         val now = Calendar.getInstance()
         val start = when (kind) {
             EXTRA_KIND_WEEKLY -> (now.clone() as Calendar).apply {
@@ -57,13 +72,8 @@ class ReminderReceiver : BroadcastReceiver() {
         }
         val end = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
 
-        val filtered = entries.filter { entry ->
-            val cal = LedgerRepository.parseTime(entry.time) ?: return@filter false
-            cal.timeInMillis >= start.timeInMillis && cal.timeInMillis < end.timeInMillis
-        }
-        val expense = filtered.filter { it.type != "income" }.sumOf { it.amount }
-        val income = filtered.filter { it.type == "income" }.sumOf { it.amount }
-        if (expense == 0.0 && income == 0.0) {
+        val totals = LedgerRepository.rangeTotals(context, start.timeInMillis, end.timeInMillis)
+        if (totals.expense == 0.0 && totals.income == 0.0) {
             return "还没有账目，打开记一笔记录今天的收支吧。"
         }
         val prefix = when (kind) {
@@ -71,8 +81,7 @@ class ReminderReceiver : BroadcastReceiver() {
             EXTRA_KIND_MONTHLY -> "本月"
             else -> "今天"
         }
-        val count = filtered.size
-        return "${prefix}共 $count 笔：支出 ¥ %,.2f · 收入 ¥ %,.2f".format(expense, income)
+        return "${prefix}共 ${totals.count} 笔：支出 ¥ %,.2f · 收入 ¥ %,.2f".format(totals.expense, totals.income)
     }
 
     companion object {
@@ -82,5 +91,6 @@ class ReminderReceiver : BroadcastReceiver() {
         const val EXTRA_KIND_WEEKLY = "weekly"
         const val EXTRA_KIND_MONTHLY = "monthly"
         private const val CHANNEL = "ledger_reminder"
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 }

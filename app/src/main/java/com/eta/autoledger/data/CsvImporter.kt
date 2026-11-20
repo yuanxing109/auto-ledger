@@ -8,7 +8,7 @@ object CsvImporter {
     private val dateRegex = Pattern.compile("\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}(?:[ T]\\d{1,2}:\\d{2}(?::\\d{2})?)?")
     private val amountRegex = Pattern.compile("-?\\d+(?:\\.\\d{1,2})?")
 
-    fun import(context: Context, raw: String): Int {
+    suspend fun import(context: Context, raw: String): Int {
         val lines = raw.lineSequence()
             .map { it.trim().trim('\uFEFF') }
             .filter { it.isNotBlank() }
@@ -93,7 +93,7 @@ object CsvImporter {
 
                 result.add(
                     LedgerEntry(
-                        id = System.currentTimeMillis() + result.size,
+                        id = 0L,
                         amount = amount,
                         type = if (isIncome) "income" else "expense",
                         category = category,
@@ -114,7 +114,7 @@ object CsvImporter {
                 val isIncome = line.contains("收入") && !line.contains("支出")
                 result.add(
                     LedgerEntry(
-                        id = System.currentTimeMillis() + result.size,
+                        id = 0L,
                         amount = amount,
                         type = if (isIncome) "income" else "expense",
                         category = detectCategory(line),

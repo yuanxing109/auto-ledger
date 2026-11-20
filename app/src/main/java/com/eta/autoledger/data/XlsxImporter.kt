@@ -8,7 +8,7 @@ import java.util.zip.ZipFile
 /** 轻量 XLSX 读取：解析 sharedStrings 与第一个 worksheet，再交给 CsvImporter。 */
 object XlsxImporter {
 
-    fun import(context: Context, uri: Uri): Int {
+    suspend fun import(context: Context, uri: Uri): Int {
         val temp = File.createTempFile("ledger_import", ".xlsx", context.cacheDir)
         try {
             val input = context.contentResolver.openInputStream(uri) ?: return 0

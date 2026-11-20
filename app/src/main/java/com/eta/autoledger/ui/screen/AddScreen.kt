@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,6 +59,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
+import kotlinx.coroutines.launch
 
 private val PageBg = Color(0xFFF2F7FF)
 private val AccentBlue = Color(0xFF2F6BFF)
@@ -123,6 +125,7 @@ private fun categoriesFor(context: android.content.Context, type: Int): List<Cat
 @Composable
 fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var type by rememberSaveable { mutableIntStateOf(0) }
     var amountInput by rememberSaveable { mutableStateOf("") }
     var negative by rememberSaveable { mutableStateOf(false) }
@@ -199,18 +202,24 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             2 -> "other"
             else -> "expense"
         }
-        LedgerRepository.add(
-            context,
-            LedgerEntry(
-                id = System.currentTimeMillis(),
-                amount = raw,
-                type = typeValue,
-                category = selectedCategory,
-                time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(calendar.time),
-                note = note,
-                source = "手动记账",
-            ),
-        )
+        scope.launch {
+            runCatching {
+                LedgerRepository.add(
+                    context,
+                    LedgerEntry(
+                        id = 0L,
+                        amount = raw,
+                        type = typeValue,
+                        category = selectedCategory,
+                        time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(calendar.time),
+                        note = note,
+                        source = "手动记账",
+                    ),
+                )
+            }.onFailure {
+                Toast.makeText(context, "保存失败：${it.message}", Toast.LENGTH_LONG).show()
+            }
+        }
         Toast.makeText(context, "已记录 ${selectedCategory} ¥ %.2f".format(raw), Toast.LENGTH_SHORT).show()
         amountInput = ""
         negative = false

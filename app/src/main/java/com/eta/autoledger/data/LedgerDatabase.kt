@@ -66,6 +66,8 @@ abstract class LedgerDatabase : RoomDatabase() {
                 }
             }.getOrDefault(emptyList())
             if (list.isNotEmpty()) {
+                // 迁移回调 RoomDatabase.Callback.onCreate 不是 suspend，只能同步落库；
+                // 它本身跑在 Room 的初始化线程（非主线程），这里的 runBlocking 不会造成 ANR，是刻意保留的。
                 runBlocking { database.ledgerDao().insertAll(list) }
             }
         }

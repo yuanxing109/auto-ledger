@@ -1115,6 +1115,7 @@ private fun WidgetPage() {
 @Composable
 private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showClearConfirm by remember { mutableStateOf(false) }
     SettingsPageColumn {
         SettingsCard {
@@ -1175,7 +1176,9 @@ private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
                         Box(
                             modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xFFFFE9EC)).clickable {
-                                    LedgerRepository.clear(context)
+                                    scope.launch {
+                                        LedgerRepository.clear(context)
+                                    }
                                     showClearConfirm = false
                                     Toast.makeText(context, "已清空记账数据", Toast.LENGTH_SHORT).show()
                                 },

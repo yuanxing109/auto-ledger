@@ -1,13 +1,26 @@
 package com.eta.autoledger.data
 
 import android.content.Context
+import com.eta.autoledger.widget.LedgerWidgetProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.runBlocking
-import com.eta.autoledger.widget.LedgerWidgetProvider
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+
+/** 小部件/提醒要的三个数，一次 SQL 聚合拿全，不要把全表读进内存。 */
+data class WidgetTotals(
+    val todayExpense: Double = 0.0,
+    val monthExpense: Double = 0.0,
+    val monthIncome: Double = 0.0,
+)
+
+/** 提醒（日报/周报/月报）用的区间汇总。 */
+data class RangeTotals(
+    val count: Int = 0,
+    val expense: Double = 0.0,
+    val income: Double = 0.0,
+)
 
 object LedgerRepository {
 
@@ -37,37 +50,40 @@ object LedgerRepository {
         ) { today, month, income -> Summary(today, month, income) }
     }
 
-    // 兼容同步调用：数据量小或已在后台线程使用。
-    fun load(context: Context): List<LedgerEntry> = runBlocking { dao(context).getAllOnce() }
+    /** 游标分页：拿比 [cursorTime]/[cursorId] 更旧的一页。 */
+    suspend fun pageBefore(context: Context, cursorTime: Long, cursorId: Long, limit: Int): List<LedgerEntry> =
+        dao(context).pageBefore(cursorTime, cursorId, limit)
 
-    fun add(context: Context, entry: LedgerEntry) = addAll(context, listOf(entry))
+    /** 仅供确实在后台线程的调用方（迁移、报表导出）使用。 */
+    suspend fun load(context: Context): List<LedgerEntry> = dao(context).getAllOnce()
 
-    fun addAll(context: Context, entries: List<LedgerEntry>) {
+    suspend fun add(context: Context, entry: LedgerEntry) = addAll(context, listOf(entry))
+
+    suspend fun addAll(context: Context, entries: List<LedgerEntry>) {
         if (entries.isEmpty()) return
         val normalized = entries.map { it.normalized() }
-        runBlocking { dao(context).insertAll(normalized) }
+        dao(context).insertAll(normalized)
         LedgerWidgetProvider.requestUpdate(context)
     }
 
     /** 导入去重：优先交易单号，其次时间+金额+收支指纹；返回实际新增数。 */
-    fun addImported(context: Context, entries: List<LedgerEntry>): Int {
+    suspend fun addImported(context: Context, entries: List<LedgerEntry>): Int {
         if (entries.isEmpty()) return 0
         val dao = dao(context)
-        val existing = runBlocking { dao.getAllOnce() }
         val keys = mutableSetOf<String>()
-        existing.forEach {
-            it.externalId?.takeIf { id -> id.isNotBlank() }?.let(keys::add)
-            keys.add(it.fingerprint())
+        dao.importRows().forEach { row ->
+            row.externalId?.takeIf { it.isNotBlank() }?.let(keys::add)
+            keys.add(fingerprint(row.time, row.amount, row.type))
         }
         val normalized = entries.map { it.normalized() }
         val toInsert = normalized
             .filter { entry -> keys.add(entry.importKey()) }
             .distinctBy { it.importKey() }
-        if (toInsert.isNotEmpty()) {
-            runBlocking { dao.insertAll(toInsert) }
-            LedgerWidgetProvider.requestUpdate(context)
-        }
-        return toInsert.size
+        if (toInsert.isEmpty()) return 0
+        val rowIds = dao.insertAll(toInsert)
+        LedgerWidgetProvider.requestUpdate(context)
+        // 撞上 external_id 唯一索引（IGNORE）的位置返回 -1，不算新增。
+        return rowIds.count { it != -1L }
     }
 
     private fun LedgerEntry.normalized(): LedgerEntry =
@@ -75,42 +91,67 @@ object LedgerRepository {
             timeMillis = parseTime(time)?.timeInMillis ?: System.currentTimeMillis(),
         )
 
-    private fun LedgerEntry.fingerprint(): String =
+    private fun fingerprint(time: String, amount: Double, type: String): String =
         "$time|${"%.2f".format(amount)}|$type"
 
     private fun LedgerEntry.importKey(): String =
-        externalId?.takeIf { it.isNotBlank() } ?: fingerprint()
+        externalId?.takeIf { it.isNotBlank() } ?: fingerprint(time, amount, type)
 
     /** 修复旧版本导入导致的 timestamp=0 数据。 */
-    fun repairTimestamps(context: Context) {
-        runBlocking {
-            val dao = dao(context)
-            dao.getMissingTimestamp().forEach { entry ->
-                val millis = parseTime(entry.time)?.timeInMillis ?: System.currentTimeMillis()
-                dao.setTimestamp(entry.id, millis)
-            }
+    suspend fun repairTimestamps(context: Context) {
+        val dao = dao(context)
+        dao.getMissingTimestamp().forEach { entry ->
+            val millis = parseTime(entry.time)?.timeInMillis ?: System.currentTimeMillis()
+            dao.setTimestamp(entry.id, millis)
         }
     }
 
-    fun update(context: Context, entry: LedgerEntry) {
-        runBlocking { dao(context).update(entry) }
+    /** 小部件的三个数：两条 SUM 区间查询，不碰全表。 */
+    suspend fun widgetTotals(context: Context): WidgetTotals {
+        val now = Calendar.getInstance()
+        val todayStart = (now.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        val tomorrow = (todayStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
+        val monthStart = (todayStart.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1) }
+        val monthEnd = (monthStart.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
+        val d = dao(context)
+        return WidgetTotals(
+            todayExpense = d.sumExpenseOnce(todayStart.timeInMillis, tomorrow.timeInMillis),
+            monthExpense = d.sumExpenseOnce(monthStart.timeInMillis, monthEnd.timeInMillis),
+            monthIncome = d.sumIncomeOnce(monthStart.timeInMillis, monthEnd.timeInMillis),
+        )
+    }
+
+    /** 提醒用的区间汇总：三条聚合查询，不读整表。 */
+    suspend fun rangeTotals(context: Context, start: Long, end: Long): RangeTotals {
+        val d = dao(context)
+        return RangeTotals(
+            count = d.countRange(start, end),
+            expense = d.sumExpenseOnce(start, end),
+            income = d.sumIncomeOnce(start, end),
+        )
+    }
+
+    suspend fun update(context: Context, entry: LedgerEntry) {
+        dao(context).update(entry)
         LedgerWidgetProvider.requestUpdate(context)
     }
 
-    fun delete(context: Context, id: Long) {
-        runBlocking { dao(context).deleteById(id) }
+    suspend fun delete(context: Context, id: Long) {
+        dao(context).deleteById(id)
         LedgerWidgetProvider.requestUpdate(context)
     }
 
     /** 按 [LedgerEntry.externalId] 删除：自动记账的通知里只带了外部单号，没有自增主键。 */
-    fun deleteByExternalId(context: Context, externalId: String): Int {
-        val removed = runBlocking { dao(context).deleteByExternalId(externalId) }
+    suspend fun deleteByExternalId(context: Context, externalId: String): Int {
+        val removed = dao(context).deleteByExternalId(externalId)
         LedgerWidgetProvider.requestUpdate(context)
         return removed
     }
 
-    fun clear(context: Context) {
-        runBlocking { dao(context).clear() }
+    suspend fun clear(context: Context) {
+        dao(context).clear()
         LedgerWidgetProvider.requestUpdate(context)
     }
 

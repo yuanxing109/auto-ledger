@@ -10,7 +10,12 @@ import androidx.room.PrimaryKey
     indices = [Index(value = ["timestamp"]), Index(value = ["external_id"], unique = true)],
 )
 data class LedgerEntry(
-    @PrimaryKey val id: Long,
+    /**
+     * 主键由 SQLite 自增分配，调用方一律传 0。
+     * 之前用 `System.currentTimeMillis()` 当主键，同一毫秒内的两条账单（连点保存、
+     * 批量导入同一时间戳）会撞键，配合 REPLACE 就是静默覆盖旧账。
+     */
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
     val amount: Double,
     val type: String,
     val category: String,

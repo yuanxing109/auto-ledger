@@ -7,14 +7,15 @@ import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.Summary
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -25,31 +26,39 @@ data class BillsUiState(
     val totalCount: Int = 0,
 )
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val context = application.applicationContext
-    private val pageSize = 50
-    private val page = MutableStateFlow(1)
+
+    /** 每页固定 20 条。旧实现是 LIMIT = pageSize * pages + OFFSET 0，第 10 页要扫 500 行只显示最后 20 行。 */
+    private val pageSize = 20
+
+    /** 首屏（第 0 页）走 Flow，数据变化时自动刷新。 */
+    private val firstPage = LedgerRepository.observePaging(context, pageSize, 0)
+    /** 之后的页按游标一次拿一页，追加在这里。 */
+    private val extraPages = MutableStateFlow<List<LedgerEntry>>(emptyList())
     private val loading = MutableStateFlow(true)
-    private val loadMoreRequests = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val exhausted = MutableStateFlow(false)
+    private val loadMoreRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     private var loadingMore = false
 
-    private val billsFlow = page.flatMapLatest { pages ->
-        LedgerRepository.observePaging(context, pageSize * pages, 0)
+    private val billsFlow = combine(firstPage, extraPages) { first, extra ->
+        // 首屏刷新（新账插入、旧账删除）可能与已加载的追加页重叠，按 id 去重。
+        val seen = HashSet<Long>(first.size + extra.size)
+        (first + extra).filter { seen.add(it.id) }
     }
-    private val summaryFlow = LedgerRepository.observeSummary(context)
-    private val countFlow = LedgerRepository.observeCount(context)
 
     val billsState: StateFlow<BillsUiState> = combine(
         billsFlow,
-        countFlow,
+        LedgerRepository.observeCount(context),
         loading,
-    ) { bills, count, isLoading ->
+        exhausted,
+    ) { bills, count, isLoading, reachedEnd ->
         BillsUiState(
             bills = bills,
             isLoading = isLoading,
-            hasMore = bills.size < count,
+            hasMore = !reachedEnd && bills.size < count,
             totalCount = count,
         )
     }.stateIn(
@@ -58,33 +67,57 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         BillsUiState(),
     )
 
-    val summaryState: StateFlow<Summary> = summaryFlow.stateIn(
+    val summaryState: StateFlow<Summary> = LedgerRepository.observeSummary(context).stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
         Summary(),
     )
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
-            LedgerRepository.repairTimestamps(context)
-        }
+        viewModelScope.launch(Dispatchers.IO) { LedgerRepository.repairTimestamps(context) }
         viewModelScope.launch {
-            billsFlow.first()
+            firstPage.first()
             loading.value = false
+        }
+        // 账单总量变了：新账插在顶部会让游标页位移，直接丢掉追加页，从首屏重新开始翻。
+        viewModelScope.launch {
+            LedgerRepository.observeCount(context)
+                .drop(1)
+                .distinctUntilChanged()
+                .collect {
+                    if (extraPages.value.isNotEmpty()) extraPages.value = emptyList()
+                    exhausted.value = false
+                }
         }
         // 触底加载防抖：300ms 内只处理最后一次请求
         viewModelScope.launch {
-            loadMoreRequests
-                .debounce(300)
-                .collect {
-                    if (!loadingMore && billsState.value.hasMore) {
-                        loadingMore = true
-                        page.value += 1
-                        kotlinx.coroutines.delay(300)
+            loadMoreRequests.debounce(300).collect {
+                if (!loadingMore && billsState.value.hasMore) {
+                    loadingMore = true
+                    try {
+                        loadNextPage()
+                    } finally {
                         loadingMore = false
                     }
                 }
+            }
         }
+    }
+
+    private suspend fun loadNextPage() {
+        val last = billsState.value.bills.lastOrNull() ?: return
+        val cursorTime = if (last.timeMillis > 0) {
+            last.timeMillis
+        } else {
+            LedgerRepository.parseTime(last.time)?.timeInMillis ?: 0L
+        }
+        val more = LedgerRepository.pageBefore(context, cursorTime, last.id, pageSize)
+        if (more.isEmpty()) {
+            exhausted.value = true
+            return
+        }
+        extraPages.value = (extraPages.value + more).distinctBy { it.id }
+        if (more.size < pageSize) exhausted.value = true
     }
 
     fun loadMore() {
@@ -100,6 +133,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearAll() {
+        extraPages.value = emptyList()
+        exhausted.value = false
         viewModelScope.launch(Dispatchers.IO) { LedgerRepository.clear(context) }
     }
 }

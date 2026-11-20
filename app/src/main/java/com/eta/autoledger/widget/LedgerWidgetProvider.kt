@@ -10,35 +10,48 @@ import android.widget.RemoteViews
 import com.eta.autoledger.MainActivity
 import com.eta.autoledger.R
 import com.eta.autoledger.data.LedgerRepository
+import com.eta.autoledger.data.WidgetTotals
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
 class LedgerWidgetProvider : AppWidgetProvider() {
 
+    /**
+     * 以前这里在主线程 `LedgerRepository.load()` 全表扫一遍再在内存里 filter/sum，
+     * 账目一多就是 ANR 风险。现在走两条 SUM 区间查询，并 goAsync() 挪到 IO 协程。
+     */
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        appWidgetIds.forEach { updateWidget(context, appWidgetManager, it) }
+        if (appWidgetIds.isEmpty()) return
+        val pending = goAsync()
+        val appContext = context.applicationContext
+        scope.launch {
+            try {
+                val totals = LedgerRepository.widgetTotals(appContext)
+                appWidgetIds.forEach { updateWidget(appContext, appWidgetManager, it, totals) }
+            } finally {
+                pending?.finish()
+            }
+        }
     }
 
-    private fun updateWidget(context: Context, manager: AppWidgetManager, widgetId: Int) {
-        val entries = LedgerRepository.load(context)
+    private fun updateWidget(
+        context: Context,
+        manager: AppWidgetManager,
+        widgetId: Int,
+        totals: WidgetTotals,
+    ) {
         val now = Calendar.getInstance()
-        val monthExpense = entries
-            .filter { it.type != "income" && sameMonth(it.time, now) }
-            .sumOf { it.amount }
-        val monthIncome = entries
-            .filter { it.type == "income" && sameMonth(it.time, now) }
-            .sumOf { it.amount }
-        val todayExpense = entries
-            .filter { it.type != "income" && sameDay(it.time, now) }
-            .sumOf { it.amount }
-
         val views = RemoteViews(context.packageName, R.layout.widget_ledger)
         views.setTextViewText(R.id.widget_date, SimpleDateFormat("MM月dd日", Locale.CHINA).format(now.time))
-        views.setTextViewText(R.id.widget_today, "%.2f".format(todayExpense))
+        views.setTextViewText(R.id.widget_today, "%.2f".format(totals.todayExpense))
         views.setTextViewText(
             R.id.widget_month,
-            "本月支出 %.2f · 收入 %.2f".format(monthExpense, monthIncome),
+            "本月支出 %.2f · 收入 %.2f".format(totals.monthExpense, totals.monthIncome),
         )
         val open = PendingIntent.getActivity(
             context,
@@ -50,20 +63,9 @@ class LedgerWidgetProvider : AppWidgetProvider() {
         manager.updateAppWidget(widgetId, views)
     }
 
-    private fun sameDay(raw: String, now: Calendar): Boolean {
-        val cal = LedgerRepository.parseTime(raw) ?: return false
-        return cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
-            cal.get(Calendar.MONTH) == now.get(Calendar.MONTH) &&
-            cal.get(Calendar.DAY_OF_MONTH) == now.get(Calendar.DAY_OF_MONTH)
-    }
-
-    private fun sameMonth(raw: String, now: Calendar): Boolean {
-        val cal = LedgerRepository.parseTime(raw) ?: return false
-        return cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
-            cal.get(Calendar.MONTH) == now.get(Calendar.MONTH)
-    }
-
     companion object {
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
         fun requestUpdate(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, LedgerWidgetProvider::class.java))

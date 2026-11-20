@@ -1,5 +1,6 @@
 package com.eta.autoledger.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -17,13 +18,32 @@ data class Summary(
     val monthIncome: Double = 0.0,
 )
 
+/** 导入去重只需要这四列，不必把全表实体读进内存。 */
+data class ImportRow(
+    @ColumnInfo(name = "external_id") val externalId: String?,
+    @ColumnInfo(name = "time_text") val time: String,
+    val amount: Double,
+    val type: String,
+)
+
 @Dao
 interface LedgerDao {
-    @Query("SELECT * FROM Bill ORDER BY timestamp DESC")
+    // id DESC 是必要的：timestamp 只到毫秒，同一毫秒内的多条需要稳定次序，否则分页会漏行/重行。
+    @Query("SELECT * FROM Bill ORDER BY timestamp DESC, id DESC")
     fun observeAll(): Flow<List<LedgerEntry>>
 
-    @Query("SELECT * FROM Bill ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM Bill ORDER BY timestamp DESC, id DESC LIMIT :limit OFFSET :offset")
     fun observePaging(limit: Int, offset: Int): Flow<List<LedgerEntry>>
+
+    /**
+     * 游标分页：只按「比上一页最后一条更旧」取下一页，代价恒定，
+     * 不像 LIMIT/OFFSET 那样每翻一页都要扫描并丢弃前面所有行。
+     */
+    @Query(
+        "SELECT * FROM Bill WHERE timestamp < :cursorTime OR (timestamp = :cursorTime AND id < :cursorId) " +
+            "ORDER BY timestamp DESC, id DESC LIMIT :limit",
+    )
+    suspend fun pageBefore(cursorTime: Long, cursorId: Long, limit: Int): List<LedgerEntry>
 
     @Query("SELECT COUNT(*) FROM Bill")
     fun observeCount(): Flow<Int>
@@ -62,11 +82,36 @@ interface LedgerDao {
     )
     fun observeCategories(start: Long, end: Long, income: Int): Flow<List<CategoryAgg>>
 
-    @Query("SELECT * FROM Bill ORDER BY timestamp DESC")
+    // ---- 一次性聚合：给桌面小部件与提醒用，避免把全表读进内存再 filter/sum ----
+
+    @Query(
+        "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
+            "WHERE type != 'income' AND timestamp >= :start AND timestamp < :end",
+    )
+    suspend fun sumExpenseOnce(start: Long, end: Long): Double
+
+    @Query(
+        "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
+            "WHERE type == 'income' AND timestamp >= :start AND timestamp < :end",
+    )
+    suspend fun sumIncomeOnce(start: Long, end: Long): Double
+
+    @Query("SELECT COUNT(*) FROM Bill WHERE timestamp >= :start AND timestamp < :end")
+    suspend fun countRange(start: Long, end: Long): Int
+
+    @Query("SELECT * FROM Bill ORDER BY timestamp DESC, id DESC")
     suspend fun getAllOnce(): List<LedgerEntry>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(entries: List<LedgerEntry>)
+    @Query("SELECT external_id, time_text, amount, type FROM Bill")
+    suspend fun importRows(): List<ImportRow>
+
+    /**
+     * IGNORE 而不是 REPLACE：主键交给 SQLite 自增后，撞键只可能是 external_id 唯一索引，
+     * 那时也不能静默替换掉已有账单——宁可丢掉这条重复，也不该让用户的旧账消失。
+     * 返回每个元素的 rowId，被忽略的位置是 -1。
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(entries: List<LedgerEntry>): List<Long>
 
     @Update
     suspend fun update(entry: LedgerEntry)

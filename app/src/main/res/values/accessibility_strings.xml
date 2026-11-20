@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_desc">仅用于截屏记账：捕获当前屏幕并交给已配置的 AI 识别，不读取界面内容。</string>
+    <string name="accessibility_label">自动记账截屏</string>
+</resources>

@@ -1,0 +1,8 @@
+id=com.eta.autoledger
+name=自动记账
+version=0.1.0
+versionCode=1
+author=Eta
+description=读取支付通知并自动记账（LSPosed 模块）
+minApiVersion=102
+targetApiVersion=102

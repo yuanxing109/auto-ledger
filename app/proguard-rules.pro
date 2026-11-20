@@ -1,0 +1,5 @@
+-keep class com.eta.autoledger.xposed.** { *; }
+-keep class com.eta.autoledger.screenshot.** { *; }
+-keep class com.eta.autoledger.widget.** { *; }
+-keep class com.eta.autoledger.reminder.** { *; }
+-dontwarn org.jetbrains.annotations.**

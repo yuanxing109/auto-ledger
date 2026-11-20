@@ -12,6 +12,8 @@
 | [04 开发与扩展指南](04-开发与扩展指南.md) | 目录约定、构建调试命令、6 组改造配方（加分类/加字段/换 AI/通知监听扩展/模块注入/新提醒）、已知问题清单、路线图 | 要动手写代码 |
 | [05 Root / 非 Root 双模式设计](05-Root与非Root双模式设计.md) | LSPosed 模块职责边界（能做/不能做逐条）、非 Root 采集与保活、Root 增强点与失效场景、双模式对比表、默认模式与切换策略；§7 补了既有方案调研（SmartLedger / gkd / AutoStarter / libxposed）与三处设计修订：新增 ADB·Shizuku 模式 C、折叠通知下放非 Root、受限设置阻塞 | 要决定架构方向 |
 | [06 UI 统一改造方案](06-UI统一改造方案.md) | 深色未适配/风格不一致/设计缺陷三类问题清单（含代码位置）、浅色与深色两套完整色值表（对比度标注）、字号圆角间距组件四套 token 规范、图 9 搜索页重设计、需求 4 两处代码级改法、外部参考借鉴、P0–P2 落地顺序与验收清单 | 要动界面 |
+| [07 UI 重构方案](07-UI重构方案.md) | M3 / GearUI Kit / Lottie / MPAndroidChart / Compose Icons / LXGW WenKai 六者的职责与取舍（含 GearUI 不可用的原因）、配色映射表、字体五级与子集化命令、图标与图表规范、动效白名单、P0–P4 迁移顺序与风险表、路线 A/B 对照 | 要换技术栈或重构 UI |
+| [08 A 方案·Miuix 单源与图表迁移](08-A方案-Miuix单源与图表迁移.md) | 路线 A 的执行版：Miuix 0.9.5-beta01 源码级 API 事实（`ThemeController` 可传自定义 `Colors` 53 槽、`ColorSchemeMode.System` 原生）、15 token→53 槽映射表、14 字体槽→8 档、组件白名单与 41 处 Toast→Snackbar、5 条 CI 门禁、三套自绘图表→MPChartCompose v4.0.1 的映射与三个坑、P0–P4 阶段表（含验证命令）、流畅/功耗/体积取舍表与 10 条风险 | 要按 A 方案动手改 UI |
 
 ## 30 秒速览
 

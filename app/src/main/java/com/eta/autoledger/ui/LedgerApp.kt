@@ -16,7 +16,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -64,9 +63,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.icon.extended.Settings
-import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.ThemeController
 import com.eta.autoledger.ui.screen.AddScreen
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.screenshot.VisionHelper
@@ -75,6 +72,7 @@ import com.eta.autoledger.settings.SettingsScreen
 import com.eta.autoledger.ui.screen.HomeScreen
 import com.eta.autoledger.ui.screen.ReportScreen
 import com.eta.autoledger.ui.screen.SearchScreen
+import com.eta.autoledger.ui.theme.AppTheme
 
 private data class Tab(
     val label: String,
@@ -86,18 +84,9 @@ private data class Tab(
 fun LedgerApp(openAiSettings: Boolean = false) {
     val context = LocalContext.current
     val prefs = remember { AppPrefs(context) }
-    val systemDark = isSystemInDarkTheme()
-    val dark = when (prefs.themeMode) {
-        "light" -> false
-        "dark" -> true
-        else -> systemDark
-    }
-    // 同步给手绘界面用的语义色板（见 ui/LedgerTheme.kt）
-    LedgerTheme.dark = dark
-    val controller = remember(dark) {
-        ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light)
-    }
-    MiuixTheme(controller = controller) {
+    // 全站唯一主题根：解析「外观」模式 → 灌 Miuix 色板/字体槽 → 同步自绘色板。
+    // 之后任何页面都不许再包 MiuixTheme / MaterialTheme，否则深色会出现两套色。
+    AppTheme(mode = prefs.themeMode) {
         var selected by rememberSaveable { mutableIntStateOf(0) }
         var showSettings by rememberSaveable { mutableStateOf(openAiSettings) }
         var settingsPage by rememberSaveable {
@@ -433,8 +422,8 @@ private fun LedgerBottomBar(selected: Int, onSelect: (Int) -> Unit) {
                 Icon(
                     imageVector = MiuixIcons.Add,
                     contentDescription = "记一笔",
-                    // Miuix FAB 底色取 colorScheme.primary（深蓝），白图标在两种主题下都够对比度
-                    tint = Color.White,
+                    // FAB 底色是 accent（浅色深蓝 / 深色亮蓝），图标取 onAccent 才能两头都有对比度
+                    tint = LedgerTheme.onAccent,
                 )
             }
         }

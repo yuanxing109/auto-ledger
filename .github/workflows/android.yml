@@ -53,6 +53,9 @@ jobs:
       - name: Gradle info
         run: gradle --version
 
+      - name: UI consistency gate
+        run: bash tools/check-ui-consistency.sh
+
       - name: Build debug
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 

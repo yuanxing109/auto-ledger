@@ -93,6 +93,7 @@ import com.eta.autoledger.data.XlsxExporter
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.reminder.ReminderScheduler
 import com.eta.autoledger.service.LedgerNotificationListener
+import com.eta.autoledger.ui.theme.ThemeMode
 import com.eta.autoledger.widget.LedgerWidgetProvider
 
 
@@ -1216,9 +1217,9 @@ private suspend fun fetchModels(baseUrl: String, key: String): Result<List<Strin
 @Composable
 private fun AppearancePage(prefs: AppPrefs) {
     val modes = listOf(
-        "system" to ("跟随系统" to "随系统的深色/浅色开关自动切换"),
-        "light" to ("浅色" to "始终使用浅色主题"),
-        "dark" to ("深色" to "始终使用深色主题，夜间看账不刺眼"),
+        ThemeMode.SYSTEM to ("跟随系统" to "随系统的深色/浅色开关自动切换"),
+        ThemeMode.LIGHT to ("浅色" to "始终使用浅色主题"),
+        ThemeMode.DARK to ("深色" to "始终使用深色主题，夜间看账不刺眼"),
     )
     SettingsPageColumn {
         SettingsCard {

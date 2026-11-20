@@ -80,6 +80,7 @@ private val SourceBank: Color get() = LedgerTheme.chart4
 private val White70: Color get() = LedgerTheme.onAccent.copy(alpha = 0.7f)
 private val White20: Color get() = LedgerTheme.onAccent.copy(alpha = 0.2f)
 private val White10: Color get() = LedgerTheme.onAccent.copy(alpha = 0.1f)
+private val White05: Color get() = LedgerTheme.onAccent.copy(alpha = 0.05f)
 
 private data class EntryUi(
     val ledger: LedgerEntry,
@@ -376,7 +377,7 @@ private fun OverviewCard(
                         center = Offset(size.width * 0.96f, size.height * 0.06f),
                     )
                     drawCircle(
-                        color = Color.White.copy(alpha = 0.05f),
+                        color = White05,
                         radius = size.width * 0.30f,
                         center = Offset(size.width * 0.08f, size.height * 0.98f),
                     )

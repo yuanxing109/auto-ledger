@@ -30,10 +30,10 @@
 | 文件 | 行数 | 备注 |
 | --- | --- | --- |
 | `settings/SettingsScreen.kt` | 1460 | 15 个枚举页的主文件，共用组件已抽到 `SettingsUi.kt`，3 页在 `settings/pages/` |
-| `ui/screen/SearchScreen.kt` | 370 | 搜索筛选（LIKE + BETWEEN，硬上限 300 条） |
-| `ui/screen/ReportScreen.kt` | 1022 | 折线/柱状/环形三套自绘图表 |
-| `ui/screen/AddScreen.kt` | 817 | 自绘日历 + 自定义键盘，保存走 `rememberCoroutineScope` |
-| `ui/screen/HomeScreen.kt` | 648 | 分页列表 + 预算卡 |
+| `ui/screen/SearchScreen.kt` | 755 | 五区布局 + 底部筛选面板（分类多选，命中数预览） |
+| `ui/screen/ReportScreen.kt` | 1017 | 折线/柱状/环形三套自绘图表，配色走 `chart1..6` |
+| `ui/screen/AddScreen.kt` | 821 | 自绘日历 + 自定义键盘，金额 `tnum` 等宽加粗 |
+| `ui/screen/HomeScreen.kt` | 659 | 分页列表 + 预算卡，摘要卡渐变随主题 |
 | `ui/LedgerApp.kt` | 444 | 三 tab 壳 + AI 扫一扫 |
 | `screenshot/ScreenshotCaptureService.kt` | 276 | VirtualDisplay + ImageReader 抓帧 |
 | `data/NotificationRules.kt` | 424 | 通知 + 短信解析规则库（纯函数，可单测） |
@@ -46,7 +46,7 @@
 | `data/LedgerDao.kt` | 133 | `pageBefore` 游标查询、`importRows`、三条聚合 SQL |
 | `viewmodel/HomeViewModel.kt` | 140 | 游标分页 + 首屏/追加页合并去重 |
 | `widget/LedgerWidgetProvider.kt` | 87 | 两规格（2×2 / 4×2）+ `goAsync` + 聚合 SQL |
-| `ui/LedgerTheme.kt` | 46 | 深浅两套语义色，普通 getter（Canvas 可用） |
+| `ui/LedgerTheme.kt` | 107 | 深浅两套语义色 + 图表色 + `tint()`，普通 getter（Canvas 可用） |
 | `data/BackupRunner.kt` | 96 | 备份/恢复编排，20h 节流 + 日备保留 7 份 |
 | `data/WebDavClient.kt` | 132 | WebDAV MKCOL/PUT/GET/PROPFIND + Basic Auth |
 

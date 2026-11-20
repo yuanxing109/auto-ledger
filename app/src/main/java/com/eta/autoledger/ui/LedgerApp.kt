@@ -332,7 +332,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
         ) {
             Text(
                 text = "收支报表",
-                style = TextStyle(style = MiuixTheme.textStyles.title3,, color = LedgerTheme.text),
+                style = MiuixTheme.textStyles.title3,
                 modifier = Modifier.align(Alignment.Center),
             )
         }

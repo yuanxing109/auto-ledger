@@ -11,8 +11,10 @@ import java.util.Locale
 /** 小部件/提醒要的三个数，一次 SQL 聚合拿全，不要把全表读进内存。 */
 data class WidgetTotals(
     val todayExpense: Double = 0.0,
+    val todayIncome: Double = 0.0,
     val monthExpense: Double = 0.0,
     val monthIncome: Double = 0.0,
+    val monthCount: Int = 0,
 )
 
 /** 提醒（日报/周报/月报）用的区间汇总。 */
@@ -118,8 +120,10 @@ object LedgerRepository {
         val d = dao(context)
         return WidgetTotals(
             todayExpense = d.sumExpenseOnce(todayStart.timeInMillis, tomorrow.timeInMillis),
+            todayIncome = d.sumIncomeOnce(todayStart.timeInMillis, tomorrow.timeInMillis),
             monthExpense = d.sumExpenseOnce(monthStart.timeInMillis, monthEnd.timeInMillis),
             monthIncome = d.sumIncomeOnce(monthStart.timeInMillis, monthEnd.timeInMillis),
+            monthCount = d.countRange(monthStart.timeInMillis, monthEnd.timeInMillis),
         )
     }
 

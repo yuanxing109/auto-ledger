@@ -1099,14 +1099,14 @@ private fun ExportPage() {
 private fun WidgetPage() {
     val context = LocalContext.current
     SettingsPageColumn {
-        HintText("在桌面长按空白处，进入「添加小部件」，找到「自动记账」即可添加。")
+        HintText("点一下会直接在桌面钉上对应规格；也可以长按桌面空白处 → 「添加小部件」→ 「自动记账」，两种规格都能选。")
         SettingsCard {
-            ArrowPreference(title = "今日收支", summary = "2×2 小部件", onClick = {
-                LedgerWidgetProvider.requestPin(context)
+            ArrowPreference(title = "今日收支", summary = "2×2 · 今日支出大数字 + 本月收支", onClick = {
+                LedgerWidgetProvider.requestPin(context, wide = false)
             })
             RowDivider()
-            ArrowPreference(title = "本月概览", summary = "4×2 小部件", onClick = {
-                LedgerWidgetProvider.requestPin(context)
+            ArrowPreference(title = "本月概览", summary = "4×2 · 本月收支并排 + 今日支出与笔数", onClick = {
+                LedgerWidgetProvider.requestPin(context, wide = true)
             })
         }
     }

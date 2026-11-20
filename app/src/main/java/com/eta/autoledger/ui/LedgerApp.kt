@@ -85,7 +85,8 @@ private val ReportBg = Color(0xFFF2F7FF)
 
 @Composable
 fun LedgerApp(openAiSettings: Boolean = false) {
-    val prefs = remember { AppPrefs(LocalContext.current) }
+    val context = LocalContext.current
+    val prefs = remember { AppPrefs(context) }
     val systemDark = isSystemInDarkTheme()
     val dark = when (prefs.themeMode) {
         "light" -> false

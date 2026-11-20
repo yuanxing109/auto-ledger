@@ -1,7 +1,5 @@
 package com.eta.autoledger.ui
 
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -21,9 +19,8 @@ object LedgerTheme {
     var dark: Boolean = false
         internal set
 
-    /** 供 Composable 内部直接判断（例如动态算派生色）。 */
-    @Composable
-    fun isDark(): Boolean = isSystemInDarkTheme()
+    /** 兼容旧调用：返回当前生效（可能来自系统）的深色状态。 */
+    fun isDark(): Boolean = dark
 
     val page: Color get() = if (dark) Color(0xFF0D1117) else Color(0xFFF2F7FF)
     val card: Color get() = if (dark) Color(0xFF161B22) else Color.White

@@ -2,19 +2,23 @@ package com.eta.autoledger.tile
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.MainActivity
+import com.eta.autoledger.R
 import androidx.core.content.ContextCompat
 import com.eta.autoledger.screenshot.ScreenshotCaptureService
 import com.eta.autoledger.screenshot.ScreenshotRequestActivity
 
 /**
- * 控制中心截屏记账入口。当前只负责把用户带到 AI 配置/截屏授权流程；
- * 真正的 MediaProjection 截屏与 AI 解析在下一步接入。
+ * 控制中心「截屏记账」磁贴。未配置 AI 时把用户带到设置页；已配置时延迟 1 秒再截屏，
+ * 等控制中心面板收起，避免把下拉面板本身截进去。
  */
 class ScreenshotTileService : TileService() {
 
@@ -23,6 +27,8 @@ class ScreenshotTileService : TileService() {
         qsTile?.apply {
             state = Tile.STATE_INACTIVE
             label = "截屏记账"
+            icon = Icon.createWithResource(this@ScreenshotTileService, R.drawable.ic_tile_screenshot)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) subtitle = "点一下截当前屏幕"
             updateTile()
         }
     }
@@ -32,11 +38,9 @@ class ScreenshotTileService : TileService() {
         val prefs = AppPrefs(this)
         val needsSetup = !prefs.screenshotEnabled || prefs.aiBaseUrl.isBlank() || prefs.aiModel.isBlank()
         if (!needsSetup) {
-            Toast.makeText(this, "正在截屏并解析…", Toast.LENGTH_SHORT).show()
-            val service = Intent(this, ScreenshotCaptureService::class.java).apply {
-                action = ScreenshotCaptureService.ACTION_CAPTURE_ROOT
-            }
-            ContextCompat.startForegroundService(this, service)
+            Toast.makeText(this, "1 秒后截屏，请停在要识别的页面", Toast.LENGTH_SHORT).show()
+            // 控制中心面板收起要几百毫秒，立刻截屏会把下拉面板本身截进去
+            Handler(Looper.getMainLooper()).postDelayed({ startCapture() }, CAPTURE_DELAY_MS)
             return
         }
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -56,5 +60,20 @@ class ScreenshotTileService : TileService() {
             @Suppress("DEPRECATION")
             startActivityAndCollapse(intent)
         }
+    }
+
+    /** 面板收起后再拉起前台服务，截到的就是面板下方那一屏。 */
+    private fun startCapture() {
+        val service = Intent(this, ScreenshotCaptureService::class.java).apply {
+            action = ScreenshotCaptureService.ACTION_CAPTURE_ROOT
+        }
+        runCatching { ContextCompat.startForegroundService(this, service) }
+            .onFailure {
+                Toast.makeText(this, "启动截屏失败：${it.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private companion object {
+        const val CAPTURE_DELAY_MS = 1_000L
     }
 }

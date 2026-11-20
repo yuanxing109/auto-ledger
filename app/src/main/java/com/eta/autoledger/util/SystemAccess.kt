@@ -14,6 +14,8 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.eta.autoledger.screenshot.ScreenshotAccessibilityService
+import com.eta.autoledger.screenshot.VisionHelper
+import com.eta.autoledger.service.BillNotifier
 import com.eta.autoledger.service.LedgerNotificationListener
 
 /**
@@ -36,6 +38,12 @@ object SystemAccess {
 
     /** 模块激活标志，由 xposed/LedgerModule 在 system_server 里写入。 */
     private const val MODULE_FLAG = "autoledger_module_active"
+
+    /**
+     * `Settings.EXTRA_APP_UID`（"android.provider.extra.APP_UID"）在部分 SDK 上不可直接引用，
+     * 但 MIUI / HyperOS 的通知设置页缺了它会空指针崩溃，所以用字面量补上。
+     */
+    private const val EXTRA_APP_UID = "android.provider.extra.APP_UID"
 
     // ---------------- 状态探测 ----------------
 
@@ -109,11 +117,30 @@ object SystemAccess {
         openAppDetails(context)
     }
 
+    /** 渠道是否已创建。不存在时不能跳「渠道详情」页——MIUI/HyperOS 会直接崩。 */
+    fun channelExists(context: Context, channelId: String): Boolean {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        return runCatching { manager.getNotificationChannel(channelId) != null }.getOrDefault(false)
+    }
+
     fun openChannel(context: Context, channelId: String) {
-        val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+        // 先把两条业务的渠道建出来，再决定跳哪里
+        runCatching {
+            BillNotifier.ensureChannel(context)
+            VisionHelper.ensureChannel(context)
+        }
+        val appIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .putExtra(EXTRA_APP_UID, context.applicationInfo.uid)
+        if (!channelExists(context, channelId)) {
+            if (!start(context, appIntent)) openAppDetails(context)
+            return
+        }
+        val channelIntent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
             .putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
-        if (!start(context, intent)) openAppNotificationSettings(context)
+            .putExtra(EXTRA_APP_UID, context.applicationInfo.uid)
+        if (!start(context, channelIntent) && !start(context, appIntent)) openAppDetails(context)
     }
 
     fun openAppNotificationSettings(context: Context) {

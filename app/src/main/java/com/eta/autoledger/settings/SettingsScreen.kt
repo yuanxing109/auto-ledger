@@ -1465,6 +1465,9 @@ private fun SystemAccessPage(prefs: AppPrefs) {
     val exactOk = remember(beat) { SystemAccess.exactAlarmAllowed(context) }
     val autoChannelOk = remember(beat) { SystemAccess.channelEnabled(context, SystemAccess.CHANNEL_AUTO) }
     val shotChannelOk = remember(beat) { SystemAccess.channelEnabled(context, SystemAccess.CHANNEL_SHOT_RESULT) }
+    // 渠道是否存在：不存在时点进去会崩（系统渠道页拿不到 id），必须先建再跳
+    val autoChannelExists = remember(beat) { SystemAccess.channelExists(context, SystemAccess.CHANNEL_AUTO) }
+    val shotChannelExists = remember(beat) { SystemAccess.channelExists(context, SystemAccess.CHANNEL_SHOT_RESULT) }
     val moduleOk = remember(beat) { SystemAccess.moduleActive(context) }
     // 是否拿到 adb 授予的 WRITE_SECURE_SETTINGS —— 决定「一键修复」能否真写回
     val secureOk = remember(beat) { SystemAccess.canWriteSecureSettings(context) }
@@ -1592,13 +1595,21 @@ private fun SystemAccessPage(prefs: AppPrefs) {
             RowDivider()
             ArrowPreference(
                 title = "「自动记账」通知渠道",
-                summary = if (autoChannelOk) "✅ 已开启" else "⚠️ 被关闭（看不到新账单，但账单仍会入库）",
+                summary = when {
+                    !autoChannelExists -> "ℹ️ 尚未创建（点一下：先建渠道，再打开系统设置）"
+                    autoChannelOk -> "✅ 已开启"
+                    else -> "⚠️ 被关闭（看不到新账单，但账单仍会入库）"
+                },
                 onClick = { SystemAccess.openChannel(context, SystemAccess.CHANNEL_AUTO) },
             )
             RowDivider()
             ArrowPreference(
                 title = "「识图记账」通知渠道",
-                summary = if (shotChannelOk) "✅ 已开启" else "⚠️ 被关闭（AI 识别结果无法确认入账）",
+                summary = when {
+                    !shotChannelExists -> "ℹ️ 尚未创建（点一下：先建渠道，再打开系统设置）"
+                    shotChannelOk -> "✅ 已开启"
+                    else -> "⚠️ 被关闭（AI 识别结果无法确认入账）"
+                },
                 onClick = { SystemAccess.openChannel(context, SystemAccess.CHANNEL_SHOT_RESULT) },
             )
         }

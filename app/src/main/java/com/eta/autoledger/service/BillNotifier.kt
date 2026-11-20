@@ -80,6 +80,15 @@ object BillNotifier {
             .onFailure { Log.w(TAG, "自动记账通知发送失败", it) }
     }
 
+    /**
+     * 确保渠道已创建。体检页点「通知渠道」前必须调一次：
+     * 渠道不存在时，系统（尤其 MIUI/HyperOS）的通知渠道详情页会直接崩。
+     */
+    fun ensureChannel(context: Context) {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        ensureChannel(manager)
+    }
+
     private fun ensureChannel(manager: NotificationManager) {
         val channel = NotificationChannel(
             CHANNEL_AUTO,

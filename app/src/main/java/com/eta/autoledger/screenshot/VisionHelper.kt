@@ -19,6 +19,10 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.abs
 
 data class ParsedEntry(
     val amount: Double,
@@ -92,9 +96,24 @@ object VisionHelper {
             amount = obj.optDouble("amount", 0.0),
             type = obj.optString("type", "expense"),
             category = obj.optString("category", "其他"),
-            time = obj.optString("time", ""),
+            time = saneTime(obj.optString("time", "")),
             note = obj.optString("note", ""),
         )
+    }
+
+    /**
+     * 模型偶尔会编出离谱日期（当前 11 月却返回「2026-02-12 07:22」），
+     * 与当前时间相差超过 3 天就丢弃，改用现在。
+     */
+    private fun saneTime(raw: String): String {
+        val now = System.currentTimeMillis()
+        val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
+        val parsed = runCatching { fmt.parse(raw.trim())?.time }.getOrNull()
+        return if (parsed != null && abs(parsed - now) <= THREE_DAYS_MS) {
+            fmt.format(Date(parsed))
+        } else {
+            fmt.format(Date(now))
+        }
     }
 
     suspend fun readImageBase64(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
@@ -124,6 +143,14 @@ object VisionHelper {
         }
         scaled.recycle()
         Base64.encodeToString(bytes, Base64.NO_WRAP)
+    }
+
+    /** 确保「识图记账」渠道存在；体检页跳转渠道设置前调用，避免系统页因渠道缺失崩溃。 */
+    fun ensureChannel(context: Context) {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL, "识图记账", NotificationManager.IMPORTANCE_HIGH),
+        )
     }
 
     fun postResult(context: Context, entry: ParsedEntry?, error: String?) {
@@ -183,6 +210,8 @@ object VisionHelper {
     }
 
     private const val CHANNEL = "screenshot_result"
+
+    private const val THREE_DAYS_MS = 3L * 24 * 60 * 60 * 1000
 
     private fun endpoint(baseUrl: String, path: String): String {
         var base = baseUrl.trim().trimEnd('/')

@@ -16,4 +16,5 @@ captures/
 *.hprof
 
 # Local machine config
-local.properties
+local.properties.local/
+ci_job_*.log

@@ -102,6 +102,41 @@ interface LedgerDao {
     @Query("SELECT * FROM Bill ORDER BY timestamp DESC, id DESC")
     suspend fun getAllOnce(): List<LedgerEntry>
 
+    /**
+     * 组合筛选。
+     *
+     * 所有条件都写成「参数为空即不参与过滤」，这样界面只要把未选中的项传空值，
+     * 不用拼 SQL（拼字符串既慢又容易被备注里的引号搞崩）。
+     * 金额下限传 0 而不是 -1，因为 0 元账单本身没有意义。
+     */
+    @Query(
+        """
+        SELECT * FROM Bill
+        WHERE amount BETWEEN :minAmount AND :maxAmount
+          AND timestamp >= :start AND timestamp < :end
+          AND (:type = '' OR type = :type)
+          AND (:category = '' OR category = :category)
+          AND (
+            :keyword = ''
+            OR note LIKE '%' || :keyword || '%'
+            OR category LIKE '%' || :keyword || '%'
+            OR source LIKE '%' || :keyword || '%'
+          )
+        ORDER BY timestamp DESC, id DESC
+        LIMIT :limit
+        """,
+    )
+    fun search(
+        minAmount: Double,
+        maxAmount: Double,
+        start: Long,
+        end: Long,
+        type: String,
+        category: String,
+        keyword: String,
+        limit: Int,
+    ): Flow<List<LedgerEntry>>
+
     @Query("SELECT external_id, time_text, amount, type FROM Bill")
     suspend fun importRows(): List<ImportRow>
 

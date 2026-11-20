@@ -1,5 +1,6 @@
 package com.eta.autoledger.ui.screen
 
+import com.eta.autoledger.ui.LedgerTheme
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,11 +62,11 @@ import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import kotlinx.coroutines.launch
 
-private val PageBg = Color(0xFFF2F7FF)
-private val AccentBlue = Color(0xFF2F6BFF)
+private val PageBg: Color get() = LedgerTheme.page
+private val AccentBlue: Color get() = LedgerTheme.accent
 private val Gold = Color(0xFFF5B942)
-private val TextPrimary = Color(0xFF1B1C1E)
-private val TextSecondary = Color(0xFF8A94A6)
+private val TextPrimary: Color get() = LedgerTheme.text
+private val TextSecondary: Color get() = LedgerTheme.textSecondary
 
 private data class Category(
     val name: String,
@@ -326,7 +327,7 @@ private fun DatePill(timeText: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .border(1.dp, AccentBlue, RoundedCornerShape(50))
-            .background(Color.White)
+            .background(LedgerTheme.card)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -387,7 +388,7 @@ private fun DateTimeDialog(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 32.dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.White)
+                .background(LedgerTheme.card)
                 .padding(horizontal = 18.dp, vertical = 18.dp),
         ) {
             Column {
@@ -517,7 +518,7 @@ private fun DateTimeDialog(
                             .weight(1f)
                             .height(44.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFFF2F5FA))
+                            .background(LedgerTheme.inset)
                             .clickable(onClick = onDismiss),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -737,7 +738,7 @@ private fun Keyboard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(LedgerTheme.card)
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
@@ -769,7 +770,7 @@ private fun Keyboard(
                         modifier = Modifier.weight(1f),
                         background = when {
                             isDone -> Gold
-                            isAgain -> Color(0xFFF2F5FA)
+                            isAgain -> LedgerTheme.inset
                             isAux -> Color(0xFFEAF0F9)
                             else -> Color(0xFFF7F9FD)
                         },

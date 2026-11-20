@@ -15,6 +15,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // 幂等：每次冷启动确认自愈心跳还在（系统清理后台任务后会把它丢掉）
         HealthJobService.schedule(this)
+        // 定时云备份（未配置 WebDAV 时任务空转，代价可忽略）
+        com.eta.autoledger.service.BackupJobService.schedule(this)
         setContent {
             LedgerApp(openAiSettings = intent.getBooleanExtra(EXTRA_OPEN_AI_SETTINGS, false))
         }

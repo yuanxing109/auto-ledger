@@ -1,0 +1,5 @@
+# 二进制文件不做行尾转换
+*.jar binary
+*.apk binary
+*.png binary
+*.zip binary

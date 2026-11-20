@@ -1,5 +1,6 @@
 package com.eta.autoledger.ui.screen
 
+import com.eta.autoledger.ui.LedgerTheme
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -86,11 +87,11 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private val PageBg = Color(0xFFF2F7FF)
-private val CardBorder = Color(0xFFE1ECFF)
-private val TextPrimary = Color(0xFF1B1C1E)
-private val TextSecondary = Color(0xFF8A94A6)
-private val AccentBlue = Color(0xFF2F6BFF)
+private val PageBg: Color get() = LedgerTheme.page
+private val CardBorder: Color get() = LedgerTheme.cardBorder
+private val TextPrimary: Color get() = LedgerTheme.text
+private val TextSecondary: Color get() = LedgerTheme.textSecondary
+private val AccentBlue: Color get() = LedgerTheme.accent
 private val AccentSoft = Color(0xFFEFF5FF)
 private val TrackGray = Color(0xFFEDF2FB)
 
@@ -212,7 +213,7 @@ private fun CircleArrow(onClick: () -> Unit, forward: Boolean) {
             .size(30.dp)
             .clip(CircleShape)
             .border(1.dp, CardBorder, CircleShape)
-            .background(Color.White)
+            .background(LedgerTheme.card)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

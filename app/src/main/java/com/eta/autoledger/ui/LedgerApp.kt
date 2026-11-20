@@ -16,6 +16,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -73,6 +74,7 @@ import com.eta.autoledger.settings.SettingsPage
 import com.eta.autoledger.settings.SettingsScreen
 import com.eta.autoledger.ui.screen.HomeScreen
 import com.eta.autoledger.ui.screen.ReportScreen
+import com.eta.autoledger.ui.screen.SearchScreen
 
 private data class Tab(
     val label: String,
@@ -83,7 +85,18 @@ private val ReportBg = Color(0xFFF2F7FF)
 
 @Composable
 fun LedgerApp(openAiSettings: Boolean = false) {
-    val controller = remember { ThemeController(ColorSchemeMode.Light) }
+    val prefs = remember { AppPrefs(LocalContext.current) }
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (prefs.themeMode) {
+        "light" -> false
+        "dark" -> true
+        else -> systemDark
+    }
+    // 同步给手绘界面用的语义色板（见 ui/LedgerTheme.kt）
+    LedgerTheme.dark = dark
+    val controller = remember(dark) {
+        ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light)
+    }
     MiuixTheme(controller = controller) {
         var selected by rememberSaveable { mutableIntStateOf(0) }
         var showSettings by rememberSaveable { mutableStateOf(openAiSettings) }
@@ -91,6 +104,7 @@ fun LedgerApp(openAiSettings: Boolean = false) {
             mutableStateOf(if (openAiSettings) SettingsPage.Ai else SettingsPage.Main)
         }
         var showAiSheet by remember { mutableStateOf(false) }
+        var showSearch by remember { mutableStateOf(false) }
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         fun analyzeImage(uri: Uri) {
@@ -181,11 +195,15 @@ fun LedgerApp(openAiSettings: Boolean = false) {
                 label = "page",
             ) { page ->
                 when (page) {
-                    0 -> HomeScreen(Modifier.padding(padding))
+                    0 -> HomeScreen(Modifier.padding(padding), onSearch = { showSearch = true })
                     1 -> AddScreen(Modifier.padding(padding), onDone = { selected = 0 })
                     else -> ReportScreen(modifier = Modifier.padding(padding), tab = reportTab)
                 }
             }
+        }
+
+        if (showSearch) {
+            SearchScreen(onClose = { showSearch = false })
         }
 
         if (showAiSheet) {
@@ -231,7 +249,7 @@ private fun SheetOption(emoji: String, label: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFFF4F7FD))
+            .background(LedgerTheme.inset)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

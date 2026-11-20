@@ -1,5 +1,6 @@
 package com.eta.autoledger.ui.screen
 
+import com.eta.autoledger.ui.LedgerTheme
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -71,7 +72,7 @@ import com.eta.autoledger.data.LedgerRepository
 
 private val HeroStart = Color(0xFF2E6BFF)
 private val HeroEnd = Color(0xFF6A9BFF)
-private val AccentBlue = Color(0xFF2F6BFF)
+private val AccentBlue: Color get() = LedgerTheme.accent
 private val SourceSms = Color(0xFF5B8DEF)
 private val SourceWechat = Color(0xFF34C759)
 private val SourceMeituan = Color(0xFFFF9F43)
@@ -103,7 +104,7 @@ private data class DayGroupUi(
 )
 
 @Composable
-fun HomeScreen(modifier: Modifier = Modifier) {
+fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val context = LocalContext.current
     val prefs = remember { AppPrefs(context) }
     var amountVisible by rememberSaveable { mutableStateOf(true) }
@@ -161,6 +162,16 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                 Text(text = "最近账目", style = MiuixTheme.textStyles.title4)
                 Spacer(Modifier.weight(1f))
                 Text(
+                    text = "搜索",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onSearch() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+                Spacer(Modifier.width(2.dp))
+                Text(
                     text = "共 ${billsState.totalCount} 笔",
                     style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
@@ -184,7 +195,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                             .animateItem()
                             .padding(bottom = 8.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Color.White)
+                            .background(LedgerTheme.card)
                             .border(0.5.dp, Color(0xFFE1ECFF), RoundedCornerShape(16.dp)),
                     ) {
                         EntryRow(entry, onLongClick = { editingEntry = entry.ledger })
@@ -228,7 +239,7 @@ private fun EntryEditDialog(
                 .fillMaxWidth()
                 .padding(horizontal = 28.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .background(Color.White)
+                .background(LedgerTheme.card)
                 .padding(20.dp),
         ) {
             Column {
@@ -248,7 +259,7 @@ private fun EntryEditDialog(
                     ) { Text("删除", style = TextStyle(fontSize = 13.sp, color = Color(0xFFFF5E7A))) }
                     Box(
                         modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF2F5FA)).clickable(onClick = onDismiss),
+                            .background(LedgerTheme.inset).clickable(onClick = onDismiss),
                         contentAlignment = Alignment.Center,
                     ) { Text("取消", style = TextStyle(fontSize = 13.sp, color = Color(0xFF8A94A6))) }
                     Box(
@@ -276,7 +287,7 @@ private fun EditField(label: String, value: String, onChange: (String) -> Unit) 
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFF4F7FD))
+                .background(LedgerTheme.inset)
                 .padding(horizontal = 10.dp, vertical = 9.dp),
             singleLine = true,
             textStyle = TextStyle(fontSize = 14.sp, color = Color(0xFF1B1C1E)),

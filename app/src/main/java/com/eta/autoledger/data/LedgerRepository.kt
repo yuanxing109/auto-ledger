@@ -35,6 +35,20 @@ object LedgerRepository {
 
     fun observeCount(context: Context): Flow<Int> = dao(context).observeCount()
 
+    /** 组合筛选，返回的是热 Flow：筛选条件一变，界面用新参数重新订阅即可。 */
+    fun search(
+        context: Context,
+        minAmount: Double,
+        maxAmount: Double,
+        start: Long,
+        end: Long,
+        type: String,
+        category: String,
+        keyword: String,
+        limit: Int = 300,
+    ): Flow<List<LedgerEntry>> =
+        dao(context).search(minAmount, maxAmount, start, end, type, category, keyword, limit)
+
     fun observeSummary(context: Context): Flow<Summary> {
         val now = Calendar.getInstance()
         val todayStart = (now.clone() as Calendar).apply {

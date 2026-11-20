@@ -145,6 +145,55 @@ class AppPrefs(context: Context) {
         get() = aiPromptState
         set(value) { aiPromptState = value; prefs.edit().putString("ai_prompt", value).apply() }
 
+    /** 主题：system / light / dark。默认跟随系统。 */
+    private var themeState by mutableStateOf(prefs.getString("theme_mode", "system") ?: "system")
+    var themeMode: String
+        get() = themeState
+        set(value) { themeState = value; prefs.edit().putString("theme_mode", value).apply() }
+
+    // ---- WebDAV 备份（坚果云 / 群晖 / Nextcloud 通用） ----
+
+    private var davUrlState by mutableStateOf(prefs.getString("dav_url", "") ?: "")
+    /** 目录地址，例如 https://dav.jianguoyun.com/dav/auto-ledger。 */
+    var davUrl: String
+        get() = davUrlState
+        set(value) { davUrlState = value; prefs.edit().putString("dav_url", value).apply() }
+
+    private var davUserState by mutableStateOf(prefs.getString("dav_user", "") ?: "")
+    var davUser: String
+        get() = davUserState
+        set(value) { davUserState = value; prefs.edit().putString("dav_user", value).apply() }
+
+    private var davPassState by mutableStateOf(prefs.getString("dav_pass", "") ?: "")
+    /** 坚果云要填**应用密码**，不是登录密码。 */
+    var davPass: String
+        get() = davPassState
+        set(value) { davPassState = value; prefs.edit().putString("dav_pass", value).apply() }
+
+    private var davAutoState by mutableStateOf(prefs.getBoolean("dav_auto", false))
+    private var davAutoTimeState by mutableStateOf(prefs.getString("dav_auto_time", "03:00") ?: "03:00")
+    /** 是否每天定时备份。 */
+    var davAuto: Boolean
+        get() = davAutoState
+        set(value) { davAutoState = value; prefs.edit().putBoolean("dav_auto", value).apply() }
+
+    /** 定时备份的时刻，HH:mm。 */
+    var davAutoTime: String
+        get() = davAutoTimeState
+        set(value) { davAutoTimeState = value; prefs.edit().putString("dav_auto_time", value).apply() }
+
+    private var davLastAtState by mutableStateOf(prefs.getLong("dav_last_at", 0L))
+    private var davLastResultState by mutableStateOf(prefs.getString("dav_last_result", "") ?: "")
+    var davLastAt: Long
+        get() = davLastAtState
+        set(value) { davLastAtState = value; prefs.edit().putLong("dav_last_at", value).apply() }
+
+    var davLastResult: String
+        get() = davLastResultState
+        set(value) { davLastResultState = value; prefs.edit().putString("dav_last_result", value).apply() }
+
+    fun davConfigured(): Boolean = davUrl.isNotBlank() && davUser.isNotBlank() && davPass.isNotBlank()
+
     companion object {
         const val DEFAULT_PROMPT =
             "你是记账助手。请从图片或文本中提取收支信息，只输出严格 JSON：" +

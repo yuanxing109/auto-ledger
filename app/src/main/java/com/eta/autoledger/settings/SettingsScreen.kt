@@ -1,5 +1,6 @@
 package com.eta.autoledger.settings
 
+import com.eta.autoledger.ui.LedgerTheme
 import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -94,11 +95,6 @@ import com.eta.autoledger.reminder.ReminderScheduler
 import com.eta.autoledger.service.LedgerNotificationListener
 import com.eta.autoledger.widget.LedgerWidgetProvider
 
-private val PageBg = Color(0xFFF2F7FF)
-private val AccentBlue = Color(0xFF2F6BFF)
-private val TextPrimary = Color(0xFF1B1C1E)
-private val TextSecondary = Color(0xFF8A94A6)
-private val CardBorder = Color(0xFFE1ECFF)
 
 enum class SettingsPage(val title: String, val parent: SettingsPage?) {
     Main("设置", null),
@@ -114,6 +110,8 @@ enum class SettingsPage(val title: String, val parent: SettingsPage?) {
     Widget("添加桌面小部件", Main),
     Ai("AI 模型与自动化", Main),
     SysAccess("系统权限与保活", Main),
+    Appearance("外观", Main),
+    Backup("云备份", Main),
 }
 
 @Composable
@@ -159,6 +157,8 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
                 SettingsPage.Export -> ExportPage()
                 SettingsPage.Widget -> WidgetPage()
                 SettingsPage.Ai -> AiPage(prefs)
+                SettingsPage.Appearance -> AppearancePage(prefs = prefs)
+                SettingsPage.Backup -> BackupPage(prefs = prefs)
             }
         }
     }
@@ -186,54 +186,6 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun SettingsPageColumn(content: @Composable () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        content()
-        Spacer(Modifier.height(20.dp))
-    }
-}
-
-@Composable
-private fun SettingsCard(content: @Composable () -> Unit) {
-    val shape = RoundedCornerShape(18.dp)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(3.dp, shape, clip = false)
-            .border(1.dp, CardBorder, shape),
-        cornerRadius = 18.dp,
-    ) {
-        Column { content() }
-    }
-}
-
-@Composable
-private fun RowDivider() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp)
-            .height(0.5.dp)
-            .background(Color(0xFFEAF0FA)),
-    )
-}
-
-@Composable
-private fun HintText(text: String) {
-    Text(
-        text = text,
-        style = TextStyle(fontSize = 12.sp, color = TextSecondary),
-        modifier = Modifier.padding(horizontal = 4.dp),
-    )
-}
-
-@Composable
 private fun MainPage(onOpen: (SettingsPage) -> Unit) {
     SettingsPageColumn {
         SettingsCard {
@@ -242,12 +194,24 @@ private fun MainPage(onOpen: (SettingsPage) -> Unit) {
             ArrowPreference(title = "记账通知", summary = "每日提醒、周期账单与单笔通知", onClick = { onOpen(SettingsPage.Notifications) })
             RowDivider()
             ArrowPreference(title = "记账分类管理", summary = "管理支出、收入和其他分类", onClick = { onOpen(SettingsPage.Categories) })
+            RowDivider()
+            ArrowPreference(
+                title = "外观",
+                summary = "跟随系统 / 浅色 / 深色",
+                onClick = { onOpen(SettingsPage.Appearance) },
+            )
         }
         SettingsCard {
             ArrowPreference(
                 title = "系统权限与保活",
                 summary = "通知使用权、短信权限、电池白名单与通知渠道状态",
                 onClick = { onOpen(SettingsPage.SysAccess) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "云备份",
+                summary = "备份到 WebDAV（坚果云 / 群晖等），换机可恢复",
+                onClick = { onOpen(SettingsPage.Backup) },
             )
         }
         SettingsCard {
@@ -686,7 +650,7 @@ private fun CategoryEditDialog(
                 .fillMaxWidth()
                 .padding(horizontal = 32.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .background(Color.White)
+                .background(LedgerTheme.card)
                 .padding(20.dp),
         ) {
             Column {
@@ -698,7 +662,7 @@ private fun CategoryEditDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF4F7FD))
+                        .background(LedgerTheme.inset)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     singleLine = true,
                     textStyle = TextStyle(fontSize = 14.sp, color = TextPrimary),
@@ -730,7 +694,7 @@ private fun CategoryEditDialog(
                             .weight(1f)
                             .height(42.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF2F5FA))
+                            .background(LedgerTheme.inset)
                             .clickable(onClick = onDismiss),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -845,7 +809,7 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
                     .weight(1f)
                     .height(46.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFF2F5FA))
+                    .background(LedgerTheme.inset)
                     .clickable(onClick = onDone),
                 contentAlignment = Alignment.Center,
             ) {
@@ -940,178 +904,6 @@ private fun ImportPlatformCard(title: String, summary: String, modifier: Modifie
 }
 
 /** 导出格式：CSV / XLSX 共用同一份筛选结果，只是编码器不同。 */
-private enum class ExportFormat(
-    val label: String,
-    val hint: String,
-    val extension: String,
-    val mime: String,
-) {
-    Csv("CSV", "体积小，表格软件直接打开", "csv", "text/csv"),
-    Xlsx("XLSX", "带列宽，Excel / WPS 原生格式", "xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-}
-
-@Composable
-private fun ExportPage() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val monthStart = remember {
-        val cal = Calendar.getInstance()
-        cal.set(Calendar.DAY_OF_MONTH, 1)
-        SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(cal.time)
-    }
-    val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(System.currentTimeMillis()) }
-    var start by remember { mutableStateOf(monthStart) }
-    var end by remember { mutableStateOf(today) }
-    var format by remember { mutableStateOf(ExportFormat.Csv) }
-    var working by remember { mutableStateOf(false) }
-
-    fun pickDate(onSet: (String) -> Unit) {
-        val c = Calendar.getInstance()
-        DatePickerDialog(context, { _, y, m, d ->
-            onSet("%04d-%02d-%02d".format(y, m + 1, d))
-        }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
-    }
-
-    SettingsPageColumn {
-        SettingsCard {
-            ArrowPreference(title = "开始时间", summary = start.ifEmpty { "请选择" }, onClick = { pickDate { start = it } })
-            RowDivider()
-            ArrowPreference(title = "结束时间", summary = end.ifEmpty { "请选择" }, onClick = { pickDate { end = it } })
-        }
-        SettingsCard {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("导出格式", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    ExportFormat.entries.forEach { item ->
-                        val selected = format == item
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(if (selected) Color(0xFFE8F0FF) else Color(0xFFF4F7FD))
-                                .border(
-                                    1.dp,
-                                    if (selected) AccentBlue else Color(0x00000000),
-                                    RoundedCornerShape(14.dp),
-                                )
-                                .clickable { format = item }
-                                .padding(horizontal = 12.dp, vertical = 12.dp),
-                        ) {
-                            Text(
-                                item.label,
-                                style = TextStyle(
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (selected) AccentBlue else TextPrimary,
-                                ),
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(item.hint, style = TextStyle(fontSize = 11.sp, color = TextSecondary))
-                        }
-                    }
-                }
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (working) Color(0xFF9DBBF7) else AccentBlue)
-                .clickable(enabled = !working) {
-                    if (start.isEmpty() || end.isEmpty()) {
-                        Toast.makeText(context, "请先选择开始时间和结束时间", Toast.LENGTH_SHORT).show()
-                        return@clickable
-                    }
-                    val targetFormat = format
-                    working = true
-                    scope.launch {
-                        val outcome = withContext(Dispatchers.IO) {
-                            runCatching<Pair<Int, File>?> {
-                                val from = LedgerRepository.parseTime("$start 00:00")?.timeInMillis ?: 0L
-                                val to = LedgerRepository.parseTime("$end 23:59")?.timeInMillis ?: Long.MAX_VALUE
-                                val entries = LedgerRepository.load(context)
-                                    .filter { entry ->
-                                        val stamp = if (entry.timeMillis > 0) {
-                                            entry.timeMillis
-                                        } else {
-                                            LedgerRepository.parseTime(entry.time)?.timeInMillis ?: 0L
-                                        }
-                                        stamp in from..to
-                                    }
-                                    .sortedByDescending { it.timeMillis }
-                                if (entries.isEmpty()) {
-                                    null
-                                } else {
-                                    val dir = File(context.cacheDir, "exports").apply { mkdirs() }
-                                    val fileStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.CHINA)
-                                        .format(System.currentTimeMillis())
-                                    val file = File(dir, "账单_$fileStamp.${targetFormat.extension}")
-                                    if (targetFormat == ExportFormat.Csv) {
-                                        file.writeText("\uFEFF" + CsvImporter.export(entries), Charsets.UTF_8)
-                                    } else {
-                                        XlsxExporter.write(entries, file)
-                                    }
-                                    entries.size to file
-                                }
-                            }
-                        }
-                        working = false
-                        outcome.onSuccess { payload ->
-                            if (payload == null) {
-                                Toast.makeText(context, "该时间段没有账单", Toast.LENGTH_SHORT).show()
-                            } else {
-                                val (count, file) = payload
-                                val uri = FileProvider.getUriForFile(
-                                    context,
-                                    "${context.packageName}.fileprovider",
-                                    file,
-                                )
-                                val send = Intent(Intent.ACTION_SEND).apply {
-                                    type = targetFormat.mime
-                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                    putExtra(Intent.EXTRA_TEXT, "账单一共 $count 笔（${targetFormat.label}）")
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(Intent.createChooser(send, "导出账单"))
-                                Toast.makeText(context, "已生成 $count 笔账单 ${targetFormat.label}", Toast.LENGTH_SHORT).show()
-                            }
-                        }.onFailure { error ->
-                            Toast.makeText(context, "导出失败：${error.message}", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                if (working) "正在导出…" else "导出",
-                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White),
-            )
-        }
-    }
-}
-
-@Composable
-private fun WidgetPage() {
-    val context = LocalContext.current
-    SettingsPageColumn {
-        HintText("点一下会直接在桌面钉上对应规格；也可以长按桌面空白处 → 「添加小部件」→ 「自动记账」，两种规格都能选。")
-        SettingsCard {
-            ArrowPreference(title = "今日收支", summary = "2×2 · 今日支出大数字 + 本月收支", onClick = {
-                LedgerWidgetProvider.requestPin(context, wide = false)
-            })
-            RowDivider()
-            ArrowPreference(title = "本月概览", summary = "4×2 · 本月收支并排 + 今日支出与笔数", onClick = {
-                LedgerWidgetProvider.requestPin(context, wide = true)
-            })
-        }
-    }
-}
-
 @Composable
 private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
     val context = LocalContext.current
@@ -1159,7 +951,7 @@ private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
                     .fillMaxWidth()
                     .padding(horizontal = 28.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color.White)
+                    .background(LedgerTheme.card)
                     .padding(20.dp),
             ) {
                 Column {
@@ -1170,7 +962,7 @@ private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(
                             modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFFF2F5FA)).clickable { showClearConfirm = false },
+                                .background(LedgerTheme.inset).clickable { showClearConfirm = false },
                             contentAlignment = Alignment.Center,
                         ) { Text("取消", style = TextStyle(fontSize = 13.sp, color = TextSecondary)) }
                         Box(
@@ -1257,7 +1049,7 @@ private fun AiPage(prefs: AppPrefs) {
                             .weight(1f)
                             .height(42.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF2F5FA))
+                            .background(LedgerTheme.inset)
                             .clickable {
                                 if (baseUrl.isBlank() || model.isBlank()) {
                                     Toast.makeText(context, "请先填写 URL 并选择模型", Toast.LENGTH_SHORT).show()
@@ -1300,7 +1092,7 @@ private fun AiPage(prefs: AppPrefs) {
                         .fillMaxWidth()
                         .height(150.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF4F7FD))
+                        .background(LedgerTheme.inset)
                         .padding(12.dp),
                     textStyle = TextStyle(fontSize = 12.sp, color = TextPrimary),
                     cursorBrush = SolidColor(AccentBlue),
@@ -1334,7 +1126,7 @@ private fun AiPage(prefs: AppPrefs) {
                     .fillMaxWidth()
                     .padding(horizontal = 28.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color.White)
+                    .background(LedgerTheme.card)
                     .padding(16.dp),
             ) {
                 Column {
@@ -1381,7 +1173,7 @@ private fun SettingsInput(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFF4F7FD))
+            .background(LedgerTheme.inset)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         singleLine = true,
         textStyle = TextStyle(fontSize = 14.sp, color = TextPrimary),
@@ -1422,214 +1214,215 @@ private suspend fun fetchModels(baseUrl: String, key: String): Result<List<Strin
 
 /** 只读信息行：标题在左、值在右，用于展示运行模式与最近采集时间。 */
 @Composable
-private fun InfoRow(title: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            style = TextStyle(fontSize = 15.sp, color = TextPrimary),
-            modifier = Modifier.weight(1f),
-        )
-        Text(text = value, style = TextStyle(fontSize = 13.sp, color = TextSecondary))
+private fun AppearancePage(prefs: AppPrefs) {
+    val modes = listOf(
+        "system" to ("跟随系统" to "随系统的深色/浅色开关自动切换"),
+        "light" to ("浅色" to "始终使用浅色主题"),
+        "dark" to ("深色" to "始终使用深色主题，夜间看账不刺眼"),
+    )
+    SettingsPageColumn {
+        SettingsCard {
+            modes.forEachIndexed { index, entry ->
+                if (index > 0) RowDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { prefs.themeMode = entry.first }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = entry.second.first,
+                            style = TextStyle(fontSize = 15.sp, color = TextPrimary),
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = entry.second.second,
+                            style = TextStyle(fontSize = 12.sp, color = TextSecondary),
+                        )
+                    }
+                    if (prefs.themeMode == entry.first) {
+                        Text(
+                            text = "✓",
+                            style = TextStyle(fontSize = 16.sp, color = AccentBlue),
+                        )
+                    }
+                }
+            }
+        }
+        HintText("深色模式下页面背景、卡片、文字与强调色都会跟随切换；小部件仍使用自身配色。")
     }
 }
 
-private fun formatStamp(value: Long): String =
-    if (value <= 0L) "从未" else SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date(value))
-
-/**
- * 系统权限与保活体检页。
- *
- * 这些开关都没有 API 能直接申请（属于用户级设置），所以这里只做「读状态 + 一键跳转」，
- * 并把两条采集通道的最近入账时间摊开，用于回答「为什么没记账」。
- */
 @Composable
-private fun SystemAccessPage(prefs: AppPrefs) {
+private fun BackupPage(prefs: AppPrefs) {
     val context = LocalContext.current
-    var beat by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var lastResult by remember { mutableStateOf(prefs.davLastResult) }
 
-    // 从系统设置返回时本页不会重建，用 1.5s 轮询把状态刷新回来
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(1500)
-            beat++
+    fun run(label: String, block: suspend () -> com.eta.autoledger.data.BackupRunner.Result) {
+        if (busy) return
+        busy = true
+        Toast.makeText(context, "$label…", Toast.LENGTH_SHORT).show()
+        scope.launch {
+            val result = block()
+            lastResult = prefs.davLastResult
+            Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+            busy = false
         }
-    }
-
-    val listenerOk = remember(beat) { SystemAccess.notificationListenerGranted(context) }
-    val accessOk = remember(beat) { SystemAccess.accessibilityGranted(context) }
-    val smsOk = remember(beat) { SystemAccess.smsGranted(context) }
-    val notifOk = remember(beat) { SystemAccess.notificationGranted(context) }
-    val batteryOk = remember(beat) { SystemAccess.batteryUnrestricted(context) }
-    val exactOk = remember(beat) { SystemAccess.exactAlarmAllowed(context) }
-    val autoChannelOk = remember(beat) { SystemAccess.channelEnabled(context, SystemAccess.CHANNEL_AUTO) }
-    val shotChannelOk = remember(beat) { SystemAccess.channelEnabled(context, SystemAccess.CHANNEL_SHOT_RESULT) }
-    // 渠道是否存在：不存在时点进去会崩（系统渠道页拿不到 id），必须先建再跳
-    val autoChannelExists = remember(beat) { SystemAccess.channelExists(context, SystemAccess.CHANNEL_AUTO) }
-    val shotChannelExists = remember(beat) { SystemAccess.channelExists(context, SystemAccess.CHANNEL_SHOT_RESULT) }
-    val moduleOk = remember(beat) { SystemAccess.moduleActive(context) }
-    // 是否拿到 adb 授予的 WRITE_SECURE_SETTINGS —— 决定「一键修复」能否真写回
-    val secureOk = remember(beat) { SystemAccess.canWriteSecureSettings(context) }
-
-    val smsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            prefs.smsEnabled = true
-        } else {
-            Toast.makeText(context, "未授予短信权限，短信记账不会生效", Toast.LENGTH_SHORT).show()
-            prefs.smsEnabled = false
-        }
-        beat++
     }
 
     SettingsPageColumn {
-        HintText("自动记账靠下面这些系统开关。哪一项没开，对应通道就会静默失效——排查「为什么没记账」时按这个顺序看。")
+        SettingsCard {
+            DavField(
+                label = "目录地址",
+                hint = "https://dav.jianguoyun.com/dav/auto-ledger",
+                value = prefs.davUrl,
+                onChange = { prefs.davUrl = it },
+            )
+            RowDivider()
+            DavField(
+                label = "账号",
+                hint = "坚果云登录邮箱 / 群晖用户名",
+                value = prefs.davUser,
+                onChange = { prefs.davUser = it },
+            )
+            RowDivider()
+            DavField(
+                label = "应用密码",
+                hint = "坚果云要填「应用密码」，不是登录密码",
+                value = prefs.davPass,
+                onChange = { prefs.davPass = it },
+                secret = true,
+            )
+        }
 
         SettingsCard {
             ArrowPreference(
-                title = "一键修复",
-                summary = when {
-                    !secureOk -> "未授权自愈（先执行下方 adb 命令，再回来点这里）"
-                    listenerOk && accessOk -> "✅ 两条通道都正常，无需修复"
-                    else -> "点一下，把被系统关掉的通道写回去"
-                },
+                title = if (busy) "处理中…" else "立即备份",
+                summary = "把全部账目编码成 JSON 上传，云端同名文件会被覆盖",
                 onClick = {
-                    if (!secureOk) {
-                        Toast.makeText(
-                            context,
-                            "需要先用 adb 授予 WRITE_SECURE_SETTINGS",
-                            Toast.LENGTH_LONG,
-                        ).show()
+                    run("正在备份") { com.eta.autoledger.data.BackupRunner.backup(context, prefs) }
+                },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "从云端恢复",
+                summary = "读取云端最新备份，按去重规则合并进本地",
+                onClick = {
+                    run("正在恢复") { com.eta.autoledger.data.BackupRunner.restore(context, prefs) }
+                },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "测试连接",
+                summary = "建目录 + 上传探针文件，验证地址与凭据",
+                onClick = {
+                    if (busy) {
+                        Toast.makeText(context, "上一个操作还没结束", Toast.LENGTH_SHORT).show()
                     } else {
-                        val (notifyFixed, accessFixed) = SystemAccess.ensureGrants(context)
-                        val fixed = if (notifyFixed) "已开启" else "仍失败"
-                        val accessText = if (accessFixed) "已开启" else "仍失败"
-                        Toast.makeText(
-                            context,
-                            "修复结果：通知使用权=$fixed，无障碍=$accessText",
-                            Toast.LENGTH_LONG,
-                        ).show()
-                        beat++
+                        busy = true
+                        scope.launch {
+                            val message = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val target = com.eta.autoledger.data.WebDavClient.target(prefs)
+                                if (target == null) {
+                                    "请先填写地址、账号与应用密码"
+                                } else {
+                                    runCatching { com.eta.autoledger.data.WebDavClient.test(target) }
+                                        .getOrElse { it.message ?: it.javaClass.simpleName }
+                                }
+                            }
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                            busy = false
+                        }
                     }
                 },
             )
+        }
+
+        SettingsCard {
+            SwitchPreference(
+                title = "每天自动备份",
+                summary = "系统空闲且有网络时执行，间隔至少 20 小时",
+                checked = prefs.davAuto,
+                onCheckedChange = {
+                    prefs.davAuto = it
+                    if (it) com.eta.autoledger.service.BackupJobService.schedule(context)
+                },
+            )
             RowDivider()
             ArrowPreference(
-                title = "adb 授权自愈",
-                summary = if (secureOk) {
-                    "✅ 已授权：通道被系统关掉会自动写回"
-                } else {
-                    "${SystemAccess.adbGrantCommand(context)}\n（点一下复制命令，在电脑终端执行一次）"
-                },
+                title = "备份时刻",
+                summary = "建议设在夜间（实际执行受系统调度影响，可能顺延）",
                 onClick = {
-                    val command = SystemAccess.adbGrantCommand(context)
-                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                    runCatching {
-                        clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("adb", command))
-                    }
-                    Toast.makeText(context, "已复制 adb 命令", Toast.LENGTH_SHORT).show()
+                    val parts = prefs.davAutoTime.split(":")
+                    val hour = parts.getOrNull(0)?.toIntOrNull() ?: 3
+                    val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                    TimePickerDialog(
+                        context,
+                        { _, h, m -> prefs.davAutoTime = "%02d:%02d".format(h, m) },
+                        hour,
+                        minute,
+                        true,
+                    ).show()
                 },
             )
+            RowDivider()
+            InfoRow(title = "上次结果", value = lastResult.ifBlank { "尚未备份" })
         }
 
-        SettingsCard {
-            ArrowPreference(
-                title = "通知使用权",
-                summary = if (listenerOk) {
-                    "✅ 已开启（通知通道工作中）"
-                } else {
-                    "⚠️ 未开启（通知通道完全不工作；若开关是灰的，先到应用信息页「允许受限设置」）"
-                },
-                onClick = { SystemAccess.openNotificationListener(context) },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "短信权限",
-                summary = if (smsOk) "✅ 已授权（短信通道工作中）" else "⚠️ 未授权（短信通道不工作）",
-                onClick = {
-                    if (smsOk) SystemAccess.openAppDetails(context)
-                    else smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
-                },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "无障碍截图服务",
-                summary = if (accessOk) "✅ 已开启（截屏免录屏授权）" else "⚠️ 未开启（截屏记账走 MediaProjection 兜底）",
-                onClick = { SystemAccess.openAccessibility(context) },
-            )
-        }
-
-        SettingsCard {
-            ArrowPreference(
-                title = "电池优化白名单",
-                summary = if (batteryOk) "✅ 无限制（不会被省电策略限制）" else "⚠️ 受限（国产 ROM 可能解绑后台服务）",
-                onClick = { SystemAccess.openBattery(context) },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "自启动 / 后台运行",
-                summary = "部分系统需要手动允许自启动与后台弹出界面",
-                onClick = {
-                    if (!SystemAccess.openAutoStart(context)) {
-                        Toast.makeText(context, "当前系统没有可直达的自启动页，请在应用详情里手动允许", Toast.LENGTH_LONG).show()
-                        SystemAccess.openAppDetails(context)
-                    }
-                },
-            )
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                RowDivider()
-                ArrowPreference(
-                    title = "精确闹钟",
-                    summary = if (exactOk) "✅ 已允许（日报/提醒准时）" else "⚠️ 未允许（提醒会推迟到系统空闲）",
-                    onClick = { SystemAccess.openExactAlarm(context) },
-                )
-            }
-        }
-
-        SettingsCard {
-            ArrowPreference(
-                title = "通知总开关",
-                summary = if (notifOk) "✅ 已开启" else "⚠️ 已关闭（入库通知与撤销按钮都不可用）",
-                onClick = { SystemAccess.openAppNotificationSettings(context) },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "「自动记账」通知渠道",
-                summary = when {
-                    !autoChannelExists -> "ℹ️ 尚未创建（点一下：先建渠道，再打开系统设置）"
-                    autoChannelOk -> "✅ 已开启"
-                    else -> "⚠️ 被关闭（看不到新账单，但账单仍会入库）"
-                },
-                onClick = { SystemAccess.openChannel(context, SystemAccess.CHANNEL_AUTO) },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "「识图记账」通知渠道",
-                summary = when {
-                    !shotChannelExists -> "ℹ️ 尚未创建（点一下：先建渠道，再打开系统设置）"
-                    shotChannelOk -> "✅ 已开启"
-                    else -> "⚠️ 被关闭（AI 识别结果无法确认入账）"
-                },
-                onClick = { SystemAccess.openChannel(context, SystemAccess.CHANNEL_SHOT_RESULT) },
-            )
-        }
-
-        SettingsCard {
-            InfoRow("运行模式", if (moduleOk) "Root 增强（LSPosed）" else "标准（通知 + 短信）")
-            RowDivider()
-            InfoRow("通知通道最近入账", formatStamp(prefs.lastNotifyAt))
-            RowDivider()
-            InfoRow("短信通道最近入账", formatStamp(prefs.lastSmsAt))
-        }
-
-        HintText("改完回到这一页，状态会在 1.5 秒内自动刷新。若「最近入账」长期显示「从未」，说明通道没通，先查上面标 ⚠️ 的项。")
+        HintText(
+            "坚果云：网页版「账户信息 → 安全选项 → 添加应用密码」，用那串密码填上面的「应用密码」。\n" +
+                "群晖：控制面板启用 WebDAV Server 后，地址填 https://你的域名:5006/备份目录。\n" +
+                "备份文件为 JSON（不是数据库文件），换机后先装 App，再点「从云端恢复」即可。",
+        )
     }
 }
 
-/** 短信记账要的是危险权限 RECEIVE_SMS，没授予时开关不该显示为已开启。 */
+@Composable
+private fun DavField(
+    label: String,
+    hint: String,
+    value: String,
+    onChange: (String) -> Unit,
+    secret: Boolean = false,
+) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text(text = label, style = TextStyle(fontSize = 13.sp, color = TextSecondary))
+        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(LedgerTheme.inset)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            if (value.isEmpty()) {
+                Text(
+                    text = hint,
+                    style = TextStyle(fontSize = 12.sp, color = Color(0xFFB5BFCE)),
+                    maxLines = 1,
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onChange,
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 13.sp, color = TextPrimary),
+                cursorBrush = SolidColor(AccentBlue),
+                visualTransformation = if (secret) {
+                    androidx.compose.ui.text.input.PasswordVisualTransformation()
+                } else {
+                    androidx.compose.ui.text.input.VisualTransformation.None
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
 private fun hasSmsPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
         PackageManager.PERMISSION_GRANTED

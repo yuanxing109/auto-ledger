@@ -15,7 +15,7 @@ import top.yukonga.miuix.kmp.theme.defaultTextStyles
  * 这是「风格统一」在排版维度的落点（`tools/check-ui-consistency.sh` 的 R4/R5 会统计）。
  *
  * 三组职责：
- * - 数字组（`headline1/2`、`main`）：34/28/24sp Bold + `tnum`（等宽数字，避免金额跳动）
+ * - 金额组（`headline1/2`、`title2`）：34/28/20sp SemiBold+ + `tnum`（等宽数字，避免金额跳动）
  * - 标题组（`title1..4`、`subtitle`）：22/20/17/15/14sp
  * - 正文组（`body1/2`、`paragraph`、`button`、`footnote1/2`）：15/13/15/15/12/11sp
  *
@@ -32,29 +32,30 @@ fun ledgerTextStyles(): TextStyles {
     val base = MiuixTheme.textStyles
     return remember(base) {
         defaultTextStyles(
-            // ---- 数字组：等宽 + 加粗，金额专用 ----
-            main = base.main.copy(
+            // ---- 金额组：等宽 + 加粗，只有数字 ----
+            // main 是 Miuix 组件（列表行、偏好项标题）的默认样式，必须保持正文字号；
+            // 金额只允许用 headline1/2（XL/L）与 title2（M，带 tnum）三档。
+            headline1 = base.headline1.copy(
                 fontSize = 34.sp,
                 lineHeight = 42.sp,
                 fontWeight = FontWeight.Bold,
                 fontFeatureSettings = "tnum",
             ),
-            headline1 = base.headline1.copy(
+            headline2 = base.headline2.copy(
                 fontSize = 28.sp,
                 lineHeight = 34.sp,
-                fontWeight = FontWeight.Bold,
-                fontFeatureSettings = "tnum",
-            ),
-            headline2 = base.headline2.copy(
-                fontSize = 24.sp,
-                lineHeight = 30.sp,
                 fontWeight = FontWeight.Bold,
                 fontFeatureSettings = "tnum",
             ),
 
             // ---- 标题组 ----
             title1 = base.title1.copy(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
-            title2 = base.title2.copy(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold),
+            title2 = base.title2.copy(
+                fontSize = 20.sp,
+                lineHeight = 26.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFeatureSettings = "tnum",
+            ),
             title3 = base.title3.copy(fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold),
             title4 = base.title4.copy(fontSize = 15.sp, lineHeight = 21.sp, fontWeight = FontWeight.Medium),
             subtitle = base.subtitle.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),

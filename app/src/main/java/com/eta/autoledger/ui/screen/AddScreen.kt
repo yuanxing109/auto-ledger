@@ -589,10 +589,7 @@ private fun AmountCard(
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = amount,
-                    style = TextStyle(
-                        fontSize = 34.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFeatureSettings = "tnum",
+                    style = MiuixTheme.textStyles.headline1.copy(
                         color = if (amount == "0.00") LedgerTheme.textTertiary else LedgerTheme.text,
                     ),
                 )

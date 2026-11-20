@@ -345,7 +345,7 @@ private fun BudgetCard(budget: Double, spent: Double) {
 private fun EmptyCard() {
     Card(modifier = Modifier.fillMaxWidth(), cornerRadius = 20.dp) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text(text = "还没有账目", style = MiuixTheme.textStyles.main)
+            Text(text = "还没有账目", style = MiuixTheme.textStyles.title3)
             Spacer(Modifier.height(4.dp))
             Text(
                 text = "开启通知记账，或用控制中心截屏记第一笔",
@@ -406,7 +406,7 @@ private fun OverviewCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = if (visible) "¥ %,.2f".format(todayExpense) else "¥ ****",
-                        style = MiuixTheme.textStyles.title1,
+                        style = MiuixTheme.textStyles.headline2,
                         color = LedgerTheme.onAccent,
                     )
                     IconButton(onClick = onToggle) {
@@ -428,7 +428,7 @@ private fun OverviewCard(
                         Spacer(Modifier.height(2.dp))
                         Text(
                             text = if (visible) "¥ %,.2f".format(monthExpense) else "¥ ****",
-                            style = MiuixTheme.textStyles.title4,
+                            style = MiuixTheme.textStyles.title2,
                             color = LedgerTheme.onAccent,
                         )
                     }
@@ -438,7 +438,7 @@ private fun OverviewCard(
                         Spacer(Modifier.height(2.dp))
                         Text(
                             text = if (visible) "¥ %,.2f".format(monthIncome) else "¥ ****",
-                            style = MiuixTheme.textStyles.title4,
+                            style = MiuixTheme.textStyles.title2,
                             color = LedgerTheme.onAccent,
                         )
                     }
@@ -529,7 +529,7 @@ private fun EntryRow(entry: EntryUi, onLongClick: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = entry.category, style = MiuixTheme.textStyles.main)
+                Text(text = entry.category, style = MiuixTheme.textStyles.title3)
                 Spacer(Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
@@ -549,7 +549,7 @@ private fun EntryRow(entry: EntryUi, onLongClick: () -> Unit) {
         }
         Text(
             text = entry.amountText,
-            style = MiuixTheme.textStyles.headline1,
+            style = MiuixTheme.textStyles.title2,
             color = if (entry.signedAmount > 0) MiuixTheme.colorScheme.primary
             else MiuixTheme.colorScheme.onBackground,
         )

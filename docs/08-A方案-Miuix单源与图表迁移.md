@@ -134,7 +134,10 @@ private fun ledgerLightColors() = lightColorScheme(
 | --- | --- | --- | --- |
 | `headline1` | 28sp Bold | 报表大数字 | 系统 + `tnum` |
 | `headline2` | 24sp Bold | 二级大数字 | 系统 + `tnum` |
-| `main` | **34sp Bold** | 记一笔金额 | 系统 + `tnum` |
+| `headline1` | **34sp Bold** | 记一笔金额 | 系统 + `tnum` |
+| `headline2` | **28sp Bold** | 首页今日支出 | 系统 + `tnum` |
+| `title2` | **20sp SemiBold** | 列表行金额、本月收支 | 系统 + `tnum` |
+| `main` | **17sp Normal** | Miuix 组件默认正文（偏好项标题、列表分类） | 系统 |
 | `title1` | 22sp Bold | 页面标题 | LXGW |
 | `title2` | 20sp SemiBold | 区块标题 | LXGW |
 | `title3` | 17sp SemiBold | 卡片标题 | LXGW |
@@ -296,7 +299,7 @@ maven("https://jitpack.io")
 | --- | --- | --- |
 | `LedgerPalette`（常量表） | ✅ | `ui/theme/LedgerPalette.kt` 137 行：`LedgerColors` 23 个语义色 + `chart1..6`，`LedgerPalette.of(isDark)` / `tint(base, alpha, isDark)` |
 | 53 槽映射 | ✅ 34 槽 | `ui/theme/LedgerMiuixColors.kt` 126 行：以 `lightColorScheme()`/`darkColorScheme()` 为底 `apply{}` 逐槽覆盖（不用 53 参数构造，规避默认值漂移）；剩余 19 槽（`disabled*`/`slider*`/`secondaryContainer*`）保留官方推导 |
-| `ledgerTextStyles()` | ✅ 未含字体子集 | `ui/theme/LedgerTextStyles.kt` 69 行：14 槽 → 8 档（34/28/24/22/20/17/15/14/13/12/11sp，数字组 `Bold + tnum`）。LXGW 子集化与 `fontFamily` 注入留到 P1 |
+| `ledgerTextStyles()` | ✅ 未含字体子集 | `ui/theme/LedgerTextStyles.kt` 69 行：14 槽 → 8 档（金额组 headline1/2+title2 = 34/28/20sp `Bold+SemiBold + tnum`；标题组 22/20/17/15/14sp；`main` 还原 17sp 正文，供 Miuix 组件默认使用）。LXGW 子集化与 `fontFamily` 注入留到 P1 |
 | `AppTheme` 唯一主题根 | ✅ | `ui/theme/AppTheme.kt` 65 行：`ColorSchemeMode.System/Light/Dark` + `isDark` 强制一致 + 灌两套 `Colors` 与 `textStyles`；`LedgerApp.kt:88` 改为 `AppTheme(mode = prefs.themeMode)` |
 | 5 条 CI 门禁 | ✅ 7 条 | `tools/check-ui-consistency.sh`：R1 主题单源 / R2 无 `Color(0x…)` / R3 无命名色 → **error**；R4 字号 / R5 字重 / R6 圆角 / R7 Toast → **warn**（分阶段升 error） |
 | `AppScaffold` + `SnackbarHost` | ⏭ 推 P2 | `Toast.makeText` 现有 41 处，P0 建无消费方的 host 只多一层包裹；P2 一次性迁移时一起做 |

@@ -25,6 +25,8 @@ class ReminderReceiver : BroadcastReceiver() {
             try {
                 val text = buildSummary(context, kind)
                 post(context, title, text)
+                // 一次性精确闹钟不会自行重复：触发后立刻重排下一次，否则只响这一次
+                ReminderScheduler.rescheduleForKind(context, kind)
             } finally {
                 pending.finish()
             }

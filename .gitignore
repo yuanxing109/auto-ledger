@@ -18,3 +18,9 @@ captures/
 # Local machine config
 local.properties.local/
 ci_job_*.log
+
+# Secrets / signing (never commit)
+keystore.properties
+*.jks
+*.keystore
+.dsh/

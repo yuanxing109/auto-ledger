@@ -26,6 +26,9 @@ data class RangeTotals(
 
 object LedgerRepository {
 
+    /** 自动记账跨渠道去重窗口：短信与通知常差几秒各送一次同一笔扣费。 */
+    private const val AUTO_IMPORT_WINDOW_MS = 2 * 60_000L
+
     fun dao(context: Context): LedgerDao = LedgerDatabase.get(context).ledgerDao()
 
     fun observeAll(context: Context): Flow<List<LedgerEntry>> = dao(context).observeAll()
@@ -118,14 +121,33 @@ object LedgerRepository {
         LedgerWidgetProvider.requestUpdate(context)
     }
 
-    /** 导入去重：优先交易单号，其次时间+金额+收支指纹；返回实际新增数。 */
+    /**
+     * 自动记账跨渠道去重：短信与通知监听常把同一笔实际扣费各送一次，
+     * 两者文本不同、时间戳差几秒，externalId 与时间指纹都对不上。
+     * 只有窗口内存在「同金额 + 同收支 + 不同来源」的自动账单时才判重；
+     * 同来源（同一通道）的同额账单不合并，避免误杀真实的两笔同额消费。
+     */
+    suspend fun isRecentDuplicate(
+        context: Context,
+        amount: Double,
+        type: String,
+        source: String,
+        timeMillis: Long,
+        windowMs: Long = AUTO_IMPORT_WINDOW_MS,
+    ): Boolean {
+        val now = System.currentTimeMillis()
+        val since = (timeMillis - windowMs).coerceAtLeast(0L)
+        return dao(context).countRecentImportedOtherSource(amount, type, source, since, now) > 0
+    }
+
+    /** 导入去重：优先交易单号，其次「毫秒时间 + 金额 + 收支」指纹；返回实际新增数。 */
     suspend fun addImported(context: Context, entries: List<LedgerEntry>): Int {
         if (entries.isEmpty()) return 0
         val dao = dao(context)
         val keys = mutableSetOf<String>()
         dao.importRows().forEach { row ->
             row.externalId?.takeIf { it.isNotBlank() }?.let(keys::add)
-            keys.add(fingerprint(row.time, row.amount, row.type))
+            keys.add(fingerprint(row.timestamp, row.amount, row.type))
         }
         val normalized = entries.map { it.normalized() }
         val toInsert = normalized
@@ -143,11 +165,12 @@ object LedgerRepository {
             timeMillis = parseTime(time)?.timeInMillis ?: System.currentTimeMillis(),
         )
 
-    private fun fingerprint(time: String, amount: Double, type: String): String =
-        "$time|${"%.2f".format(amount)}|$type"
+    /** 指纹用毫秒时间：分钟级会把「同分钟同额同类型」的两笔真实账单误判成一笔。 */
+    private fun fingerprint(timeMillis: Long, amount: Double, type: String): String =
+        "$timeMillis|${"%.2f".format(amount)}|$type"
 
     private fun LedgerEntry.importKey(): String =
-        externalId?.takeIf { it.isNotBlank() } ?: fingerprint(time, amount, type)
+        externalId?.takeIf { it.isNotBlank() } ?: fingerprint(timeMillis, amount, type)
 
     /** 修复旧版本导入导致的 timestamp=0 数据。 */
     suspend fun repairTimestamps(context: Context) {

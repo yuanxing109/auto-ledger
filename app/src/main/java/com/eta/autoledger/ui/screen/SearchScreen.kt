@@ -3,6 +3,8 @@ package com.eta.autoledger.ui.screen
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import com.eta.autoledger.ui.glass.GlassButton
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +13,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -45,6 +49,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.InputField
+import top.yukonga.miuix.kmp.basic.SearchBar
+import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -55,6 +66,7 @@ import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.ui.glass.glassBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
@@ -122,7 +134,7 @@ fun SearchScreen(onClose: () -> Unit) {
     }
     val results by resultsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
-    val expenseSum = remember(results) { results.filter { it.type != "income" }.sumOf { it.amount } }
+    val expenseSum = remember(results) { results.filter { it.type == "expense" }.sumOf { it.amount } }
     val incomeSum = remember(results) { results.filter { it.type == "income" }.sumOf { it.amount } }
     val truncated = results.size >= SEARCH_LIMIT
     val groups = remember(results) { results.groupBy { dayStartOf(it) } }
@@ -149,7 +161,8 @@ fun SearchScreen(onClose: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(LedgerTheme.page)
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .navigationBarsPadding(),
     ) {
         // ① 返回独占一行：搜索框不再被挤成一条缝
         Row(
@@ -173,54 +186,22 @@ fun SearchScreen(onClose: () -> Unit) {
             Text("搜索账单", style = MiuixTheme.textStyles.title3, color = LedgerTheme.text)
         }
 
-        // ② 全宽搜索框
+        // ② Miuix 搜索框（全宽，300ms 防抖在 LaunchedEffect 里）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(LedgerTheme.surfaceVariant)
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("🔍", fontSize = 14.sp)
-                Spacer(Modifier.width(8.dp))
-                Box(modifier = Modifier.weight(1f)) {
-                    if (keyword.isEmpty()) {
-                        Text(
-                            "搜索备注 / 商户 / 分类",
-                            fontSize = 14.sp,
-                            color = LedgerTheme.textTertiary,
-                            maxLines = 1,
-                        )
-                    }
-                    BasicTextField(
-                        value = keyword,
-                        onValueChange = { keyword = it },
-                        singleLine = true,
-                        textStyle = TextStyle(fontSize = 14.sp, color = LedgerTheme.text),
-                        cursorBrush = SolidColor(LedgerTheme.accent),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                if (keyword.isNotEmpty()) {
-                    Text(
-                        text = "✕",
-                        fontSize = 13.sp,
-                        color = LedgerTheme.textTertiary,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { keyword = "" }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                    )
-                }
-            }
+            InputField(
+                query = keyword,
+                onQueryChange = { keyword = it },
+                onSearch = { },
+                expanded = false,
+                onExpandedChange = { },
+                label = "搜索备注 / 商户 / 分类",
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         // ③ 条件栏：只有已生效的条件才出现，且每个可单删
@@ -337,7 +318,7 @@ fun SearchScreen(onClose: () -> Unit) {
                     item(key = "h-$day") {
                         DayHeader(
                             dayTitle = dayTitle(day),
-                            dayExpense = list.filter { it.type != "income" }.sumOf { it.amount },
+                            dayExpense = list.filter { it.type == "expense" }.sumOf { it.amount },
                         )
                     }
                     items(list, key = { it.id }) { entry -> ResultRow(entry) }
@@ -497,19 +478,20 @@ private fun Chip(
     onClick: () -> Unit,
     removable: Boolean = false,
 ) {
+    val text = if (removable) "$label ✕" else label
+    val shape = RoundedCornerShape(50)
+    val bg = if (selected) LedgerTheme.accent.copy(alpha = 0.28f) else LedgerTheme.surface.copy(alpha = 0.28f)
+    val bd = if (selected) LedgerTheme.accent.copy(alpha = 0.55f) else LedgerTheme.border.copy(alpha = 0.55f)
+    val fg = if (selected) LedgerTheme.accent else LedgerTheme.textSecondary
     Box(
         modifier = Modifier
-            .heightIn(min = 32.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) LedgerTheme.tint(LedgerTheme.accent) else LedgerTheme.surfaceVariant)
+            .clip(shape)
+            .background(bg)
+            .border(0.5.dp, bd, shape)
             .clickable { onClick() }
-            .padding(horizontal = 11.dp, vertical = 7.dp),
+            .padding(horizontal = 14.dp, vertical = 9.dp),
     ) {
-        Text(
-            text = if (removable) "$label ✕" else label,
-            style = MiuixTheme.textStyles.footnote1.copy(fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal),
-            color = if (selected) LedgerTheme.accent else LedgerTheme.textSecondary,
-        )
+        Text(text, style = MiuixTheme.textStyles.footnote1, color = fg)
     }
 }
 
@@ -520,24 +502,30 @@ private fun AmountBox(
     hint: String,
     onChange: (String) -> Unit,
 ) {
+    val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = modifier
-            .heightIn(min = 40.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(LedgerTheme.surfaceVariant)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .clip(shape)
+            .glassBackground(shape, veil = LedgerTheme.surface.copy(alpha = 0.40f))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        contentAlignment = Alignment.CenterStart,
     ) {
-        if (value.isEmpty()) {
-            Text(hint, style = MiuixTheme.textStyles.body2, color = LedgerTheme.textTertiary)
-        }
         BasicTextField(
             value = value,
             onValueChange = { input -> onChange(input.filter { it.isDigit() || it == '.' }) },
+            textStyle = TextStyle(fontSize = 15.sp, color = LedgerTheme.text, fontWeight = FontWeight.Medium),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            textStyle = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.text),
             cursorBrush = SolidColor(LedgerTheme.accent),
             modifier = Modifier.fillMaxWidth(),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isEmpty()) {
+                        Text(hint, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textTertiary)
+                    }
+                    inner()
+                }
+            },
         )
     }
 }
@@ -554,7 +542,8 @@ private fun ResultRow(entry: LedgerEntry) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(LedgerTheme.surface)
+            .background(LedgerTheme.surface.copy(alpha = 0.34f))
+            .border(0.5.dp, LedgerTheme.border.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -594,6 +583,7 @@ private fun ResultRow(entry: LedgerEntry) {
  * 所有控件改的是本地 draft，点「应用」才写回父状态 —— 这样中途关掉不会把界面弄得半新半旧。
  * 底部按钮实时显示命中条数（200ms 防抖跑一次 count 查询），避免"筛出一堆空结果"。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FilterSheet(
     range: Int,
@@ -641,8 +631,7 @@ private fun FilterSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                    .background(LedgerTheme.surface)
+                    .glassBackground(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp), veil = LedgerTheme.surface.copy(alpha = 0.32f))
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 16.dp),
             ) {
@@ -659,25 +648,34 @@ private fun FilterSheet(
                 Spacer(Modifier.height(14.dp))
 
                 SectionLabel("时间")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(RANGE_LABELS) { entry ->
-                        Chip(label = entry.second, selected = range == entry.first, onClick = { onRange(entry.first) })
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    RANGE_LABELS.forEach { (v, label) ->
+                        Chip(label = label, selected = range == v, onClick = { onRange(v) })
                     }
                 }
                 Spacer(Modifier.height(14.dp))
 
                 SectionLabel("类型")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TYPE_LABELS.forEach { entry ->
-                        Chip(label = entry.second, selected = type == entry.first, onClick = { onType(entry.first) })
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TYPE_LABELS.forEach { (v, label) ->
+                        Chip(label = label, selected = type == v, onClick = { onType(v) })
                     }
                 }
 
                 if (cats.isNotEmpty()) {
                     Spacer(Modifier.height(14.dp))
                     SectionLabel("分类（可多选）")
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(cats) { name ->
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        cats.forEach { name ->
                             Chip(
                                 label = name,
                                 selected = name in categories,
@@ -704,41 +702,41 @@ private fun FilterSheet(
 
                 Spacer(Modifier.height(14.dp))
                 SectionLabel("排序")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SORT_LABELS.forEach { entry ->
-                        Chip(label = entry.second, selected = sort == entry.first, onClick = { onSort(entry.first) })
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SORT_LABELS.forEach { (v, label) ->
+                        Chip(label = label, selected = sort == v, onClick = { onSort(v) })
                     }
                 }
 
                 Spacer(Modifier.height(20.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val resetShape = RoundedCornerShape(50)
                     Box(
                         modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .weight(0.62f)
+                            .height(48.dp)
+                            .clip(resetShape)
+                            .background(LedgerTheme.surface.copy(alpha = 0.32f))
+                            .border(0.5.dp, LedgerTheme.border.copy(alpha = 0.55f), resetShape)
                             .clickable {
                                 onRange(0)
                                 onReset()
-                            }
-                            .padding(horizontal = 18.dp),
+                            },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("重置", fontSize = 15.sp, color = LedgerTheme.textSecondary)
+                        Text("重置", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
                     }
-                    Spacer(Modifier.weight(1f))
-                    Box(
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(LedgerTheme.accent)
-                            .clickable { onDismiss() }
-                            .padding(horizontal = 26.dp),
-                        contentAlignment = Alignment.Center,
+                    GlassButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1.38f).height(48.dp),
+                        tint = LedgerTheme.accent.copy(alpha = 0.40f),
                     ) {
                         Text(
                             text = if (preview == null) "应用" else "应用（${preview} 条）",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            style = MiuixTheme.textStyles.button,
                             color = LedgerTheme.onAccent,
                         )
                     }
@@ -750,10 +748,5 @@ private fun FilterSheet(
 
 @Composable
 private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        fontSize = 12.sp,
-        color = LedgerTheme.textTertiary,
-        modifier = Modifier.padding(bottom = 8.dp),
-    )
+    SmallTitle(text = text, modifier = Modifier.padding(bottom = 8.dp))
 }

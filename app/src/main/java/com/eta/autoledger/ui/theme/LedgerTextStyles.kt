@@ -2,6 +2,7 @@ package com.eta.autoledger.ui.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -33,14 +34,9 @@ fun ledgerTextStyles(): TextStyles {
     return remember(base) {
         defaultTextStyles(
             // ---- 金额组：等宽 + 加粗，只有数字 ----
-            // main 是 Miuix 组件（列表行、偏好项标题）的默认样式，必须保持正文字号；
-            // 金额只允许用 headline1/2（XL/L）与 title2（M，带 tnum）三档。
-            headline1 = base.headline1.copy(
-                fontSize = 34.sp,
-                lineHeight = 42.sp,
-                fontWeight = FontWeight.Bold,
-                fontFeatureSettings = "tnum",
-            ),
+            // ⚠️ Miuix 的列表行 / 偏好项标题（BasicComponent）内部用的是 headline1，
+            // 所以 headline1 必须保持正文字号，绝不能拿来放大金额，否则整个设置页标题会变大。
+            // 金额放大样式单独由 amountDisplayStyle() 提供，不占用 headline1 槽。
             headline2 = base.headline2.copy(
                 fontSize = 28.sp,
                 lineHeight = 34.sp,
@@ -70,3 +66,18 @@ fun ledgerTextStyles(): TextStyles {
         )
     }
 }
+
+/**
+ * 记账金额专用放大样式（34sp、等宽 tnum、加粗）。
+ *
+ * 单独暴露、**不占用 [top.yukonga.miuix.kmp.theme.TextStyles.headline1] 槽**：Miuix 的
+ * 列表行/偏好项标题内部读的就是 `headline1`，把金额放大塞进去会让设置页所有标题变大。
+ * 页面里需要大号金额时用 `amountDisplayStyle()`，不要再用 `textStyles.headline1`。
+ */
+@Composable
+fun amountDisplayStyle(): TextStyle = MiuixTheme.textStyles.headline1.copy(
+    fontSize = 34.sp,
+    lineHeight = 42.sp,
+    fontWeight = FontWeight.Bold,
+    fontFeatureSettings = "tnum",
+)

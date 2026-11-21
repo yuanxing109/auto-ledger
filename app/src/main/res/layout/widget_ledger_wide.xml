@@ -31,7 +31,7 @@
             android:includeFontPadding="false"
             android:maxLines="1"
             android:text="本月概览"
-            android:textColor="#17181B"
+            android:textColor="@color/widget_text_primary"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -41,7 +41,7 @@
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:text="11月20日"
-            android:textColor="#9AA3B2"
+            android:textColor="@color/widget_text_tertiary"
             android:textSize="12sp" />
     </LinearLayout>
 
@@ -66,7 +66,7 @@
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="本月支出"
-                android:textColor="#6B7385"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="11sp" />
 
             <TextView
@@ -77,7 +77,7 @@
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="0.00"
-                android:textColor="#17181B"
+                android:textColor="@color/widget_text_primary"
                 android:textSize="26sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -95,7 +95,7 @@
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="本月收入"
-                android:textColor="#6B7385"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="11sp" />
 
             <TextView
@@ -106,7 +106,7 @@
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="0.00"
-                android:textColor="#159B6B"
+                android:textColor="@color/widget_income"
                 android:textSize="26sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -127,7 +127,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:text="今日支出 0.00"
-            android:textColor="#8A94A6"
+            android:textColor="@color/widget_text_muted"
             android:textSize="11sp" />
 
         <TextView
@@ -139,7 +139,7 @@
             android:gravity="center"
             android:maxLines="1"
             android:text="今日收入 0.00"
-            android:textColor="#8A94A6"
+            android:textColor="@color/widget_text_muted"
             android:textSize="11sp" />
 
         <TextView
@@ -151,7 +151,7 @@
             android:gravity="end"
             android:maxLines="1"
             android:text="本月 0 笔"
-            android:textColor="#8A94A6"
+            android:textColor="@color/widget_text_muted"
             android:textSize="11sp" />
     </LinearLayout>
 </LinearLayout>

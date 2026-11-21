@@ -34,7 +34,7 @@ class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
-        val prefs = AppPrefs(context)
+        val prefs = AppPrefs.get(context)
         if (!prefs.smsEnabled) return
 
         val messages = runCatching { Telephony.Sms.Intents.getMessagesFromIntent(intent) }
@@ -81,6 +81,14 @@ class SmsReceiver : BroadcastReceiver() {
                 }
 
                 // 主键交给 Room 自增（传 0L），别用时间戳，否则同毫秒两笔会被 REPLACE 覆盖
+                // 短信与通知通道可能把同一笔扣费各送一次：入库前先做跨渠道窗口去重
+                val duplicate = runCatching {
+                    LedgerRepository.isRecentDuplicate(context, bill.amount, bill.type, bill.source, bill.timeMillis)
+                }.getOrElse { false }
+                if (duplicate) {
+                    Log.d(TAG, "窗口内已有同额自动账单，跳过：${bill.source} ${bill.amount}")
+                    return@forEach
+                }
                 val added = runCatching {
                     LedgerRepository.addImported(context, listOf(bill.toEntry(0L)))
                 }.getOrElse {
@@ -88,7 +96,7 @@ class SmsReceiver : BroadcastReceiver() {
                     0
                 }
                 if (added > 0) {
-                    AppPrefs(context).lastSmsAt = System.currentTimeMillis()
+                    AppPrefs.get(context).lastSmsAt = System.currentTimeMillis()
                     Log.i(TAG, "短信记账：${bill.source} ${bill.amount} ${bill.category}")
                     BillNotifier.notifyAdded(context, bill)
                 }

@@ -41,6 +41,10 @@ data class LedgerColors(
     val accent: Color,
     val accentPressed: Color,
     val onAccent: Color,
+    // ---- 首页大卡片（Hero）专用：深色下用深色渐变 + 浅色文字，避免大面积亮蓝压深底 ----
+    val heroStart: Color,
+    val heroEnd: Color,
+    val onHero: Color,
     // ---- 语义 ----
     val income: Color,
     val danger: Color,
@@ -68,12 +72,12 @@ object LedgerPalette {
 
     /** 浅色：冷灰白底 + 白卡 + 蓝强调。不用纯白做页面底，避免大面积高亮刺眼。 */
     val light: LedgerColors = LedgerColors(
-        page = Color(0xFFF5F7FB),
-        surface = Color(0xFFFFFFFF),
-        surfaceVariant = Color(0xFFEEF2F9),
-        inset = Color(0xFFF0F4FA),
-        border = Color(0xFFE4EAF3),
-        divider = Color(0xFFEDF1F7),
+        page = Color(0x99F5F7FB),
+        surface = Color(0xE6FFFFFF),
+        surfaceVariant = Color(0x1A0B1220),
+        inset = Color(0x120B1220),
+        border = Color(0x1F0B1220),
+        divider = Color(0x140B1220),
         scrim = Color(0x990B1220),
         text = Color(0xFF14181F),
         textSecondary = Color(0xFF5B6675),
@@ -81,6 +85,9 @@ object LedgerPalette {
         accent = Color(0xFF2563EB),
         accentPressed = Color(0xFF1D4FD7),
         onAccent = Color(0xFFFFFFFF),
+        heroStart = Color(0xFF2563EB),
+        heroEnd = Color(0xFF1D4FD7),
+        onHero = Color(0xFFFFFFFF),
         income = Color(0xFF0B8A5F),
         danger = Color(0xFFDC2626),
         warning = Color(0xFFB45309),
@@ -99,12 +106,12 @@ object LedgerPalette {
      * 切换更明显），而且近黑底上的阴影完全不可见，所以深色一律靠 `border` 描边分层。
      */
     val dark: LedgerColors = LedgerColors(
-        page = Color(0xFF0B0F14),
-        surface = Color(0xFF141A21),
-        surfaceVariant = Color(0xFF1B232C),
-        inset = Color(0xFF10161D),
-        border = Color(0xFF242E39),
-        divider = Color(0xFF1E262F),
+        page = Color(0x590B0F14),
+        surface = Color(0xCC141A21),
+        surfaceVariant = Color(0x33FFFFFF),
+        inset = Color(0x22FFFFFF),
+        border = Color(0x33FFFFFF),
+        divider = Color(0x1FFFFFFF),
         scrim = Color(0xB30B1220),
         text = Color(0xFFE8EDF3),
         textSecondary = Color(0xFFA3AEBD),
@@ -112,6 +119,11 @@ object LedgerPalette {
         accent = Color(0xFF6D9BFF),
         accentPressed = Color(0xFF5A88F0),
         onAccent = Color(0xFF06101F),
+        // 深色下 Hero 用深海军蓝渐变（与近黑页面同族、略带蓝调），文字用浅色，
+        // 不再用「亮蓝大色块 + 深色字」，避免深色模式里一块刺眼的浅蓝。
+        heroStart = Color(0xFF22335A),
+        heroEnd = Color(0xFF141C2E),
+        onHero = Color(0xFFE8EDF3),
         income = Color(0xFF34D399),
         danger = Color(0xFFF87171),
         warning = Color(0xFFFBBF24),

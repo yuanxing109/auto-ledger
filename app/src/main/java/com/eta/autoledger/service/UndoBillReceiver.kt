@@ -27,7 +27,8 @@ class UndoBillReceiver : BroadcastReceiver() {
                 val removed = runCatching { LedgerRepository.deleteByExternalId(context, externalId) }
                     .onFailure { Log.w(TAG, "撤销自动账单失败", it) }
                     .getOrDefault(0)
-                context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFY_ID)
+                context.getSystemService(NotificationManager::class.java)
+                    ?.cancel(intent.getIntExtra(EXTRA_NOTIFY_ID, NOTIFY_ID))
                 val text = if (removed > 0) "已撤销这笔自动记账" else "这笔账单已不存在"
                 Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
             } finally {
@@ -40,6 +41,8 @@ class UndoBillReceiver : BroadcastReceiver() {
         private const val TAG = "AutoLedger"
         const val ACTION_UNDO = "com.eta.autoledger.action.UNDO_BILL"
         const val EXTRA_EXTERNAL_ID = "external_id"
+        const val EXTRA_NOTIFY_ID = "notify_id"
+        /** 通知 id 的兜底常量（也用于 0 hash 冲突时）。 */
         const val NOTIFY_ID = 9100
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }

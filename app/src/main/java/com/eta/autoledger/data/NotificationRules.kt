@@ -107,6 +107,27 @@ object NotificationRules {
         "瓜分", "红包雨", "助力", "开奖", "中奖", "免单", "抽签",
     )
 
+    /**
+     * 预告类（钱还没实际发生）信号：只有当「将来时标记紧邻扣费/付款动词」时才判定为预告，
+     * 不能只看全文是否出现"将于"——否则「消费100元，将于明日发送账单」这类真交易会被误杀。
+     * 命中且无完成标记则丢弃，等真实扣费通知到了再记，避免「提醒记一笔 + 实扣再记一笔」。
+     */
+    private val FUTURE_CHARGE_PATTERNS = listOf(
+        // 将(自动)扣费/付款/续费…
+        Regex("""将[^。；！？\n]{0,12}(?:扣费|扣款|付款|支付|消费|续费|划扣|收取)"""),
+        // 明天/明日/即将/预计…（可跨越逗号）扣费/付款…（不含易歧义的"消费"）
+        Regex("""(?:明天|明日|次日|即将|预计|稍后)[^。；！？\n]{0,24}(?:扣费|扣款|付款|支付|续费|划扣)"""),
+        // 倒装：扣费将于明日…（动词后紧跟将来时，不允许跨过金额数字，避免误伤"消费100元，将于…"）
+        Regex("""(?:扣费|扣款|付款|支付|续费)[^。；！？\d\n]{0,4}(?:将于|即将|明日|明天)"""),
+        // 明确未发生状态
+        Regex("""(?:待扣|待支付|待付款|待缴|未扣款|未支付|尚未支付|未扣费)"""),
+    )
+    /** 完成标记：有它说明交易已实际完成，预告检查放行。 */
+    private val COMPLETED_WORDS = listOf(
+        "已扣", "扣费成功", "扣款成功", "扣费完成", "扣款完成", "已扣款",
+        "交易成功", "支付成功", "已支付", "已消费", "付款成功", "已付款",
+    )
+
     private val REFUND_WORDS = listOf("退款", "退回", "退货退款", "已退")
     private val REPAY_WORDS = listOf("信用卡还款", "还款成功", "已还款", "自动还款")
     private val WITHDRAW_WORDS = listOf("提现", "提现成功")
@@ -141,9 +162,11 @@ object NotificationRules {
 
     private val EXPENSE_KEYWORDS: List<Pair<String, List<String>>> = listOf(
         "餐饮" to listOf(
-            "美团外卖", "饿了么", "麦当劳", "肯德基", "星巴克", "瑞幸", "汉堡", "咖啡",
-            "奶茶", "烧烤", "火锅", "麻辣烫", "拉面", "米线", "快餐", "早餐", "午餐",
-            "晚餐", "餐厅", "饭店", "食堂", "外卖", "小吃", "食品", "面馆",
+            "美团外卖", "饿了么", "麦当劳", "肯德基", "汉堡王", "必胜客", "德克士",
+            "星巴克", "瑞幸", "喜茶", "奈雪", "茶百道", "古茗", "蜜雪", "沪上阿姨",
+            "汉堡", "咖啡", "奶茶", "烧烤", "火锅", "麻辣烫", "拉面", "米线", "快餐",
+            "早餐", "午餐", "晚餐", "餐厅", "饭店", "食堂", "外卖", "小吃", "食品",
+            "面馆", "美食", "黄焖鸡", "沙县", "兰州拉面", "老乡鸡", "烘焙", "蛋糕",
         ),
         "交通" to listOf(
             "滴滴", "高德打车", "打车", "出租车", "地铁", "公交", "加油", "中石油",
@@ -153,6 +176,8 @@ object NotificationRules {
         "购物" to listOf(
             "淘宝", "天猫", "京东", "拼多多", "唯品会", "苏宁", "超市", "便利店", "商场",
             "盒马", "沃尔玛", "永辉", "优衣库", "服饰", "百货", "小店",
+            "先用后付", "确认收货", "自动付款", "抖音", "快手", "小红书", "得物",
+            "网易严选", "名创优品", "屈臣氏", "全家", "罗森", "无印良品", "会员店",
         ),
         "娱乐" to listOf(
             "电影院", "影城", "游戏", "Steam", "腾讯视频", "爱奇艺", "优酷", "哔哩哔哩",
@@ -165,7 +190,10 @@ object NotificationRules {
         "旅行" to listOf("酒店", "民宿", "携程", "飞猪", "去哪儿", "景区", "旅游", "度假"),
         "红包" to listOf("红包"),
         "转账" to listOf("转账", "转给", "转至"),
-        "消费" to listOf("消费"),
+        "消费" to listOf(
+            "消费", "扣款", "收银台", "当面付", "扫码", "付款", "已支付", "支付",
+            "收款", "商户", "订单",
+        ),
     )
 
     private val INCOME_KEYWORDS: List<Pair<String, List<String>>> = listOf(
@@ -257,6 +285,11 @@ object NotificationRules {
         val body = bodyOf(raw)
         if (body.isBlank()) return null
         if (noiseWordsOf(channel).any { body.contains(it) }) return null
+        // 预告类提醒（"明天将自动付款18.8"）：钱还没实际发生，等真实扣费通知到了再记。
+        // 用「将来时紧邻扣费动词」的正则判定，避免「将于明日发送账单」这类真交易被误杀。
+        if (COMPLETED_WORDS.none(body::contains) &&
+            FUTURE_CHARGE_PATTERNS.any { it.containsMatchIn(body) }
+        ) return null
         val amount = extractAmount(body) ?: return null
         if (amount <= 0.0 || amount > 1_000_000.0) return null
         val direction = directionOf(body) ?: return null
@@ -399,6 +432,8 @@ object NotificationRules {
             cats.contains(name) && words.any { body.contains(it) }
         }
         if (hit != null) return hit.first
+        // 支出方向优先兜底到「消费」而不是「其他」，微信/支付宝通用支付单至少有个合理分类
+        if (direction.type == "expense" && cats.contains("消费")) return "消费"
         return if (cats.contains(FALLBACK_CATEGORY)) FALLBACK_CATEGORY else null
     }
 

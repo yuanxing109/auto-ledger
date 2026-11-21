@@ -206,7 +206,7 @@ object VisionHelper {
             builder.addAction(0, "确认入账", confirm)
             builder.addAction(0, "忽略", cancel)
         }
-        runCatching { manager.notify(9003, builder.build()) }
+        runCatching { manager.notify(ScreenshotCaptureService.RESULT_ID, builder.build()) }
     }
 
     private const val CHANNEL = "screenshot_result"

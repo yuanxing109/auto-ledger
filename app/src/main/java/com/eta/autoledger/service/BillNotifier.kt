@@ -30,7 +30,7 @@ object BillNotifier {
      * 提示「刚入账一笔」。用户关掉单笔通知（[AppPrefs.singleMuted]）时静默入库。
      */
     fun notifyAdded(context: Context, bill: NotifyBill) {
-        val prefs = AppPrefs(context)
+        val prefs = AppPrefs.get(context)
         if (prefs.singleMuted) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         ensureChannel(manager)
@@ -41,14 +41,17 @@ object BillNotifier {
             Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        // 用 externalId 而不是自增主键：addImported 是 REPLACE 插入，回填不了 id
-        // requestCode 取 externalId 的 hash，否则多笔账单会互相覆写 EXTRA
+        // 每笔账单用独立通知 id：共用同一个 id（原 9100）会让多笔通知互相覆盖，只剩最后一笔可撤销。
+        // 用 externalId 的 hash 派生，撤销时回传同一个 id 精确取消。
+        val notifyId = (bill.externalId.hashCode() and 0x7fffffff)
+            .let { if (it == 0) UndoBillReceiver.NOTIFY_ID else it }
         val undo = PendingIntent.getBroadcast(
             context,
-            bill.externalId.hashCode(),
+            notifyId,
             Intent(context, UndoBillReceiver::class.java).apply {
                 action = UndoBillReceiver.ACTION_UNDO
                 putExtra(UndoBillReceiver.EXTRA_EXTERNAL_ID, bill.externalId)
+                putExtra(UndoBillReceiver.EXTRA_NOTIFY_ID, notifyId)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -76,7 +79,7 @@ object BillNotifier {
             .setAutoCancel(true)
             .setOngoing(prefs.persistentSingle)
             .addAction(Notification.Action.Builder(null, "撤销", undo).build())
-        runCatching { manager.notify(UndoBillReceiver.NOTIFY_ID, builder.build()) }
+        runCatching { manager.notify(notifyId, builder.build()) }
             .onFailure { Log.w(TAG, "自动记账通知发送失败", it) }
     }
 

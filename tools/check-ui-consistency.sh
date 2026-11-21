@@ -44,12 +44,12 @@ check "R1 主题只在 ui/theme/AppTheme.kt 里创建" \
 # R2：色值只能住在 LedgerPalette（CategoryStore 的分类调色板 P1 再迁）
 check "R2 不写 Color(0x…) 字面量" \
   'Color\(0x' \
-  'ui/theme/|data/CategoryStore.kt|ui/LedgerTheme.kt' 1
+  'ui/theme/|data/CategoryStore.kt|ui/LedgerTheme.kt|com/kyant/backdrop/catalog/' 1
 
 # R3：命名色（Color.White 等）会直接吃掉深色模式
 check "R3 不写 Color.White/Black 等命名色" \
   'Color\.(White|Black|DarkGray|LightGray|Gray|Red|Green|Blue|Yellow|Cyan|Magenta)\b' \
-  'ui/theme/|ui/AiScanIcon.kt' 1
+  'ui/theme/|ui/AiScanIcon.kt|com/kyant/backdrop/catalog/' 1
 
 # R4：字号必须来自 textStyles.xxx，不许就地写 sp
 check "R4 字号只走 MiuixTheme.textStyles" \

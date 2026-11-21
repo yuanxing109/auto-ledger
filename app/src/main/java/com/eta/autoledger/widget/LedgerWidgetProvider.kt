@@ -174,12 +174,14 @@ open class LedgerWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        /** 请求钉到桌面：[wide] 决定 4×2 还是 2×2。 */
-        fun requestPin(context: Context, wide: Boolean) {
+        /** 请求钉到桌面：[wide] 决定 4×2 还是 2×2。返回是否成功把请求交给桌面（不支持时返回 false）。 */
+        fun requestPin(context: Context, wide: Boolean): Boolean {
             val manager = AppWidgetManager.getInstance(context)
             val target = if (wide) LedgerWidgetWideProvider::class.java else LedgerWidgetProvider::class.java
-            if (!manager.isRequestPinAppWidgetSupported) return
-            runCatching { manager.requestPinAppWidget(ComponentName(context, target), Bundle(), null) }
+            if (!manager.isRequestPinAppWidgetSupported) return false
+            return runCatching {
+                manager.requestPinAppWidget(ComponentName(context, target), Bundle(), null)
+            }.getOrDefault(false)
         }
 
         fun components(context: Context): List<ComponentName> = listOf(

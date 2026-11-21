@@ -1,6 +1,9 @@
 package com.eta.autoledger.settings
 
 import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.ui.glass.glassHueDrag
+import com.eta.autoledger.ui.glass.GlassCard
+import com.eta.autoledger.ui.glass.GlassAmbience
 import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -52,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -83,7 +87,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import com.eta.autoledger.ui.glass.LiquidSwitchPreference as SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.CategoryStore
@@ -119,7 +123,7 @@ enum class SettingsPage(val title: String, val parent: SettingsPage?) {
 fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () -> Unit) {
     var page by rememberSaveable { mutableStateOf(initialPage) }
     val context = LocalContext.current
-    val prefs = remember(context) { AppPrefs(context) }
+    val prefs = remember(context) { AppPrefs.get(context) }
 
     BackHandler {
         val parent = page.parent
@@ -187,8 +191,52 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
 }
 
 @Composable
+private fun SettingsAmbienceCard() {
+    val hue = GlassAmbience.hue
+    GlassCard(
+        modifier = Modifier.fillMaxWidth().glassHueDrag(),
+        veil = LedgerTheme.surface.copy(alpha = 0.45f),
+        contentPadding = PaddingValues(16.dp),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "氛围色", style = MiuixTheme.textStyles.title4, color = LedgerTheme.text, modifier = Modifier.weight(1f))
+                Text(text = "%.0f°".format(hue), style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "横向拖动这条卡片，改变全局玻璃氛围色",
+                style = MiuixTheme.textStyles.footnote1,
+                color = LedgerTheme.textSecondary,
+            )
+            Spacer(Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.hsv(0f, 0.6f, 0.9f),
+                                Color.hsv(60f, 0.6f, 0.9f),
+                                Color.hsv(120f, 0.6f, 0.9f),
+                                Color.hsv(180f, 0.6f, 0.9f),
+                                Color.hsv(240f, 0.6f, 0.9f),
+                                Color.hsv(300f, 0.6f, 0.9f),
+                                Color.hsv(360f, 0.6f, 0.9f),
+                            )
+                        )
+                    ),
+            )
+        }
+    }
+}
+
+@Composable
 private fun MainPage(onOpen: (SettingsPage) -> Unit) {
     SettingsPageColumn {
+        SettingsAmbienceCard()
         SettingsCard {
             ArrowPreference(title = "自动记账", summary = "读取收支信息，自动生成账单", onClick = { onOpen(SettingsPage.Auto) })
             RowDivider()
@@ -387,12 +435,6 @@ private fun DailyReminderPage(prefs: AppPrefs) {
             )
             RowDivider()
             SwitchPreference(
-                title = "小爱建议提醒",
-                checked = prefs.assistantDaily,
-                onCheckedChange = { prefs.assistantDaily = it },
-            )
-            RowDivider()
-            SwitchPreference(
                 title = "不提示",
                 summary = "取消所有每日提醒",
                 checked = prefs.dailyMuted,
@@ -401,7 +443,6 @@ private fun DailyReminderPage(prefs: AppPrefs) {
                     if (it) {
                         prefs.islandDaily = false
                         prefs.calendarDaily = false
-                        prefs.assistantDaily = false
                     }
                 },
             )
@@ -587,7 +628,7 @@ private fun CategoryManageCell(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(11.dp))
-                    .background(if (isAdd) AccentBlue.copy(alpha = 0.12f) else item.color.copy(alpha = 0.18f)),
+                    .background(if (isAdd) AccentBlue.copy(alpha = 0.22f) else item.color.copy(alpha = 0.32f)),
                 contentAlignment = Alignment.Center,
             ) {
                 if (isAdd) {
@@ -843,18 +884,25 @@ private fun ImportPage() {
         if (uri != null) {
             Toast.makeText(context, "正在导入，请稍候…", Toast.LENGTH_SHORT).show()
             scope.launch {
-                val count = withContext(Dispatchers.IO) {
-                    val mime = context.contentResolver.getType(uri).orEmpty()
-                    val name = uri.lastPathSegment.orEmpty()
-                    if (mime.contains("spreadsheetml") || name.endsWith(".xlsx", true)) {
-                        XlsxImporter.import(context, uri)
-                    } else {
-                        val text = context.contentResolver.openInputStream(uri)
-                            ?.bufferedReader()?.readText().orEmpty()
-                        CsvImporter.import(context, text)
+                // 解析任意用户文件，畸形 CSV/XLSX/编码异常都可能抛异常，必须兜住否则直接崩溃
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val mime = context.contentResolver.getType(uri).orEmpty()
+                        val name = uri.lastPathSegment.orEmpty()
+                        if (mime.contains("spreadsheetml") || name.endsWith(".xlsx", true)) {
+                            XlsxImporter.import(context, uri)
+                        } else {
+                            val text = context.contentResolver.openInputStream(uri)
+                                ?.bufferedReader()?.readText().orEmpty()
+                            CsvImporter.import(context, text)
+                        }
                     }
                 }
-                Toast.makeText(context, "导入完成：新增 $count 笔，重复记录已跳过", Toast.LENGTH_SHORT).show()
+                result.onSuccess { count ->
+                    Toast.makeText(context, "导入完成：新增 $count 笔，重复记录已跳过", Toast.LENGTH_SHORT).show()
+                }.onFailure { e ->
+                    Toast.makeText(context, "导入失败：文件格式无法识别（${e.message ?: "解析错误"}）", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

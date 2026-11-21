@@ -50,11 +50,11 @@ class LedgerNotificationListener : NotificationListenerService() {
     private val merged = HashMap<String, Long>()
 
     private fun prefs(): AppPrefs =
-        appPrefs ?: AppPrefs(this).also { appPrefs = it }
+        appPrefs ?: AppPrefs.get(this).also { appPrefs = it }
 
     override fun onCreate() {
         super.onCreate()
-        appPrefs = AppPrefs(this)
+        appPrefs = AppPrefs.get(this)
     }
 
     override fun onDestroy() {
@@ -144,8 +144,21 @@ class LedgerNotificationListener : NotificationListenerService() {
         }
 
         // 主键交给 Room 自增（传 0L），别用时间戳，否则同毫秒两笔会被 REPLACE 覆盖
+        // 短信通道可能刚把同一笔扣费记过：入库前做跨渠道窗口去重
         val entry = bill.toEntry(0L)
         scope.launch {
+            if (runCatching {
+                LedgerRepository.isRecentDuplicate(
+                    this@LedgerNotificationListener,
+                    bill.amount,
+                    bill.type,
+                    bill.source,
+                    bill.timeMillis,
+                )
+            }.getOrElse { false }) {
+                Log.d(TAG, "窗口内已有同额自动账单，跳过：${bill.amount}")
+                return@launch
+            }
             val added = runCatching {
                 LedgerRepository.addImported(this@LedgerNotificationListener, listOf(entry))
             }.getOrElse {

@@ -7,6 +7,7 @@ import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /**
@@ -31,26 +32,29 @@ class ScreenshotAccessibilityService : AccessibilityService() {
 
     private suspend fun take(): Bitmap? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        return suspendCancellableCoroutine { cont ->
-            val callback = object : TakeScreenshotCallback {
-                override fun onSuccess(result: ScreenshotResult) {
-                    val buffer = result.hardwareBuffer
-                    val wrapped = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
-                    val copy = wrapped?.copy(Bitmap.Config.ARGB_8888, false)
-                    wrapped?.recycle()
-                    buffer.close()
-                    cont.resume(copy)
-                }
+        // 8 秒兜底：系统回调可能永不返回，否则调用方协程与前台服务会永久挂起
+        return withTimeoutOrNull(8_000L) {
+            suspendCancellableCoroutine { cont ->
+                val callback = object : TakeScreenshotCallback {
+                    override fun onSuccess(result: ScreenshotResult) {
+                        val buffer = result.hardwareBuffer
+                        val wrapped = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
+                        val copy = wrapped?.copy(Bitmap.Config.ARGB_8888, false)
+                        wrapped?.recycle()
+                        buffer.close()
+                        if (cont.isActive) cont.resume(copy)
+                    }
 
-                override fun onFailure(errorCode: Int) {
-                    cont.resume(null)
+                    override fun onFailure(errorCode: Int) {
+                        if (cont.isActive) cont.resume(null)
+                    }
                 }
+                takeScreenshot(
+                    Display.DEFAULT_DISPLAY,
+                    ContextCompat.getMainExecutor(this@ScreenshotAccessibilityService),
+                    callback,
+                )
             }
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                ContextCompat.getMainExecutor(this),
-                callback,
-            )
         }
     }
 

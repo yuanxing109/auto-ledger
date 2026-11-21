@@ -93,7 +93,7 @@ class ScreenshotCaptureService : Service() {
     }
 
     private fun captureAndParse(resultCode: Int, data: Intent) {
-        val prefs = AppPrefs(this)
+        val prefs = AppPrefs.get(this)
         val manager = getSystemService(MediaProjectionManager::class.java)
         val projection = manager.getMediaProjection(resultCode, data)
             ?: run {
@@ -155,7 +155,7 @@ class ScreenshotCaptureService : Service() {
     }
 
     private fun processBitmap(shot: Bitmap) {
-        val prefs = AppPrefs(this)
+        val prefs = AppPrefs.get(this)
         val bytes = ByteArrayOutputStream().use { out ->
             shot.compress(Bitmap.CompressFormat.PNG, 85, out)
             out.toByteArray()

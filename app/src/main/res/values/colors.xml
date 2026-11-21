@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FF3482FF</color>
+
+    <!-- 小部件（RemoteViews 不能走 Compose 主题，颜色统一收口到资源，禁止散落硬编码） -->
+    <color name="widget_text_primary">#17181B</color>
+    <color name="widget_text_secondary">#6B7385</color>
+    <color name="widget_text_tertiary">#9AA3B2</color>
+    <color name="widget_text_muted">#8A94A6</color>
+    <color name="widget_income">#159B6B</color>
+    <color name="widget_bg_solid">#FFFFFF</color>
+    <color name="widget_bg_stroke">#E4EBF6</color>
 </resources>

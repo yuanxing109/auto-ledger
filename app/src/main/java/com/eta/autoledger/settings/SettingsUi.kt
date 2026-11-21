@@ -1,5 +1,6 @@
 package com.eta.autoledger.settings
 
+import com.eta.autoledger.ui.glass.GlassCard
 import com.eta.autoledger.ui.LedgerTheme
 import android.Manifest
 import android.app.DatePickerDialog
@@ -117,13 +118,11 @@ internal fun SettingsPageColumn(content: @Composable () -> Unit) {
 
 @Composable
 internal fun SettingsCard(content: @Composable () -> Unit) {
-    val shape = RoundedCornerShape(18.dp)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(3.dp, shape, clip = false)
-            .border(1.dp, CardBorder, shape),
-        cornerRadius = 18.dp,
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        veil = LedgerTheme.surface.copy(alpha = 0.45f),
+        contentPadding = PaddingValues(0.dp),
     ) {
         Column { content() }
     }

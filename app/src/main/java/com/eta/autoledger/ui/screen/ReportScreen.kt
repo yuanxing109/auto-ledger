@@ -1,6 +1,8 @@
 package com.eta.autoledger.ui.screen
 
 import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.ui.glass.GlassDialog
+import com.eta.autoledger.ui.glass.GlassCard
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +12,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -18,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -56,6 +58,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -64,6 +67,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -88,6 +92,8 @@ import kotlin.math.sin
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
@@ -263,13 +269,10 @@ private fun ReportCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val shape = RoundedCornerShape(20.dp)
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .shadow(5.dp, shape, clip = false)
-            .border(1.dp, CardBorder, shape),
-        cornerRadius = 20.dp,
+    GlassCard(
+        modifier = modifier.fillMaxWidth(),
+        veil = LedgerTheme.surface.copy(alpha = 0.40f),
+        contentPadding = PaddingValues(0.dp),
     ) {
         content()
     }
@@ -958,7 +961,24 @@ private fun toReportData(aggregate: ReportAggregate, tab: Int, income: Boolean):
     }
     val sum = aggregate.categories.sumOf { it.total }.coerceAtLeast(0.0001)
     val usedColors = mutableListOf<Color>()
-    val categories = aggregate.categories.take(6).map { c ->
+    // Top6 之外的分类并入「其他」，让环形图合计与图例百分比的分母都等于全量支出，
+    // 否则环图只按 Top6 归一化到 360°，而列表百分比按全量，出现同一分类两个百分比。
+    val slicesSource = run {
+        val head = aggregate.categories.take(6)
+        val tail = aggregate.categories.drop(6)
+        if (tail.isEmpty()) head else {
+            val tailAmount = tail.sumOf { it.total }
+            val tailCount = tail.sumOf { it.count }
+            val idx = head.indexOfFirst { it.name == "其他" }
+            if (idx >= 0) head.toMutableList().also {
+                val e = it[idx]
+                it[idx] = e.copy(total = e.total + tailAmount, count = e.count + tailCount)
+            } else {
+                head + tail.first().copy(name = "其他", total = tailAmount, count = tailCount)
+            }
+        }
+    }
+    val categories = slicesSource.map { c ->
         val base = categoryColor(c.name)
         val color = if (base in usedColors) {
             val alt = DonutPalette.firstOrNull { it !in usedColors } ?: base
@@ -1059,49 +1079,39 @@ private fun CategoryDetailDialog(
             limit = 300,
         ).collect { value = it }
     }
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .clip(RoundedCornerShape(20.dp))
-                .background(LedgerTheme.surface)
-                .padding(16.dp),
-        ) {
-            Text(
-                text = "${slice.emoji} ${slice.name} 明细",
-                style = MiuixTheme.textStyles.title3,
-                color = TextPrimary,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = "%.2f%% · ¥ %,.2f · %d笔".format(slice.percent, slice.amount, slice.count),
-                style = MiuixTheme.textStyles.footnote1,
-                color = TextSecondary,
-            )
-            Spacer(Modifier.height(10.dp))
-            Box(modifier = Modifier.heightIn(max = 420.dp)) {
-                if (entries.isEmpty()) {
-                    Text("该分类在此期间没有账目", style = MiuixTheme.textStyles.body2, color = TextSecondary)
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(entries.size) { i -> DetailEntryRow(entries[i]) }
-                    }
+    val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.5f).dp
+    GlassDialog(
+        show = true,
+        title = "${slice.emoji} ${slice.name} 明细",
+        summary = "%.2f%% · ¥ %,.2f · %d笔".format(slice.percent, slice.amount, slice.count),
+        maxWidth = 640.dp,
+        outsideMargin = DpSize(8.dp, 12.dp),
+        insideMargin = DpSize(16.dp, 16.dp),
+        onDismissRequest = onDismiss,
+    ) {
+        Box(modifier = Modifier.fillMaxWidth().heightIn(max = maxListHeight)) {
+            if (entries.isEmpty()) {
+                Text(
+                    text = "该分类在此期间没有账目",
+                    style = MiuixTheme.textStyles.body2,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 2.dp),
+                ) {
+                    items(entries.size) { i -> DetailEntryRow(entries[i]) }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = "关闭",
-                style = MiuixTheme.textStyles.body1,
-                color = AccentBlue,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { onDismiss() }
-                    .background(AccentSoft)
-                    .padding(vertical = 10.dp),
-            )
         }
+        Spacer(Modifier.height(16.dp))
+        TextButton(
+            text = "关闭",
+            onClick = onDismiss,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -1110,15 +1120,15 @@ private fun DetailEntryRow(entry: LedgerEntry) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(LedgerTheme.inset)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .clip(RoundedCornerShape(12.dp))
+            .background(LedgerTheme.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = entry.note.ifBlank { entry.category },
-                style = MiuixTheme.textStyles.body2,
+                style = MiuixTheme.textStyles.body1,
                 color = TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1138,7 +1148,7 @@ private fun DetailEntryRow(entry: LedgerEntry) {
         }
         Text(
             text = sign + "¥" + "%,.2f".format(entry.amount),
-            style = MiuixTheme.textStyles.body1,
+            style = MiuixTheme.textStyles.title4,
             color = if (entry.type == "income") LedgerTheme.income else TextPrimary,
         )
     }

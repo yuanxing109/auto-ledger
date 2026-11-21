@@ -18,12 +18,13 @@ data class Summary(
     val monthIncome: Double = 0.0,
 )
 
-/** 导入去重只需要这四列，不必把全表实体读进内存。 */
+/** 导入去重只需要这几列，不必把全表实体读进内存。 */
 data class ImportRow(
     @ColumnInfo(name = "external_id") val externalId: String?,
     @ColumnInfo(name = "time_text") val time: String,
     val amount: Double,
     val type: String,
+    @ColumnInfo(name = "timestamp") val timestamp: Long,
 )
 
 @Dao
@@ -50,7 +51,7 @@ interface LedgerDao {
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type != 'income' AND timestamp >= :start AND timestamp < :end",
+            "WHERE type = 'expense' AND timestamp >= :start AND timestamp < :end",
     )
     fun observeExpense(start: Long, end: Long): Flow<Double>
 
@@ -62,7 +63,7 @@ interface LedgerDao {
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type != 'income')) " +
+            "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
             "AND timestamp >= :start AND timestamp < :end",
     )
     fun observeTotal(start: Long, end: Long, income: Int): Flow<Double>
@@ -70,14 +71,14 @@ interface LedgerDao {
     @Query(
         "SELECT strftime(:format, timestamp / 1000, 'unixepoch', 'localtime') AS bucket, " +
             "COALESCE(SUM(amount), 0.0) AS total FROM Bill " +
-            "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type != 'income')) " +
+            "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
             "AND timestamp >= :start AND timestamp < :end GROUP BY bucket ORDER BY bucket",
     )
     fun observeBuckets(format: String, start: Long, end: Long, income: Int): Flow<List<Bucket>>
 
     @Query(
         "SELECT category AS name, COALESCE(SUM(amount), 0.0) AS total, COUNT(*) AS count FROM Bill " +
-            "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type != 'income')) " +
+            "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
             "AND timestamp >= :start AND timestamp < :end GROUP BY category ORDER BY total DESC",
     )
     fun observeCategories(start: Long, end: Long, income: Int): Flow<List<CategoryAgg>>
@@ -86,7 +87,7 @@ interface LedgerDao {
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type != 'income' AND timestamp >= :start AND timestamp < :end",
+            "WHERE type = 'expense' AND timestamp >= :start AND timestamp < :end",
     )
     suspend fun sumExpenseOnce(start: Long, end: Long): Double
 
@@ -170,8 +171,28 @@ interface LedgerDao {
         keyword: String,
     ): Int
 
-    @Query("SELECT external_id, time_text, amount, type FROM Bill")
+    @Query("SELECT external_id, time_text, amount, type, timestamp FROM Bill")
     suspend fun importRows(): List<ImportRow>
+
+    /**
+     * 自动记账跨渠道去重：同一笔实际扣费常以短信 + 通知两条通道各送一次，
+     * 两者文本不同、时间戳差几秒，externalId 与时间指纹都对不上。
+     * 时间窗内「同金额 + 同收支 + 不同来源 + 已带外部单号」的账单才视为同一笔，
+     * 同来源的同额账单不合并（真实两笔同额消费都在同一通道时不会被误杀）。
+     */
+    @Query(
+        "SELECT COUNT(*) FROM Bill WHERE amount = :amount AND type = :type " +
+            "AND source != :source " +
+            "AND timestamp >= :since AND timestamp <= :until " +
+            "AND external_id IS NOT NULL AND external_id != ''",
+    )
+    suspend fun countRecentImportedOtherSource(
+        amount: Double,
+        type: String,
+        source: String,
+        since: Long,
+        until: Long,
+    ): Int
 
     /**
      * IGNORE 而不是 REPLACE：主键交给 SQLite 自增后，撞键只可能是 external_id 唯一索引，

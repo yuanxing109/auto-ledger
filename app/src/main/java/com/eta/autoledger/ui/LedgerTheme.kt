@@ -39,7 +39,7 @@ object LedgerTheme {
     val surface: Color get() = colors.surface
 
     /** 兼容旧名：等同于 [surface]。 */
-    val card: Color get() = colors.surface
+    val card: Color get() = colors.surface.copy(alpha = 0.86f)
 
     /** 卡片内部再压一层：输入框、键帽、次级卡片。 */
     val surfaceVariant: Color get() = colors.surfaceVariant
@@ -77,6 +77,12 @@ object LedgerTheme {
 
     /** 主色块上的文字（深色模式下 accent 是亮蓝，必须配深字）。 */
     val onAccent: Color get() = colors.onAccent
+
+    /** 首页 Hero 大卡片渐变起止色（深色下是深海军蓝，不是亮蓝）。 */
+    val heroStart: Color get() = colors.heroStart
+    val heroEnd: Color get() = colors.heroEnd
+    /** Hero 卡片上的文字色（与 [heroStart]/[heroEnd] 成对，深色下为浅色）。 */
+    val onHero: Color get() = colors.onHero
 
     val income: Color get() = colors.income
 

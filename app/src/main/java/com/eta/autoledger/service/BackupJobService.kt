@@ -30,7 +30,7 @@ class BackupJobService : JobService() {
         val app = applicationContext
         scope.launch {
             val result = runCatching {
-                BackupRunner.autoBackupIfDue(app, AppPrefs(app))
+                BackupRunner.autoBackupIfDue(app, AppPrefs.get(app))
             }.getOrNull()
             result?.let { if (!it.ok) Log.w(TAG, "定时备份失败：${it.message}") }
             params?.let { jobFinished(it, false) }

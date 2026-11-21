@@ -1,6 +1,8 @@
 package com.eta.autoledger.ui.screen
 
 import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.ui.glass.glassBackground
+import com.eta.autoledger.ui.glass.GlassCard
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -58,6 +61,7 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Months
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.data.CategoryStore
+import com.eta.autoledger.ui.theme.amountDisplayStyle
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import kotlinx.coroutines.launch
@@ -131,7 +135,10 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     var negative by rememberSaveable { mutableStateOf(false) }
     var note by rememberSaveable { mutableStateOf("") }
     var selectedCategory by rememberSaveable { mutableStateOf(CategoryStore.expense.first()) }
-    val calendar = remember { Calendar.getInstance() }
+    // 记账时间用 saveable 的 epoch 毫秒保存：旋转/进程重建后不会悄悄退回「现在」，
+    // 否则显示时间与保存时间会不一致（原来 calendar 用 remember，重建即丢失）。
+    var timeMillis by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
+    val calendar = remember { Calendar.getInstance().apply { timeInMillis = timeMillis } }
     var timeText by rememberSaveable {
         mutableStateOf(SimpleDateFormat("今天 HH:mm", Locale.CHINA).format(calendar.time))
     }
@@ -180,6 +187,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
 
     fun applyDateTime(year: Int, month: Int, day: Int, hour: Int, minute: Int) {
         calendar.set(year, month, day, hour, minute)
+        timeMillis = calendar.timeInMillis
         val now = Calendar.getInstance()
         val sameDay = now.get(Calendar.YEAR) == year &&
             now.get(Calendar.MONTH) == month &&
@@ -386,8 +394,7 @@ private fun DateTimeDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 32.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(LedgerTheme.card)
+                .glassBackground(RoundedCornerShape(24.dp), veil = LedgerTheme.surface.copy(alpha = 0.60f))
                 .padding(horizontal = 18.dp, vertical = 18.dp),
         ) {
             Column {
@@ -577,19 +584,18 @@ private fun AmountCard(
     onGallery: () -> Unit,
 ) {
     val shape = RoundedCornerShape(20.dp)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(4.dp, shape, clip = false),
-        cornerRadius = 20.dp,
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        veil = LedgerTheme.surface.copy(alpha = 0.40f),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "¥", style = TextStyle(fontSize = 20.sp, color = TextPrimary))
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = amount,
-                    style = MiuixTheme.textStyles.headline1.copy(
+                    style = amountDisplayStyle().copy(
                         color = if (amount == "0.00") LedgerTheme.textTertiary else LedgerTheme.text,
                     ),
                 )
@@ -645,13 +651,12 @@ private fun CategoryCard(
     onSelect: (String) -> Unit,
 ) {
     val shape = RoundedCornerShape(20.dp)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(4.dp, shape, clip = false),
-        cornerRadius = 20.dp,
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        veil = LedgerTheme.surface.copy(alpha = 0.40f),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 14.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 14.dp)) {
+        Column {
             categories.chunked(5).forEachIndexed { index, rowItems ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -739,7 +744,7 @@ private fun Keyboard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(LedgerTheme.card)
+            .glassBackground(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), veil = LedgerTheme.surface.copy(alpha = 0.55f))
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {

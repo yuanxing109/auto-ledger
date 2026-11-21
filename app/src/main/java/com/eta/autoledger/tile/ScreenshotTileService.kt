@@ -35,7 +35,7 @@ class ScreenshotTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        val prefs = AppPrefs(this)
+        val prefs = AppPrefs.get(this)
         val needsSetup = !prefs.screenshotEnabled || prefs.aiBaseUrl.isBlank() || prefs.aiModel.isBlank()
         if (!needsSetup) {
             Toast.makeText(this, "1 秒后截屏，请停在要识别的页面", Toast.LENGTH_SHORT).show()

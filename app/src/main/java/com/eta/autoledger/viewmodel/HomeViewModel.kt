@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class BillsUiState(
@@ -125,11 +126,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateEntry(entry: LedgerEntry) {
-        viewModelScope.launch(Dispatchers.IO) { LedgerRepository.update(context, entry) }
+        viewModelScope.launch(Dispatchers.IO) {
+            LedgerRepository.update(context, entry)
+            // 第 20 条之后的账目在 extraPages 缓存里，不随首屏 Flow 刷新，这里就地替换，
+            // 否则编辑后列表仍显示旧值（更新不改 count，不会触发 extraPages 清空）。
+            extraPages.update { list ->
+                if (list.any { it.id == entry.id }) {
+                    list.map { if (it.id == entry.id) entry else it }
+                } else {
+                    list
+                }
+            }
+        }
     }
 
     fun deleteEntry(id: Long) {
-        viewModelScope.launch(Dispatchers.IO) { LedgerRepository.delete(context, id) }
+        viewModelScope.launch(Dispatchers.IO) {
+            LedgerRepository.delete(context, id)
+            extraPages.update { list -> list.filterNot { it.id == id } }
+        }
     }
 
     fun clearAll() {

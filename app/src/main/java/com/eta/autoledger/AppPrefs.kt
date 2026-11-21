@@ -5,7 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-class AppPrefs(context: Context) {
+class AppPrefs private constructor(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("auto_ledger", Context.MODE_PRIVATE)
 
     private var smsState by mutableStateOf(prefs.getBoolean("sms_enabled", true))
@@ -74,11 +74,6 @@ class AppPrefs(context: Context) {
     var calendarDaily: Boolean
         get() = calendarDailyState
         set(value) { calendarDailyState = value; prefs.edit().putBoolean("calendar_daily", value).apply() }
-
-    private var assistantDailyState by mutableStateOf(prefs.getBoolean("assistant_daily", false))
-    var assistantDaily: Boolean
-        get() = assistantDailyState
-        set(value) { assistantDailyState = value; prefs.edit().putBoolean("assistant_daily", value).apply() }
 
     private var dailyMutedState by mutableStateOf(prefs.getBoolean("daily_muted", false))
     var dailyMuted: Boolean
@@ -195,6 +190,18 @@ class AppPrefs(context: Context) {
     fun davConfigured(): Boolean = davUrl.isNotBlank() && davUser.isNotBlank() && davPass.isNotBlank()
 
     companion object {
+        @Volatile
+        private var instance: AppPrefs? = null
+
+        /**
+         * 全局单例。所有页面 / 服务必须共用同一份 [mutableStateOf] 快照，
+         * 否则「外观」等设置写的是另一个实例，主题要等重启才生效。
+         */
+        fun get(context: Context): AppPrefs =
+            instance ?: synchronized(this) {
+                instance ?: AppPrefs(context.applicationContext).also { instance = it }
+            }
+
         const val DEFAULT_PROMPT =
             "你是记账助手。请从图片或文本中提取收支信息，只输出严格 JSON：" +
                 "{\"amount\":0.00,\"type\":\"expense|income|other\",\"category\":\"餐饮\"," +

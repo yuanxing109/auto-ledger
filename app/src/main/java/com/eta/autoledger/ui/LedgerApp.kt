@@ -1,5 +1,11 @@
 package com.eta.autoledger.ui
 
+import com.eta.autoledger.ui.glass.GlassSurface
+import com.eta.autoledger.ui.glass.glassBackground
+import com.eta.autoledger.ui.glass.LocalGlassBackdrop
+import com.kyant.backdrop.catalog.components.LiquidBottomTabs
+import com.kyant.backdrop.catalog.components.LiquidBottomTab
+
 import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -24,10 +30,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -84,7 +98,7 @@ private data class Tab(
 @Composable
 fun LedgerApp(openAiSettings: Boolean = false) {
     val context = LocalContext.current
-    val prefs = remember { AppPrefs(context) }
+    val prefs = remember { AppPrefs.get(context) }
     // 全站唯一主题根：解析「外观」模式 → 灌 Miuix 色板/字体槽 → 同步自绘色板。
     // 之后任何页面都不许再包 MiuixTheme / MaterialTheme，否则深色会出现两套色。
     AppTheme(mode = prefs.themeMode) {
@@ -102,7 +116,7 @@ fun LedgerApp(openAiSettings: Boolean = false) {
                 Toast.makeText(context, "正在交给 AI 识别…", Toast.LENGTH_SHORT).show()
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
-                        val prefs = AppPrefs(context)
+                        val prefs = AppPrefs.get(context)
                         if (prefs.aiBaseUrl.isBlank() || prefs.aiModel.isBlank()) {
                             error("请先在设置中配置 AI 模型")
                         }
@@ -141,6 +155,10 @@ fun LedgerApp(openAiSettings: Boolean = false) {
                 initialPage = settingsPage,
                 onClose = { showSettings = false },
             )
+            return@AppTheme
+        }
+        if (showSearch) {
+            SearchScreen(onClose = { showSearch = false })
             return@AppTheme
         }
         var reportTab by rememberSaveable { mutableIntStateOf(1) }
@@ -192,10 +210,6 @@ fun LedgerApp(openAiSettings: Boolean = false) {
             }
         }
 
-        if (showSearch) {
-            SearchScreen(onClose = { showSearch = false })
-        }
-
         if (showAiSheet) {
             AiActionSheet(
                 onDismiss = { showAiSheet = false },
@@ -215,8 +229,7 @@ private fun AiActionSheet(onDismiss: () -> Unit, onCamera: () -> Unit, onGallery
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.88f)
-                .clip(RoundedCornerShape(20.dp))
-                .background(LedgerTheme.surface)
+                .glassBackground(RoundedCornerShape(20.dp), veil = LedgerTheme.surface.copy(alpha = 0.55f))
                 .padding(horizontal = 20.dp, vertical = 18.dp),
         ) {
                 Text("识图记账", style = MiuixTheme.textStyles.title3, color = LedgerTheme.text)
@@ -265,12 +278,21 @@ private fun LedgerTopBar(
     onSettings: () -> Unit = {},
     onAi: () -> Unit = {},
 ) {
-    Box(
+    GlassSurface(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .height(56.dp),
+            .padding(horizontal = 10.dp)
+            .padding(top = 6.dp)
+            .height(52.dp),
+        shape = RoundedCornerShape(50),
+        blurRadius = 18.dp,
+        refractionHeight = 10.dp,
+        refractionAmount = 16.dp,
+        tint = LedgerTheme.onAccent.copy(alpha = 0.08f),
+        veil = LedgerTheme.surface.copy(alpha = 0.50f),
     ) {
+        Box(modifier = Modifier.fillMaxSize()) {
         if (onBack != null) {
             IconButton(
                 onClick = onBack,
@@ -315,16 +337,27 @@ private fun LedgerTopBar(
             }
         }
     }
+    }
 }
+
 
 @Composable
 private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
-    Column(
+    GlassSurface(
         modifier = Modifier
             .fillMaxWidth()
-            .background(LedgerTheme.surface)
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .padding(horizontal = 10.dp)
+            .padding(top = 6.dp),
+        shape = RoundedCornerShape(24.dp),
+        blurRadius = 20.dp,
+        refractionHeight = 10.dp,
+        refractionAmount = 18.dp,
+        tint = LedgerTheme.onAccent.copy(alpha = 0.08f),
+        veil = LedgerTheme.surface.copy(alpha = 0.42f),
+        contentPadding = PaddingValues(bottom = 10.dp),
     ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -383,60 +416,87 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
             }
         }
     }
+    }
 }
+
 
 @Composable
 private fun LedgerBottomBar(selected: Int, onSelect: (Int) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MiuixTheme.colorScheme.surface)
             .navigationBarsPadding()
-            .height(64.dp),
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 10.dp),
+    ) {
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth().height(72.dp),
+            shape = RoundedCornerShape(50),
+            blurRadius = 24.dp,
+            refractionHeight = 18.dp,
+            refractionAmount = 30.dp,
+            veil = LedgerTheme.surface.copy(alpha = 0.42f),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DockTab("记账", MiuixIcons.Home, selected == 0, Modifier.weight(1f)) { onSelect(0) }
+                DockTab("记一笔", MiuixIcons.Add, selected == 1, Modifier.weight(1f)) { onSelect(1) }
+                DockTab("报表", MiuixIcons.GridView, selected == 2, Modifier.weight(1f)) { onSelect(2) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DockTab(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val chipAlpha by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 420f),
+        label = "dockChip",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.92f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 380f),
+        label = "dockScale",
+    )
+    val color = if (selected) LedgerTheme.accent else LedgerTheme.textSecondary
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(0.5.dp)
-                .background(MiuixTheme.colorScheme.onSurfaceContainerVariant.copy(alpha = 0.12f)),
-        )
-        Row(modifier = Modifier.fillMaxSize()) {
-            BottomNavItem(
-                label = "记账",
-                icon = MiuixIcons.Home,
-                selected = selected == 0,
-                onClick = { onSelect(0) },
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(96.dp))
-            BottomNavItem(
-                label = "报表",
-                icon = MiuixIcons.GridView,
-                selected = selected == 2,
-                onClick = { onSelect(2) },
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = (-14).dp)
-                .shadow(elevation = 10.dp, shape = CircleShape, clip = false),
+                .size(width = 48.dp, height = 32.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    if (selected) LedgerTheme.accent.copy(alpha = 0.16f + 0.06f * chipAlpha)
+                    else Color.Transparent
+                ),
+            contentAlignment = Alignment.Center,
         ) {
-            top.yukonga.miuix.kmp.basic.FloatingActionButton(
-                onClick = { onSelect(1) },
-                minWidth = 64.dp,
-                minHeight = 64.dp,
-            ) {
-                Icon(
-                    imageVector = MiuixIcons.Add,
-                    contentDescription = "记一笔",
-                    // FAB 底色是 accent（浅色深蓝 / 深色亮蓝），图标取 onAccent 才能两头都有对比度
-                    tint = LedgerTheme.onAccent,
-                )
-            }
+            Icon(imageVector = icon, contentDescription = label, tint = color)
         }
+        Spacer(Modifier.height(2.dp))
+        Text(label, style = MiuixTheme.textStyles.footnote2, color = color)
     }
 }
 

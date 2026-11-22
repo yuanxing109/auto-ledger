@@ -29,8 +29,13 @@ data class LedgerColors(
     val surface: Color,
     val surfaceVariant: Color,
     val inset: Color,
+    /** 按下态表面：深色用实心提亮一档（#1C242E），不用白色透明叠加。 */
+    val surfacePressed: Color,
     // ---- 线 ----
+    /** 可交互组件边界（按钮/chip/输入框/选中态）：WCAG 1.4.11 要求 ≥3:1。 */
     val border: Color,
+    /** 装饰性卡片/容器外框：不受 3:1 约束，仅需肉眼可辨。 */
+    val borderSoft: Color,
     val divider: Color,
     val scrim: Color,
     // ---- 文字 ----
@@ -41,7 +46,7 @@ data class LedgerColors(
     val accent: Color,
     val accentPressed: Color,
     val onAccent: Color,
-    // ---- 首页大卡片（Hero）专用：深色下用深色渐变 + 浅色文字，避免大面积亮蓝压深底 ----
+    // ---- 首页大卡片（Hero）专用：纯 surface 实心（无渐变），不用蓝渐变/大色块 ----
     val heroStart: Color,
     val heroEnd: Color,
     val onHero: Color,
@@ -59,6 +64,14 @@ data class LedgerColors(
 ) {
     /** 图表调色板，顺序稳定（分类构成图的颜色顺序依赖它）。 */
     val charts: List<Color> get() = listOf(chart1, chart2, chart3, chart4, chart5, chart6)
+
+    // ---- 预算语义：蓝色承担「剩余」，绿色只归收入金额，禁止拿 income 表示预算 ----
+    /** 预算剩余充足：用强调蓝（不用收入绿）。 */
+    val budgetRemaining: Color get() = accent
+    /** 预算临近上限（≥80%）：琥珀提醒。 */
+    val budgetNearLimit: Color get() = warning
+    /** 预算已超支：红。 */
+    val budgetOver: Color get() = danger
 }
 
 /**
@@ -76,7 +89,9 @@ object LedgerPalette {
         surface = Color(0xE6FFFFFF),
         surfaceVariant = Color(0x1A0B1220),
         inset = Color(0x120B1220),
-        border = Color(0x1F0B1220),
+        surfacePressed = Color(0xFFEDF1F7),
+        border = Color(0x770B1220),
+        borderSoft = Color(0x1F0B1220),
         divider = Color(0x140B1220),
         scrim = Color(0x990B1220),
         text = Color(0xFF14181F),
@@ -85,8 +100,10 @@ object LedgerPalette {
         accent = Color(0xFF2563EB),
         accentPressed = Color(0xFF1D4FD7),
         onAccent = Color(0xFFFFFFFF),
-        heroStart = Color(0xFF2563EB),
-        heroEnd = Color(0xFF1D4FD7),
+        // Hero 改为纯 surface（无渐变）；onHero 暂留浅色，待 HomeScreen 去掉 GlassSurface
+        // 改用实心 surface 后再换成 text（页面层改动，不在本次 token 修正范围）。
+        heroStart = Color(0xE6FFFFFF),
+        heroEnd = Color(0xE6FFFFFF),
         onHero = Color(0xFFFFFFFF),
         income = Color(0xFF0B8A5F),
         danger = Color(0xFFDC2626),
@@ -94,8 +111,8 @@ object LedgerPalette {
         chart1 = Color(0xFF2563EB),
         chart2 = Color(0xFF0B8A5F),
         chart3 = Color(0xFFF59E0B),
-        chart4 = Color(0xFF8B5CF6),
-        chart5 = Color(0xFF06B6D4),
+        chart4 = Color(0xFF0891B2),
+        chart5 = Color(0xFFDB2777),
         chart6 = Color(0xFFEF4444),
     )
 
@@ -110,7 +127,9 @@ object LedgerPalette {
         surface = Color(0xCC141A21),
         surfaceVariant = Color(0x33FFFFFF),
         inset = Color(0x22FFFFFF),
-        border = Color(0x33FFFFFF),
+        surfacePressed = Color(0xFF1C242E),
+        border = Color(0x62FFFFFF),
+        borderSoft = Color(0x33FFFFFF),
         divider = Color(0x1FFFFFFF),
         scrim = Color(0xB30B1220),
         text = Color(0xFFE8EDF3),
@@ -119,10 +138,9 @@ object LedgerPalette {
         accent = Color(0xFF6D9BFF),
         accentPressed = Color(0xFF5A88F0),
         onAccent = Color(0xFF06101F),
-        // 深色下 Hero 用深海军蓝渐变（与近黑页面同族、略带蓝调），文字用浅色，
-        // 不再用「亮蓝大色块 + 深色字」，避免深色模式里一块刺眼的浅蓝。
-        heroStart = Color(0xFF22335A),
-        heroEnd = Color(0xFF141C2E),
+        // 纯 surface 实心 Hero（无渐变）；onHero 暂留浅色，待页面改实心 surface 后换 text。
+        heroStart = Color(0xCC141A21),
+        heroEnd = Color(0xCC141A21),
         onHero = Color(0xFFE8EDF3),
         income = Color(0xFF34D399),
         danger = Color(0xFFF87171),
@@ -130,8 +148,8 @@ object LedgerPalette {
         chart1 = Color(0xFF6D9BFF),
         chart2 = Color(0xFF34D399),
         chart3 = Color(0xFFFBBF24),
-        chart4 = Color(0xFFA78BFA),
-        chart5 = Color(0xFF22D3EE),
+        chart4 = Color(0xFF22D3EE),
+        chart5 = Color(0xFFF472B6),
         chart6 = Color(0xFFF87171),
     )
 

@@ -23,8 +23,27 @@ data class ReportAggregate(
 
 object ReportRepository {
 
+    /**
+     * 预算周期起点：把「自然月」换成「起始日 ~ 次月起始日前一天」。
+     *
+     * [startDay] = 1 时就是自然月（行为与改动前完全一致）；
+     * = 25 时表示「上月 25 日 ~ 本月 24 日」。[offset] 为往前推的月数。
+     */
+    private fun budgetMonthStart(now: Calendar, startDay: Int, offset: Int): Calendar {
+        val day = startDay.coerceIn(1, 28)
+        val today = now.clone() as Calendar
+        val start = (today.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            set(Calendar.DAY_OF_MONTH, day)
+            // 今天还没到起始日 → 当前周期属于上个月开始的
+            if (today.get(Calendar.DAY_OF_MONTH) < day) add(Calendar.MONTH, -1)
+            add(Calendar.MONTH, -offset)
+        }
+        return start
+    }
+
     /** 与 observe 相同的周期口径，供明细钻取复用。 */
-    fun periodRange(tab: Int, offset: Int): Pair<Long, Long> {
+    fun periodRange(tab: Int, offset: Int, startDay: Int = 1): Pair<Long, Long> {
         val now = Calendar.getInstance()
         fun startOfWeek(base: Calendar): Calendar = (base.clone() as Calendar).apply {
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
@@ -39,11 +58,7 @@ object ReportRepository {
                 periodEnd = (periodStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 7) }
             }
             1 -> {
-                periodStart = (now.clone() as Calendar).apply {
-                    set(Calendar.DAY_OF_MONTH, 1)
-                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-                    add(Calendar.MONTH, -offset)
-                }
+                periodStart = budgetMonthStart(now, startDay, offset)
                 periodEnd = (periodStart.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
             }
             else -> {
@@ -58,7 +73,13 @@ object ReportRepository {
         return Pair(periodStart.timeInMillis, periodEnd.timeInMillis)
     }
 
-    fun observe(context: Context, tab: Int, offset: Int, income: Boolean): Flow<ReportAggregate> {
+    fun observe(
+        context: Context,
+        tab: Int,
+        offset: Int,
+        income: Boolean,
+        startDay: Int = 1,
+    ): Flow<ReportAggregate> {
         val now = Calendar.getInstance()
         fun startOfWeek(base: Calendar): Calendar = (base.clone() as Calendar).apply {
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
@@ -78,11 +99,7 @@ object ReportRepository {
                 prevEnd = periodStart
             }
             1 -> {
-                periodStart = (now.clone() as Calendar).apply {
-                    set(Calendar.DAY_OF_MONTH, 1)
-                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-                    add(Calendar.MONTH, -offset)
-                }
+                periodStart = budgetMonthStart(now, startDay, offset)
                 periodEnd = (periodStart.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
                 prevStart = (periodStart.clone() as Calendar).apply { add(Calendar.MONTH, -1) }
                 prevEnd = periodStart
@@ -105,14 +122,24 @@ object ReportRepository {
                 val end = (periodEnd.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
                 "${fmt.format(periodStart.time)}～${SimpleDateFormat("MM.dd", Locale.CHINA).format(end.time)}"
             }
-            1 -> SimpleDateFormat("yyyy年M月", Locale.CHINA).format(periodStart.time)
+            1 -> {
+                val fmt = SimpleDateFormat("yyyy.MM.dd", Locale.CHINA)
+                val end = (periodEnd.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+                if (startDay == 1) {
+                    SimpleDateFormat("yyyy年M月", Locale.CHINA).format(periodStart.time)
+                } else {
+                    // 起始日非 1：必须写出真实区间，否则用户会以为这是自然月数据
+                    "${fmt.format(periodStart.time)}～${SimpleDateFormat("MM.dd", Locale.CHINA).format(end.time)}"
+                }
+            }
             else -> SimpleDateFormat("yyyy年", Locale.CHINA).format(periodStart.time)
         }
         val periodName = when (tab) { 0 -> "本周"; 1 -> "本月"; else -> "本年" }
         val compareLabel = when (tab) { 0 -> "比上周"; 1 -> "比上月"; else -> "比去年" }
         val dayCount = when (tab) {
             0 -> 7
-            1 -> periodEnd.getActualMaximum(Calendar.DAY_OF_MONTH)
+            // 起始日非 1 时周期长度不是「本月天数」，按实际区间算，否则日均会失真
+            1 -> (((periodEnd.timeInMillis - periodStart.timeInMillis) / 86_400_000L).toInt()).coerceAtLeast(1)
             else -> if (periodEnd.get(Calendar.YEAR) % 4 == 0) 366 else 365
         }
 
@@ -126,14 +153,19 @@ object ReportRepository {
         val incomeFlag = if (income) 1 else 0
         val d = LedgerRepository.dao(context)
 
-        val totals = combine(
-            d.observeTotal(periodStart.timeInMillis, periodEnd.timeInMillis, incomeFlag),
-            d.observeTotal(prevStart.timeInMillis, prevEnd.timeInMillis, incomeFlag),
-            d.observeTotal(periodStart.timeInMillis, periodEnd.timeInMillis, 0),
-            d.observeTotal(periodStart.timeInMillis, periodEnd.timeInMillis, 1),
-        ) { current, previous, expense, incomeTotal ->
-            doubleArrayOf(current, previous, expense, incomeTotal)
-        }
+        // 4 条 observeTotal → 1 条 observeTotals：一次索引扫描取回本期/上期/支出/收入。
+        // 原来 4 个独立 Flow 各自订阅表变更，一次写库触发 4 次重查；现在只触发 1 次。
+        // outer 边界 = 两个区间的并集，让 SQLite 能用一次索引范围扫描覆盖两段
+        val cs = periodStart.timeInMillis
+        val ce = periodEnd.timeInMillis
+        val ps = prevStart.timeInMillis
+        val pe = prevEnd.timeInMillis
+        val totals = d.observeTotals(
+            cs = cs, ce = ce,
+            ps = ps, pe = pe,
+            outerStart = minOf(cs, ps), outerEnd = maxOf(ce, pe),
+            income = incomeFlag,
+        )
         val charts = combine(
             d.observeBuckets(trendFormat, periodStart.timeInMillis, periodEnd.timeInMillis, incomeFlag),
             d.observeBuckets(barsFormat, barsStart.timeInMillis, periodEnd.timeInMillis, incomeFlag),
@@ -145,10 +177,10 @@ object ReportRepository {
                 periodLabel = periodLabel,
                 periodName = periodName,
                 compareLabel = compareLabel,
-                total = t[0],
-                previousTotal = t[1],
-                expense = t[2],
-                income = t[3],
+                total = t.current,
+                previousTotal = t.previous,
+                expense = t.expense,
+                income = t.income,
                 trend = c.first,
                 bars = c.second,
                 categories = c.third,

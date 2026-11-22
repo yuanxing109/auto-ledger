@@ -1,9 +1,10 @@
 package com.eta.autoledger.settings
 
 import com.eta.autoledger.ui.LedgerTheme
-import com.eta.autoledger.ui.glass.glassHueDrag
-import com.eta.autoledger.ui.glass.GlassCard
-import com.eta.autoledger.ui.glass.GlassAmbience
+import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.window.LocalSnackbar
+import com.eta.autoledger.ui.theme.LedgerDimens
+import com.eta.autoledger.notification.IslandNotifier
 import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -27,7 +28,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -55,7 +55,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -87,7 +86,8 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import com.eta.autoledger.ui.glass.LiquidSwitchPreference as SwitchPreference
+import com.eta.autoledger.ui.components.AppDialog
+import com.eta.autoledger.ui.components.SwitchRow as SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.CategoryStore
@@ -99,24 +99,38 @@ import com.eta.autoledger.reminder.ReminderScheduler
 import com.eta.autoledger.service.LedgerNotificationListener
 import com.eta.autoledger.ui.theme.ThemeMode
 import com.eta.autoledger.widget.LedgerWidgetProvider
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 
 
 enum class SettingsPage(val title: String, val parent: SettingsPage?) {
     Main("设置", null),
+
+    // ── 一级：8 个 ──────────────────────────────────────────────
     Auto("自动记账", Main),
-    Notifications("记账通知", Main),
+    LedgerSettings("记账设置", Main),
+    Notifications("通知与提醒", Main),
+    DataBackup("数据与备份", Main),
+    AppearanceWidget("外观与小部件", Main),
+    Features("AI 与高级功能", Main),
+    SysAccess("权限与后台", Main),
+    About("关于", Main),
+
+    // ── 二级：挂在上面 8 个之下 ──────────────────────────────────
     DailyReminder("每日记账提醒", Notifications),
     SingleNotify("单笔自动记账通知", Notifications),
-    Categories("记账分类管理", Main),
-    Features("功能管理", Main),
-    Budget("预算管理", Main),
-    Import("导入数据", Main),
-    Export("导出数据", Main),
-    Widget("添加桌面小部件", Main),
-    Ai("AI 模型与自动化", Main),
-    SysAccess("系统权限与保活", Main),
-    Appearance("外观", Main),
-    Backup("云备份", Main),
+    Categories("记账分类管理", LedgerSettings),
+    Budget("预算管理", LedgerSettings),
+    Import("导入数据", DataBackup),
+    Export("导出数据", DataBackup),
+    Backup("云备份", DataBackup),
+    Appearance("外观", AppearanceWidget),
+    Widget("添加桌面小部件", AppearanceWidget),
+    Ai("AI 模型与自动化", Features),
+    ParseRules("高级解析设置", Auto),
 }
 
 @Composable
@@ -145,25 +159,37 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
                 .padding(padding),
         ) {
             when (page) {
+                // ── 一级 ──
                 SettingsPage.Main -> MainPage(onOpen = { page = it })
-                SettingsPage.SysAccess -> SystemAccessPage(prefs = prefs)
-                SettingsPage.Auto -> AutoPage(prefs = prefs, onImport = { page = SettingsPage.Import })
+                SettingsPage.Auto -> AutoPage(
+                    prefs = prefs,
+                    onImport = { page = SettingsPage.Import },
+                    onParseRules = { page = SettingsPage.ParseRules },
+                )
+                SettingsPage.ParseRules -> ParseRulesPage(prefs)
+                SettingsPage.LedgerSettings -> LedgerSettingsPage(onOpen = { page = it })
                 SettingsPage.Notifications -> NotificationsPage(
                     prefs = prefs,
                     onDaily = { page = SettingsPage.DailyReminder },
                     onSingle = { page = SettingsPage.SingleNotify },
                 )
+                SettingsPage.DataBackup -> DataBackupPage(onOpen = { page = it })
+                SettingsPage.AppearanceWidget -> AppearanceWidgetPage(prefs = prefs, onOpen = { page = it })
+                SettingsPage.Features -> FeaturesPage(prefs, onAi = { page = SettingsPage.Ai })
+                SettingsPage.SysAccess -> SystemAccessPage(prefs = prefs)
+                SettingsPage.About -> AboutPage()
+
+                // ── 二级 ──
                 SettingsPage.DailyReminder -> DailyReminderPage(prefs)
                 SettingsPage.SingleNotify -> SingleNotifyPage(prefs)
                 SettingsPage.Categories -> CategoriesPage()
-                SettingsPage.Features -> FeaturesPage(prefs, onAi = { page = SettingsPage.Ai })
-                SettingsPage.Budget -> BudgetPage(prefs, onDone = { page = SettingsPage.Main })
+                SettingsPage.Budget -> BudgetPage(prefs, onDone = { page = SettingsPage.LedgerSettings })
                 SettingsPage.Import -> ImportPage()
                 SettingsPage.Export -> ExportPage()
+                SettingsPage.Backup -> BackupPage(prefs = prefs)
+                SettingsPage.Appearance -> AppearancePage(prefs = prefs)
                 SettingsPage.Widget -> WidgetPage()
                 SettingsPage.Ai -> AiPage(prefs)
-                SettingsPage.Appearance -> AppearancePage(prefs = prefs)
-                SettingsPage.Backup -> BackupPage(prefs = prefs)
             }
         }
     }
@@ -185,49 +211,40 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
         }
         Text(
             text = title,
-            style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary),
+            style = MiuixTheme.textStyles.main.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary),
         )
     }
 }
 
 @Composable
 private fun SettingsAmbienceCard() {
-    val hue = GlassAmbience.hue
-    GlassCard(
-        modifier = Modifier.fillMaxWidth().glassHueDrag(),
-        veil = LedgerTheme.surface.copy(alpha = 0.45f),
-        contentPadding = PaddingValues(16.dp),
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, cardShape)
+            .padding(16.dp),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "氛围色", style = MiuixTheme.textStyles.title4, color = LedgerTheme.text, modifier = Modifier.weight(1f))
-                Text(text = "%.0f°".format(hue), style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+                Text(text = "品牌色", style = MiuixTheme.textStyles.title4, color = LedgerTheme.text, modifier = Modifier.weight(1f))
+                Text(text = "固定", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "横向拖动这条卡片，改变全局玻璃氛围色",
+                text = "全局强调色，用于主按钮、选中态与预算剩余。",
                 style = MiuixTheme.textStyles.footnote1,
                 color = LedgerTheme.textSecondary,
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(10.dp)
+                    .height(12.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                Color.hsv(0f, 0.6f, 0.9f),
-                                Color.hsv(60f, 0.6f, 0.9f),
-                                Color.hsv(120f, 0.6f, 0.9f),
-                                Color.hsv(180f, 0.6f, 0.9f),
-                                Color.hsv(240f, 0.6f, 0.9f),
-                                Color.hsv(300f, 0.6f, 0.9f),
-                                Color.hsv(360f, 0.6f, 0.9f),
-                            )
-                        )
-                    ),
+                    .background(LedgerTheme.accent),
             )
         }
     }
@@ -236,54 +253,176 @@ private fun SettingsAmbienceCard() {
 @Composable
 private fun MainPage(onOpen: (SettingsPage) -> Unit) {
     SettingsPageColumn {
+        // 品牌色卡片保留在首屏，但只作为视觉标识，不再是可点配置项。
         SettingsAmbienceCard()
+
+        // 高频：每天/每周都会碰的三件事
         SettingsCard {
-            ArrowPreference(title = "自动记账", summary = "读取收支信息，自动生成账单", onClick = { onOpen(SettingsPage.Auto) })
-            RowDivider()
-            ArrowPreference(title = "记账通知", summary = "每日提醒、周期账单与单笔通知", onClick = { onOpen(SettingsPage.Notifications) })
-            RowDivider()
-            ArrowPreference(title = "记账分类管理", summary = "管理支出、收入和其他分类", onClick = { onOpen(SettingsPage.Categories) })
+            ArrowPreference(
+                title = "自动记账",
+                summary = "读取收支信息，自动生成账单",
+                onClick = { onOpen(SettingsPage.Auto) },
+            )
             RowDivider()
             ArrowPreference(
-                title = "外观",
-                summary = "跟随系统 / 浅色 / 深色",
-                onClick = { onOpen(SettingsPage.Appearance) },
+                title = "记账设置",
+                summary = "分类管理与预算",
+                onClick = { onOpen(SettingsPage.LedgerSettings) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "通知与提醒",
+                summary = "每日提醒、周期账单与单笔通知",
+                onClick = { onOpen(SettingsPage.Notifications) },
+            )
+        }
+
+        // 中频：数据的进出与存档
+        SettingsCard {
+            ArrowPreference(
+                title = "数据与备份",
+                summary = "导入、导出与 WebDAV 云备份",
+                onClick = { onOpen(SettingsPage.DataBackup) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "外观与小部件",
+                summary = "主题模式与桌面收支卡片",
+                onClick = { onOpen(SettingsPage.AppearanceWidget) },
+            )
+        }
+
+        // 低频：装完设一次
+        SettingsCard {
+            ArrowPreference(
+                title = "AI 与高级功能",
+                summary = "截屏记账、AI 识图与模型配置",
+                onClick = { onOpen(SettingsPage.Features) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "权限与后台",
+                summary = "通知使用权、电池白名单、通知渠道与数据清理",
+                onClick = { onOpen(SettingsPage.SysAccess) },
+            )
+        }
+
+        SettingsCard {
+            ArrowPreference(
+                title = "关于",
+                summary = "版本信息、开源许可与安全设置",
+                onClick = { onOpen(SettingsPage.About) },
+            )
+        }
+    }
+}
+
+/** 「记账设置」分组页：分类 + 预算。 */
+@Composable
+private fun LedgerSettingsPage(onOpen: (SettingsPage) -> Unit) {
+    SettingsPageColumn {
+        SettingsCard {
+            ArrowPreference(
+                title = "记账分类管理",
+                summary = "管理支出、收入和其他分类",
+                onClick = { onOpen(SettingsPage.Categories) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "预算管理",
+                summary = "预算金额与起始日",
+                onClick = { onOpen(SettingsPage.Budget) },
+            )
+        }
+        HintText("分类决定自动记账时账单被归到哪里；预算只影响首页预算卡片。")
+    }
+}
+
+/** 「数据与备份」分组页：导入 / 导出 / 云备份。 */
+@Composable
+private fun DataBackupPage(onOpen: (SettingsPage) -> Unit) {
+    SettingsPageColumn {
+        SettingsCard {
+            ArrowPreference(
+                title = "导入数据",
+                summary = "支持 Excel / CSV 账单",
+                onClick = { onOpen(SettingsPage.Import) },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "导出数据",
+                summary = "导出 CSV / XLSX 账单文件",
+                onClick = { onOpen(SettingsPage.Export) },
             )
         }
         SettingsCard {
-            ArrowPreference(
-                title = "系统权限与保活",
-                summary = "通知使用权、短信权限、电池白名单与通知渠道状态",
-                onClick = { onOpen(SettingsPage.SysAccess) },
-            )
-            RowDivider()
             ArrowPreference(
                 title = "云备份",
                 summary = "备份到 WebDAV（坚果云 / 群晖等），换机可恢复",
                 onClick = { onOpen(SettingsPage.Backup) },
             )
         }
+        HintText("导入用于把别的 App 的账单搬进来；云备份用于换机和防丢。")
+    }
+}
+
+/** 「外观与小部件」分组页：主题 + 桌面小部件。 */
+@Composable
+private fun AppearanceWidgetPage(prefs: AppPrefs, onOpen: (SettingsPage) -> Unit) {
+    SettingsPageColumn {
         SettingsCard {
-            ArrowPreference(title = "功能管理", summary = "小部件、截屏记账与通知权限", onClick = { onOpen(SettingsPage.Features) })
+            ArrowPreference(
+                title = "外观",
+                summary = when (prefs.themeMode) {
+                    "light" -> "浅色"
+                    "dark" -> "深色"
+                    else -> "跟随系统"
+                },
+                onClick = { onOpen(SettingsPage.Appearance) },
+            )
             RowDivider()
-            ArrowPreference(title = "预算管理", summary = "设置预算金额、周期与提醒", onClick = { onOpen(SettingsPage.Budget) })
-        }
-        SettingsCard {
-            ArrowPreference(title = "导入数据", summary = "支持 Excel / CSV 账单", onClick = { onOpen(SettingsPage.Import) })
-            RowDivider()
-ArrowPreference(title = "导出数据", summary = "导出 CSV / XLSX 账单文件", onClick = { onOpen(SettingsPage.Export) })
-        }
-        SettingsCard {
-            ArrowPreference(title = "添加桌面小部件", summary = "在桌面展示今日与本月收支", onClick = { onOpen(SettingsPage.Widget) })
-        }
-        SettingsCard {
-            ArrowPreference(title = "AI 模型与自动化", summary = "配置本地/第三方大模型，用于识图记账", onClick = { onOpen(SettingsPage.Ai) })
+            ArrowPreference(
+                title = "添加桌面小部件",
+                summary = "在桌面展示今日与本月收支",
+                onClick = { onOpen(SettingsPage.Widget) },
+            )
         }
     }
 }
 
+/** 「关于」页：版本 + 许可 + 数据说明。 */
 @Composable
-private fun AutoPage(prefs: AppPrefs, onImport: () -> Unit) {
+private fun AboutPage() {
+    val context = LocalContext.current
+    val versionName = remember {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: "—"
+    }
+    SettingsPageColumn {
+        SettingsCard {
+            InfoRow(title = "版本", value = versionName)
+            RowDivider()
+            InfoRow(title = "包名", value = context.packageName)
+        }
+        SettingsCard {
+            InfoRow(title = "开源许可", value = "Miuix · Compose · Room · Vico")
+        }
+        HintText(
+            "隐私说明：账目、分类、预算、周期账单全部存放在本机数据库，本 App 不设服务器、不做账号体系、不上传统计数据。\n" +
+                "以下两种情况才会产生网络请求，且只发往你自己填写的地址：\n" +
+                "1）配置 AI 模型后使用识图记账，截图会发给你选的模型服务商；\n" +
+                "2）配置 WebDAV 后手动备份或恢复，账目 JSON 会发给你填的网盘。\n" +
+                "卸载 App 或清除应用数据会一并删除本机账目，建议先导出或备份。",
+        )
+    }
+}
+
+@Composable
+private fun AutoPage(prefs: AppPrefs, onImport: () -> Unit, onParseRules: () -> Unit) {
+    val snackbar = LocalSnackbar.current
+    val scope = rememberCoroutineScope()
+
     val context = LocalContext.current
     val ledgerListenerGranted = LedgerNotificationListener.isEnabled(context)
     // 短信是危险权限，开关只是偏好，真正能不能收到广播看 RECEIVE_SMS 有没有授予
@@ -294,7 +433,7 @@ private fun AutoPage(prefs: AppPrefs, onImport: () -> Unit) {
         smsGranted = granted
         prefs.smsEnabled = granted
         if (!granted) {
-            Toast.makeText(context, "未授予短信权限，短信记账不会生效", Toast.LENGTH_SHORT).show()
+            scope.launch { snackbar.show("未授予短信权限，短信记账不会生效") }
         }
     }
     SettingsPageColumn {
@@ -351,12 +490,30 @@ private fun AutoPage(prefs: AppPrefs, onImport: () -> Unit) {
         SettingsCard {
             ArrowPreference(title = "账单导入", summary = "手动导入微信、支付宝账单", onClick = onImport)
         }
+        SettingsCard {
+            ArrowPreference(
+                title = "高级解析设置",
+                summary = "自定义拦截词与强制认账词（${prefs.ignoreKeywords.size} 拦 / ${prefs.forceKeywords.size} 认）",
+                onClick = onParseRules,
+            )
+        }
     }
 }
 
 @Composable
 private fun NotificationsPage(prefs: AppPrefs, onDaily: () -> Unit, onSingle: () -> Unit) {
     val context = LocalContext.current
+    var refresh by remember { mutableStateOf(0) }
+    val canPromote = remember(refresh) { IslandNotifier.canPostPromoted(context) }
+    fun islandSummary(): String {
+        val v = IslandNotifier.vendorLabel(IslandNotifier.vendor())
+        return if (IslandNotifier.supportsLiveUpdates()) "$v · 实况胶囊（免业务ID）" else "$v · 系统版本较低"
+    }
+    fun promoteSummary(): String = when {
+        !IslandNotifier.supportsLiveUpdates() -> "系统版本较低，仅普通通知"
+        canPromote -> "已授权提升；能否上岛由系统决定"
+        else -> "未开启，点这里去系统里打开「实时更新 / 焦点通知」"
+    }
     SettingsPageColumn {
         SettingsCard {
             ArrowPreference(title = "每日记账提醒", summary = prefs.reminderTime, onClick = onDaily)
@@ -395,6 +552,60 @@ private fun NotificationsPage(prefs: AppPrefs, onDaily: () -> Unit, onSingle: ()
         SettingsCard {
             ArrowPreference(title = "单笔自动记账通知", summary = "生成自动账单时的提醒方式", onClick = onSingle)
         }
+        SettingsCard {
+            ArrowPreference(
+                title = "立即发送测试提醒",
+                summary = "在前台发一条实况通知，验证是否上岛",
+                onClick = {
+                    IslandNotifier.deliver(
+                        context,
+                        IslandNotifier.Spec(
+                            id = 2099,
+                            title = "每日记账提醒",
+                            text = "今天共 2 笔：支出 ¥31.50 · 收入 ¥0.00",
+                            critical = "记账 2 笔",
+                            channelId = "ledger_island_test",
+                            channelName = "实况测试",
+                            ongoing = true,
+                            enableVendorIsland = true,
+                        ),
+                    )
+                },
+            )
+            RowDivider()
+            ArrowPreference(
+                title = "实况上岛权限",
+                summary = promoteSummary(),
+                onClick = {
+                    if (IslandNotifier.supportsLiveUpdates() && !canPromote) {
+                        val ok = runCatching {
+                            context.startActivity(
+                                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS)
+                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }.isSuccess
+                        if (!ok) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        }
+                        refresh++
+                    }
+                },
+            )
+            RowDivider()
+            SwitchPreference(
+                title = "超级岛 / 实况提醒",
+                summary = islandSummary(),
+                checked = prefs.islandLiveUpdates,
+                onCheckedChange = { prefs.islandLiveUpdates = it },
+            )
+        }
     }
 }
 
@@ -424,27 +635,9 @@ private fun DailyReminderPage(prefs: AppPrefs) {
         SettingsCard {
             SwitchPreference(
                 title = "超级岛提醒",
+                summary = "每日提醒以实况通知呈现",
                 checked = prefs.islandDaily,
                 onCheckedChange = { prefs.islandDaily = it },
-            )
-            RowDivider()
-            SwitchPreference(
-                title = "日历提醒",
-                checked = prefs.calendarDaily,
-                onCheckedChange = { prefs.calendarDaily = it },
-            )
-            RowDivider()
-            SwitchPreference(
-                title = "不提示",
-                summary = "取消所有每日提醒",
-                checked = prefs.dailyMuted,
-                onCheckedChange = {
-                    prefs.dailyMuted = it
-                    if (it) {
-                        prefs.islandDaily = false
-                        prefs.calendarDaily = false
-                    }
-                },
             )
         }
     }
@@ -583,11 +776,11 @@ private fun CategorySection(
 ) {
     Text(
         text = title,
-        style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary),
+        style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary),
         modifier = Modifier.padding(start = 4.dp, top = 4.dp),
     )
     SettingsCard {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
             val cells = items + ManagedCategory("添加", AccentBlue, "+")
             cells.chunked(5).forEachIndexed { rowIndex, rowItems ->
                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -601,7 +794,7 @@ private fun CategorySection(
                     }
                     repeat(5 - rowItems.size) { Spacer(Modifier.weight(1f)) }
                 }
-                if (rowIndex != cells.chunked(5).lastIndex) Spacer(Modifier.height(10.dp))
+                if (rowIndex != cells.chunked(5).lastIndex) Spacer(Modifier.height(12.dp))
             }
         }
     }
@@ -627,7 +820,7 @@ private fun CategoryManageCell(
             Box(
                 modifier = Modifier
                     .size(36.dp)
-                    .clip(RoundedCornerShape(11.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(if (isAdd) AccentBlue.copy(alpha = 0.22f) else item.color.copy(alpha = 0.32f)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -641,7 +834,7 @@ private fun CategoryManageCell(
         Spacer(Modifier.height(4.dp))
         Text(
             text = item.name,
-            style = TextStyle(fontSize = 10.sp, color = TextSecondary),
+            style =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
             textAlign = TextAlign.Center,
         )
     }
@@ -691,13 +884,13 @@ private fun CategoryEditDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 32.dp)
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(LocalDimens.current.radiusSheet))
                 .background(LedgerTheme.card)
-                .padding(20.dp),
+                .padding(16.dp),
         ) {
             Column {
-                Text(text = title, style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary))
-                Spacer(Modifier.height(14.dp))
+                Text(text = title, style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
+                Spacer(Modifier.height(16.dp))
                 BasicTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -705,47 +898,47 @@ private fun CategoryEditDialog(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(LedgerTheme.inset)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
                     singleLine = true,
-                    textStyle = TextStyle(fontSize = 14.sp, color = TextPrimary),
+                    textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
                     cursorBrush = SolidColor(AccentBlue),
                     decorationBox = { inner ->
                         Box {
-                            if (name.isEmpty()) Text("分类名称", style = TextStyle(fontSize = 14.sp, color = TextSecondary))
+                            if (name.isEmpty()) Text("分类名称", style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
                             inner()
                         }
                     },
                 )
-                Spacer(Modifier.height(18.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (onDelete != null) {
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(42.dp)
+                                .height(48.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(LedgerTheme.tint(LedgerTheme.danger))
                                 .clickable(onClick = onDelete),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("删除", style = TextStyle(fontSize = 13.sp, color = LedgerTheme.danger))
+                            Text("删除", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.danger))
                         }
                     }
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(42.dp)
+                            .height(48.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(LedgerTheme.inset)
                             .clickable(onClick = onDismiss),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("取消", style = TextStyle(fontSize = 13.sp, color = TextSecondary))
+                        Text("取消", style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
                     }
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(42.dp)
+                            .height(48.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(AccentBlue)
                             .clickable {
@@ -753,7 +946,7 @@ private fun CategoryEditDialog(
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("保存", style = TextStyle(fontSize = 13.sp, color = LedgerTheme.onAccent))
+                        Text("保存", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.onAccent))
                     }
                 }
             }
@@ -763,18 +956,21 @@ private fun CategoryEditDialog(
 
 @Composable
 private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
+    val snackbar = LocalSnackbar.current
+    val scope = rememberCoroutineScope()
+
     val context = LocalContext.current
     var amount by remember { mutableStateOf(prefs.budgetAmount) }
-    var startDate by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Calendar.getInstance().time)) }
+    var showStartDayPicker by remember { mutableStateOf(false) }
 
     SettingsPageColumn {
         SettingsCard {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("预算金额", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("¥", style = TextStyle(fontSize = 22.sp, color = TextPrimary))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(8.dp))
                     BasicTextField(
                         value = amount,
                         onValueChange = { amount = it },
@@ -787,51 +983,11 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
             }
         }
         SettingsCard {
+            // 预算起始日：发薪日不是 1 号时，本月 = 起始日 ~ 次月起始日前一天
             ArrowPreference(
-                title = "开始时间",
-                summary = startDate,
-                onClick = {
-                    val c = Calendar.getInstance()
-                    DatePickerDialog(context, { _, y, m, d ->
-                        startDate = "%04d-%02d-%02d".format(y, m + 1, d)
-                    }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
-                },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "重复周期",
-                summary = prefs.budgetRepeat,
-                onClick = {
-                    prefs.budgetRepeat = when (prefs.budgetRepeat) {
-                        "每周" -> "每月"
-                        "每月" -> "每年"
-                        else -> "每周"
-                    }
-                },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "结束方式",
-                summary = prefs.budgetEnd,
-                onClick = {
-                    prefs.budgetEnd = when (prefs.budgetEnd) {
-                        "永不结束" -> "按日期结束"
-                        "按日期结束" -> "按次数结束"
-                        else -> "永不结束"
-                    }
-                },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "预算提醒",
-                summary = "剩余 ${prefs.budgetReminder}%",
-                onClick = {
-                    prefs.budgetReminder = when (prefs.budgetReminder) {
-                        80 -> 50
-                        50 -> 20
-                        else -> 80
-                    }
-                },
+                title = "预算起始日",
+                summary = "${prefs.budgetStartDay} 日" + if (prefs.budgetStartDay == 1) "（自然月）" else "",
+                onClick = { showStartDayPicker = true },
             )
         }
         SettingsCard {
@@ -849,28 +1005,107 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(46.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
                     .background(LedgerTheme.inset)
                     .clickable(onClick = onDone),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("取消", style = TextStyle(fontSize = 14.sp, color = TextSecondary))
+                Text("取消", style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
             }
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(46.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
                     .background(AccentBlue)
                     .clickable {
                         prefs.budgetAmount = amount
-                        Toast.makeText(context, "预算已保存", Toast.LENGTH_SHORT).show()
+                        scope.launch { snackbar.show("预算已保存") }
                         onDone()
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                Text("保存", style = TextStyle(fontSize = 14.sp, color = LedgerTheme.onAccent))
+                Text("保存", style = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.onAccent))
+            }
+        }
+    }
+
+    if (showStartDayPicker) {
+        StartDayPickerDialog(
+            selected = prefs.budgetStartDay,
+            onDismiss = { showStartDayPicker = false },
+            onPick = { day ->
+                prefs.budgetStartDay = day
+                showStartDayPicker = false
+            },
+        )
+    }
+}
+
+/**
+ * 预算起始日选择器：7 列 × 4 行网格，1..28 全部可选。
+ *
+ * 为什么是 28 上限：29/30/31 在 2 月不存在，会让预算周期边界漂移甚至跳过整月。
+ * 为什么用网格而不是循环点击：原来点一下 +1，改到 28 号要点 27 下。
+ */
+@Composable
+private fun StartDayPickerDialog(
+    selected: Int,
+    onDismiss: () -> Unit,
+    onPick: (Int) -> Unit,
+) {
+    AppDialog(title = "预算起始日", onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "选发薪日；预算周期 = 该日 ~ 次月该日前一天。1 号即自然月。",
+                style = MiuixTheme.textStyles.footnote1,
+                color = LedgerTheme.textSecondary,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            // 7 列 × 4 行 = 28 天
+            for (row in 0 until 4) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (col in 0 until 7) {
+                        val day = row * 7 + col + 1
+                        val isSelected = day == selected
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) LedgerTheme.accent else LedgerTheme.inset)
+                                .clickable { onPick(day) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = day.toString(),
+                                style = MiuixTheme.textStyles.body2.copy(
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (isSelected) LedgerTheme.onAccent else LedgerTheme.text,
+                                ),
+                            )
+                        }
+                    }
+                }
+                if (row < 3) Spacer(Modifier.height(8.dp))
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(LedgerTheme.inset)
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("取消", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
             }
         }
     }
@@ -878,11 +1113,14 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
 
 @Composable
 private fun ImportPage() {
+    val snackbar = LocalSnackbar.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // 教程卡：原本 3 个 onClick 都是空实现（点了没反应）。改为弹出说明对话框。
+    var guideFor by remember { mutableStateOf<String?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
-            Toast.makeText(context, "正在导入，请稍候…", Toast.LENGTH_SHORT).show()
+            scope.launch { snackbar.show("正在导入，请稍候…") }
             scope.launch {
                 // 解析任意用户文件，畸形 CSV/XLSX/编码异常都可能抛异常，必须兜住否则直接崩溃
                 val result = withContext(Dispatchers.IO) {
@@ -899,24 +1137,24 @@ private fun ImportPage() {
                     }
                 }
                 result.onSuccess { count ->
-                    Toast.makeText(context, "导入完成：新增 $count 笔，重复记录已跳过", Toast.LENGTH_SHORT).show()
+                    scope.launch { snackbar.show("导入完成：新增 $count 笔，重复记录已跳过") }
                 }.onFailure { e ->
-                    Toast.makeText(context, "导入失败：文件格式无法识别（${e.message ?: "解析错误"}）", Toast.LENGTH_LONG).show()
+                    scope.launch { snackbar.showLong("导入失败：文件格式无法识别（${e.message ?: "解析错误"}）") }
                 }
             }
         }
     }
     SettingsPageColumn {
         HintText("支持导入 Excel / CSV 格式，推荐单次 1MB 以内。")
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ImportPlatformCard("微信", "账单导入教程", Modifier.weight(1f)) {
-                Toast.makeText(context, "微信账单导入教程", Toast.LENGTH_SHORT).show()
+                guideFor = "微信"
             }
             ImportPlatformCard("支付宝", "账单导入教程", Modifier.weight(1f)) {
-                Toast.makeText(context, "支付宝账单导入教程", Toast.LENGTH_SHORT).show()
+                guideFor = "支付宝"
             }
             ImportPlatformCard("其他平台", "通用导入教程", Modifier.weight(1f)) {
-                Toast.makeText(context, "通用导入教程", Toast.LENGTH_SHORT).show()
+                guideFor = "其他平台"
             }
         }
         Box(
@@ -933,21 +1171,60 @@ private fun ImportPage() {
             Text("本地文件导入", style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
         }
     }
+
+    // 教程卡说明对话框：给出可执行的导出路径，而不是一句空提示。
+    guideFor?.let { platform ->
+        val steps = when (platform) {
+            "微信" -> "微信 → 我 → 服务 → 钱包 → 账单 → 右上角「常见问题」→「下载账单」→ 选「用于个人对账」→ 填邮箱收 CSV"
+            "支付宝" -> "支付宝 → 我的 → 账单 → 右上角「⋯」→「开具交易流水证明」→ 选「用于个人对账」→ 填邮箱收 CSV"
+            else -> "各银行/电商 App 一般在「我的 → 账单 / 订单」里提供导出或邮件发送 CSV/Excel；" +
+                    "也可以在对应 App 内搜索「账单导出」查看官方指引。"
+        }
+        Dialog(onDismissRequest = { guideFor = null }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(LocalDimens.current.radiusSheet))
+                    .background(LedgerTheme.surface)
+                    .border(1.dp, LedgerTheme.borderSoft, RoundedCornerShape(LocalDimens.current.radiusSheet))
+                    .padding(20.dp),
+            ) {
+                Column {
+                    Text("$platform 账单导出", style = MiuixTheme.textStyles.title4, color = LedgerTheme.text)
+                    Spacer(Modifier.height(10.dp))
+                    Text(steps, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+                    Spacer(Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(LedgerTheme.accent)
+                            .clickable { guideFor = null },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("知道了", style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun ImportPlatformCard(title: String, summary: String, modifier: Modifier, onClick: () -> Unit) {
     Card(
         modifier = modifier
-            .shadow(3.dp, RoundedCornerShape(16.dp), clip = false)
-            .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
+            .shadow(4.dp, RoundedCornerShape(16.dp), clip = false)
+            .border(1.dp, LedgerTheme.border, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
         cornerRadius = 16.dp,
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(title, style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary))
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(title, style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
             Spacer(Modifier.height(4.dp))
-            Text(summary, style = TextStyle(fontSize = 11.sp, color = TextSecondary))
+            Text(summary, style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary))
         }
     }
 }
@@ -955,9 +1232,6 @@ private fun ImportPlatformCard(title: String, summary: String, modifier: Modifie
 /** 导出格式：CSV / XLSX 共用同一份筛选结果，只是编码器不同。 */
 @Composable
 private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var showClearConfirm by remember { mutableStateOf(false) }
     SettingsPageColumn {
         SettingsCard {
             SwitchPreference(
@@ -968,72 +1242,14 @@ private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
             )
             RowDivider()
             ArrowPreference(title = "AI 模型与自动化", summary = "配置模型、Key 与 Prompt", onClick = onAi)
-            RowDivider()
-            ArrowPreference(
-                title = "通知使用权",
-                summary = if (LedgerNotificationListener.isEnabled(context)) "已开启，正在监听账单通知" else "未开启，点击授予通知使用权",
-                onClick = { LedgerNotificationListener.openSettings(context) },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "无障碍截图（可选）",
-                summary = if (com.eta.autoledger.screenshot.ScreenshotAccessibilityService.isEnabled()) "已开启，可直接截屏" else "开启后无需 Root/录屏授权即可截屏",
-                onClick = {
-                    runCatching {
-                        context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }
-                },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "清空记账数据",
-                summary = "删除全部账目，操作不可恢复",
-                onClick = { showClearConfirm = true },
-            )
         }
-    }
-
-    if (showClearConfirm) {
-        Dialog(onDismissRequest = { showClearConfirm = false }) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 28.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(LedgerTheme.card)
-                    .padding(20.dp),
-            ) {
-                Column {
-                    Text("清空所有账目？", style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary))
-                    Spacer(Modifier.height(8.dp))
-                    Text("该操作不可恢复，确定要删除全部记账数据吗？", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                    Spacer(Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box(
-                            modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(12.dp))
-                                .background(LedgerTheme.inset).clickable { showClearConfirm = false },
-                            contentAlignment = Alignment.Center,
-                        ) { Text("取消", style = TextStyle(fontSize = 13.sp, color = TextSecondary)) }
-                        Box(
-                            modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(12.dp))
-                                .background(LedgerTheme.tint(LedgerTheme.danger)).clickable {
-                                    scope.launch {
-                                        LedgerRepository.clear(context)
-                                    }
-                                    showClearConfirm = false
-                                    Toast.makeText(context, "已清空记账数据", Toast.LENGTH_SHORT).show()
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) { Text("清空", style = TextStyle(fontSize = 13.sp, color = LedgerTheme.danger)) }
-                    }
-                }
-            }
-        }
+        HintText("「清空记账数据」已移到「权限与后台」页底部，避免误触。")
     }
 }
 
 @Composable
 private fun AiPage(prefs: AppPrefs) {
+    val snackbar = LocalSnackbar.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var baseUrl by remember { mutableStateOf(prefs.aiBaseUrl) }
@@ -1047,31 +1263,86 @@ private fun AiPage(prefs: AppPrefs) {
     SettingsPageColumn {
         HintText("您的数据仅发送至您配置的本地/第三方大模型，本 App 不保存截图。")
 
+        // 预设服务商：选一个就把 Base URL 和默认模型名填好，只差一个 Key
+        SettingsCard {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("服务商预设", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+                Spacer(Modifier.height(10.dp))
+                AiPreset.entries.forEachIndexed { index, preset ->
+                    if (index > 0) Spacer(Modifier.height(8.dp))
+                    val selected = baseUrl.trimEnd('/') == preset.baseUrl.trimEnd('/')
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (selected) LedgerTheme.accent else LedgerTheme.inset)
+                            .clickable {
+                                baseUrl = preset.baseUrl
+                                if (model.isBlank() || AiPreset.entries.any { it.defaultModel == model }) {
+                                    model = preset.defaultModel
+                                }
+                                scope.launch {
+                                    snackbar.show(
+                                        if (preset.needsKey) "已填入 ${preset.label}，请补上 API Key"
+                                        else "已填入 ${preset.label}，本地服务无需 Key",
+                                    )
+                                }
+                            }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = preset.label,
+                                style = MiuixTheme.textStyles.body2.copy(
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (selected) LedgerTheme.onAccent else LedgerTheme.text,
+                                ),
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = preset.hint,
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = if (selected) LedgerTheme.onAccent else LedgerTheme.textSecondary,
+                            )
+                        }
+                        if (selected) {
+                            Text(
+                                text = "已选",
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = LedgerTheme.onAccent,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         SettingsCard {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("API URL / Base URL", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 SettingsInput(value = baseUrl, placeholder = "https://api.openai.com/v1", onValueChange = { baseUrl = it })
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
                 Text("API Key", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 SettingsInput(
                     value = key,
                     placeholder = "sk-...",
                     onValueChange = { key = it },
                     visualTransformation = PasswordVisualTransformation(),
                 )
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(42.dp)
+                            .height(48.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(AccentBlue)
                             .clickable {
                                 if (baseUrl.isBlank()) {
-                                    Toast.makeText(context, "请填写 Base URL", Toast.LENGTH_SHORT).show()
+                                    scope.launch { snackbar.show("请填写 Base URL") }
                                 } else {
                                     loading = true
                                     scope.launch {
@@ -1084,7 +1355,7 @@ private fun AiPage(prefs: AppPrefs) {
                                                 showModels = true
                                             }
                                         } else {
-                                            Toast.makeText(context, "获取失败：${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            scope.launch { snackbar.showLong("获取失败：${result.exceptionOrNull()?.message}") }
                                         }
                                     }
                                 }
@@ -1096,22 +1367,18 @@ private fun AiPage(prefs: AppPrefs) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(42.dp)
+                            .height(48.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(LedgerTheme.inset)
                             .clickable {
                                 if (baseUrl.isBlank() || model.isBlank()) {
-                                    Toast.makeText(context, "请先填写 URL 并选择模型", Toast.LENGTH_SHORT).show()
+                                    scope.launch { snackbar.show("请先填写 URL 并选择模型") }
                                 } else {
                                     loading = true
                                     scope.launch {
                                         val result = testConnection(baseUrl, key, model)
                                         loading = false
-                                        Toast.makeText(
-                                            context,
-                                            if (result.isSuccess) "连接成功" else "连接失败：${result.exceptionOrNull()?.message}",
-                                            Toast.LENGTH_LONG,
-                                        ).show()
+                                        snackbar.showLong(if (result.isSuccess) "连接成功" else "连接失败：${result.exceptionOrNull()?.message}")
                                     }
                                 }
                             },
@@ -1126,14 +1393,14 @@ private fun AiPage(prefs: AppPrefs) {
         SettingsCard {
             ArrowPreference(title = "Model Name", summary = model.ifEmpty { "尚未选择模型" }, onClick = {
                 if (models.isNotEmpty()) showModels = true
-                else Toast.makeText(context, "先获取模型列表", Toast.LENGTH_SHORT).show()
+                else scope.launch { snackbar.show("先获取模型列表") }
             })
         }
 
         SettingsCard {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Prompt 提示词", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 BasicTextField(
                     value = prompt,
                     onValueChange = { prompt = it },
@@ -1152,7 +1419,7 @@ private fun AiPage(prefs: AppPrefs) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp)
+                .height(LedgerDimens.minTouch)
                 .clip(RoundedCornerShape(16.dp))
                 .background(AccentBlue)
                 .clickable {
@@ -1160,11 +1427,11 @@ private fun AiPage(prefs: AppPrefs) {
                     prefs.aiKey = key
                     prefs.aiModel = model
                     prefs.aiPrompt = prompt
-                    Toast.makeText(context, "AI 配置已保存", Toast.LENGTH_SHORT).show()
+                    scope.launch { snackbar.show("AI 配置已保存") }
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Text("保存配置", style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
+            Text("保存配置", style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
         }
     }
 
@@ -1173,30 +1440,29 @@ private fun AiPage(prefs: AppPrefs) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 28.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(LocalDimens.current.radiusSheet))
                     .background(LedgerTheme.card)
                     .padding(16.dp),
             ) {
                 Column {
-                    Text("选择模型", style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary))
+                    Text("选择模型", style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
                     Spacer(Modifier.height(8.dp))
                     Column(modifier = Modifier.height(280.dp).verticalScroll(rememberScrollState())) {
                         models.forEach { name ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(12.dp))
                                     .clickable {
                                         model = name
                                         showModels = false
                                     }
-                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
                             ) {
                                 Text(
                                     text = name,
-                                    style = TextStyle(
-                                        fontSize = 13.sp,
+                                    style = MiuixTheme.textStyles.footnote1.copy(
                                         color = if (name == model) AccentBlue else TextPrimary,
                                     ),
                                 )
@@ -1225,12 +1491,12 @@ private fun SettingsInput(
             .background(LedgerTheme.inset)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         singleLine = true,
-        textStyle = TextStyle(fontSize = 14.sp, color = TextPrimary),
+        textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
         cursorBrush = SolidColor(AccentBlue),
         visualTransformation = visualTransformation,
         decorationBox = { inner ->
             Box {
-                if (value.isEmpty()) Text(placeholder, style = TextStyle(fontSize = 14.sp, color = TextSecondary))
+                if (value.isEmpty()) Text(placeholder, style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
                 inner()
             }
         },
@@ -1277,7 +1543,7 @@ private fun AppearancePage(prefs: AppPrefs) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { prefs.themeMode = entry.first }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -1294,7 +1560,7 @@ private fun AppearancePage(prefs: AppPrefs) {
                     if (prefs.themeMode == entry.first) {
                         Text(
                             text = "✓",
-                            style = TextStyle(fontSize = 16.sp, color = AccentBlue),
+                            style = MiuixTheme.textStyles.body1.copy(color = AccentBlue),
                         )
                     }
                 }
@@ -1306,6 +1572,8 @@ private fun AppearancePage(prefs: AppPrefs) {
 
 @Composable
 private fun BackupPage(prefs: AppPrefs) {
+    val snackbar = LocalSnackbar.current
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
@@ -1314,16 +1582,47 @@ private fun BackupPage(prefs: AppPrefs) {
     fun run(label: String, block: suspend () -> com.eta.autoledger.data.BackupRunner.Result) {
         if (busy) return
         busy = true
-        Toast.makeText(context, "$label…", Toast.LENGTH_SHORT).show()
+        scope.launch { snackbar.show("$label…") }
         scope.launch {
             val result = block()
             lastResult = prefs.davLastResult
-            Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+            snackbar.showLong(result.message)
             busy = false
         }
     }
 
     SettingsPageColumn {
+        // 快捷模板：小白不必自己去查 WebDAV 地址长什么样
+        SettingsCard {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("快捷模板", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    DavTemplateChip(
+                        title = "坚果云",
+                        selected = prefs.davUrl.startsWith("https://dav.jianguoyun.com"),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            prefs.davUrl = "https://dav.jianguoyun.com/dav/"
+                            scope.launch { snackbar.show("已填入坚果云地址，账号填邮箱、密码填应用密码") }
+                        },
+                    )
+                    DavTemplateChip(
+                        title = "群晖",
+                        selected = prefs.davUrl.contains(":5006"),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            prefs.davUrl = "https://你的域名:5006/auto-ledger"
+                            scope.launch { snackbar.show("请把「你的域名」换成实际地址，端口保持 5006") }
+                        },
+                    )
+                }
+            }
+        }
+
         SettingsCard {
             DavField(
                 label = "目录地址",
@@ -1370,7 +1669,7 @@ private fun BackupPage(prefs: AppPrefs) {
                 summary = "建目录 + 上传探针文件，验证地址与凭据",
                 onClick = {
                     if (busy) {
-                        Toast.makeText(context, "上一个操作还没结束", Toast.LENGTH_SHORT).show()
+                        scope.launch { snackbar.show("上一个操作还没结束") }
                     } else {
                         busy = true
                         scope.launch {
@@ -1383,7 +1682,7 @@ private fun BackupPage(prefs: AppPrefs) {
                                         .getOrElse { it.message ?: it.javaClass.simpleName }
                                 }
                             }
-                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                            snackbar.showLong(message)
                             busy = false
                         }
                     }
@@ -1401,23 +1700,8 @@ private fun BackupPage(prefs: AppPrefs) {
                     if (it) com.eta.autoledger.service.BackupJobService.schedule(context)
                 },
             )
-            RowDivider()
-            ArrowPreference(
-                title = "备份时刻",
-                summary = "建议设在夜间（实际执行受系统调度影响，可能顺延）",
-                onClick = {
-                    val parts = prefs.davAutoTime.split(":")
-                    val hour = parts.getOrNull(0)?.toIntOrNull() ?: 3
-                    val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                    TimePickerDialog(
-                        context,
-                        { _, h, m -> prefs.davAutoTime = "%02d:%02d".format(h, m) },
-                        hour,
-                        minute,
-                        true,
-                    ).show()
-                },
-            )
+            // 「备份时刻」已隐藏：BackupJobService 固定 6h 周期 + BackupRunner 20h 间隔判定，
+            // 从不读取 davAutoTime，该选项只是假配置。
             RowDivider()
             InfoRow(title = "上次结果", value = lastResult.ifBlank { "尚未备份" })
         }
@@ -1426,6 +1710,282 @@ private fun BackupPage(prefs: AppPrefs) {
             "坚果云：网页版「账户信息 → 安全选项 → 添加应用密码」，用那串密码填上面的「应用密码」。\n" +
                 "群晖：控制面板启用 WebDAV Server 后，地址填 https://你的域名:5006/备份目录。\n" +
                 "备份文件为 JSON（不是数据库文件），换机后先装 App，再点「从云端恢复」即可。",
+        )
+    }
+}
+
+/**
+ * 常见 OpenAI 兼容服务商预设。
+ *
+ * 只填 Base URL 与一个「大概率能跑」的默认模型名——模型名会随服务商更新换代，
+ * 所以填完仍然鼓励用户点「获取模型列表」做一次校正。
+ * 本地 Ollama 不需要 Key，[needsKey] 为 false，界面据此给出不同提示。
+ */
+private enum class AiPreset(
+    val label: String,
+    val hint: String,
+    val baseUrl: String,
+    val defaultModel: String,
+    val needsKey: Boolean,
+) {
+    DEEPSEEK(
+        label = "DeepSeek",
+        hint = "国内直连，价格低，识图需 deepseek-vl 系列",
+        baseUrl = "https://api.deepseek.com/v1",
+        defaultModel = "deepseek-chat",
+        needsKey = true,
+    ),
+    QWEN(
+        label = "通义千问",
+        hint = "阿里云百炼，需在控制台开通并建 Key",
+        baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        defaultModel = "qwen-vl-plus",
+        needsKey = true,
+    ),
+    OLLAMA(
+        label = "本地 Ollama",
+        hint = "电脑/手机本地跑，无需 Key，需填局域网 IP",
+        baseUrl = "http://127.0.0.1:11434/v1",
+        defaultModel = "llava",
+        needsKey = false,
+    ),
+}
+
+/** WebDAV 服务商快捷模板：选中态实心 accent，与分类 Chip 保持同一套视觉。 */
+/**
+ * 高级解析设置：用户自己维护「拦截词」与「强制认账词」。
+ *
+ * 规则优先级（与 NotificationRules.parseAs 一致）：
+ *   1. 命中强制认账词 → 无视拦截词，直接入账
+ *   2. 命中拦截词 → 丢弃，不生成账单
+ *   3. 都没命中 → 走内置规则
+ *
+ * 交互按「先看后改」设计：默认词以 Chip 展示，点 X 即删；下方输入框回车即加。
+ * 每次增删立刻写回 AppPrefs，没有「保存」按钮——设置项少，多一个确认步骤反而累。
+ */
+@Composable
+private fun ParseRulesPage(prefs: AppPrefs) {
+    val snackbar = LocalSnackbar.current
+    val scope = rememberCoroutineScope()
+
+    var ignoreInput by remember { mutableStateOf("") }
+    var forceInput by remember { mutableStateOf("") }
+
+    fun addKeyword(raw: String, current: Set<String>, onSet: (Set<String>) -> Unit, label: String) {
+        val word = raw.trim()
+        if (word.isEmpty()) return
+        if (current.contains(word)) {
+            scope.launch { snackbar.show("「$word」已在${label}里") }
+            return
+        }
+        onSet(current + word)
+    }
+
+    SettingsPageColumn {
+        HintText(
+            "当一条短信同时包含拦截词和认账词时，以认账词为准。\n" +
+                "例：「已支付」在认账词里，所以「花呗已支付 46.94 元」仍会入账。",
+        )
+
+        // ── 拦截词 ──────────────────────────────────────────────
+        SettingsCard {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "忽略（拦截）关键词",
+                    style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "短信里出现这些词就不记账。「下单」「先用后付」这类只是占额度、钱还没扣。",
+                    style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+                )
+                Spacer(Modifier.height(12.dp))
+                KeywordChips(
+                    words = prefs.ignoreKeywords,
+                    onRemove = { word -> prefs.ignoreKeywords = prefs.ignoreKeywords - word },
+                )
+                Spacer(Modifier.height(12.dp))
+                KeywordInput(
+                    value = ignoreInput,
+                    placeholder = "输入词语后回车添加，如「抖音月付」",
+                    onValueChange = { ignoreInput = it },
+                    onSubmit = {
+                        addKeyword(ignoreInput, prefs.ignoreKeywords, { prefs.ignoreKeywords = it }, "拦截词")
+                        ignoreInput = ""
+                    },
+                )
+            }
+        }
+
+        // ── 认账词 ──────────────────────────────────────────────
+        SettingsCard {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "强制认账关键词",
+                    style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "出现这些词就认定钱真的动了，即使同时命中拦截词也会入账。",
+                    style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+                )
+                Spacer(Modifier.height(12.dp))
+                KeywordChips(
+                    words = prefs.forceKeywords,
+                    onRemove = { word -> prefs.forceKeywords = prefs.forceKeywords - word },
+                )
+                Spacer(Modifier.height(12.dp))
+                KeywordInput(
+                    value = forceInput,
+                    placeholder = "输入词语后回车添加，如「扣费成功」",
+                    onValueChange = { forceInput = it },
+                    onSubmit = {
+                        addKeyword(forceInput, prefs.forceKeywords, { prefs.forceKeywords = it }, "认账词")
+                        forceInput = ""
+                    },
+                )
+            }
+        }
+
+        // ── 恢复默认 ────────────────────────────────────────────
+        SettingsCard {
+            ArrowPreference(
+                title = "恢复默认词库",
+                summary = "把两组词都还原成内置预设，你手动加的会被清掉",
+                onClick = {
+                    prefs.ignoreKeywords = AppPrefs.DEFAULT_IGNORE_KEYWORDS
+                    prefs.forceKeywords = AppPrefs.DEFAULT_FORCE_KEYWORDS
+                    scope.launch { snackbar.show("已恢复默认词库") }
+                },
+            )
+        }
+
+        HintText("修改即时生效，下一条短信或通知就会按新词库判断。")
+    }
+}
+
+/** 词条以可删除 Chip 展示，用 FlowRow 自动换行，词多也不会被挤出屏幕。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KeywordChips(words: Set<String>, onRemove: (String) -> Unit) {
+    if (words.isEmpty()) {
+        Text(
+            "还没有任何词，短信将完全走内置规则。",
+            style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary),
+        )
+        return
+    }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        words.forEach { word ->
+            val shape = RoundedCornerShape(50)
+            Row(
+                modifier = Modifier
+                    .clip(shape)
+                    .background(LedgerTheme.inset)
+                    .border(1.dp, LedgerTheme.borderSoft, shape)
+                    .clickable { onRemove(word) }
+                    .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    word,
+                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.text),
+                )
+                Spacer(Modifier.width(4.dp))
+                // 用 × 而不是图标：这行字太小，图标在这里认不出是「删除」
+                Text(
+                    "×",
+                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary),
+                )
+            }
+        }
+    }
+}
+
+/** 单行输入框，回车提交。 */
+@Composable
+private fun KeywordInput(
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(LedgerTheme.inset)
+            .border(1.dp, LedgerTheme.borderSoft, shape)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(
+                    placeholder,
+                    style = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.textTertiary),
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                textStyle = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.text),
+                cursorBrush = SolidColor(LedgerTheme.accent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        val enabled = value.isNotBlank()
+        Box(
+            modifier = Modifier
+                .height(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (enabled) LedgerTheme.accent else LedgerTheme.surfaceVariant)
+                .clickable(enabled = enabled, onClick = onSubmit)
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "添加",
+                style = MiuixTheme.textStyles.footnote1.copy(
+                    color = if (enabled) LedgerTheme.onAccent else LedgerTheme.textTertiary,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DavTemplateChip(
+    title: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier = modifier
+            .height(40.dp)
+            .clip(shape)
+            .background(if (selected) LedgerTheme.accent else LedgerTheme.inset)
+            .border(1.dp, if (selected) LedgerTheme.accent else LedgerTheme.borderSoft, shape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = title,
+            style = MiuixTheme.textStyles.footnote1.copy(
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) LedgerTheme.onAccent else LedgerTheme.text,
+            ),
         )
     }
 }
@@ -1439,19 +1999,19 @@ private fun DavField(
     secret: Boolean = false,
 ) {
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-        Text(text = label, style = TextStyle(fontSize = 13.sp, color = TextSecondary))
+        Text(text = label, style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
         Spacer(Modifier.height(6.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(LedgerTheme.inset)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             if (value.isEmpty()) {
                 Text(
                     text = hint,
-                    style = TextStyle(fontSize = 12.sp, color = LedgerTheme.textTertiary),
+                    style = TextStyle(fontSize = 12.sp, color = LedgerTheme.textSecondary),
                     maxLines = 1,
                 )
             }
@@ -1459,7 +2019,7 @@ private fun DavField(
                 value = value,
                 onValueChange = onChange,
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 13.sp, color = TextPrimary),
+                textStyle = MiuixTheme.textStyles.footnote1.copy(color = TextPrimary),
                 cursorBrush = SolidColor(AccentBlue),
                 visualTransformation = if (secret) {
                     androidx.compose.ui.text.input.PasswordVisualTransformation()

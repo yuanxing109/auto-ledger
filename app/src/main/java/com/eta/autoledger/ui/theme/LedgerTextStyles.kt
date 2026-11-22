@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.TextStyles
@@ -80,4 +81,5 @@ fun amountDisplayStyle(): TextStyle = MiuixTheme.textStyles.headline1.copy(
     lineHeight = 42.sp,
     fontWeight = FontWeight.Bold,
     fontFeatureSettings = "tnum",
+    textAlign = TextAlign.End,
 )

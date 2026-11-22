@@ -1,13 +1,22 @@
 package com.eta.autoledger.ui.screen
 
+import com.eta.autoledger.ui.model.DayGroupUi
+import com.eta.autoledger.ui.model.EntryUi
+import com.eta.autoledger.ui.model.entryCalendar
+import com.eta.autoledger.ui.model.groupEntries
+import com.eta.autoledger.ui.model.toEntryUi
 import com.eta.autoledger.ui.LedgerTheme
-import com.eta.autoledger.ui.glass.GlassDialog
-import com.eta.autoledger.ui.glass.GlassAmbience
-import com.eta.autoledger.ui.glass.GlassButton
-import com.eta.autoledger.ui.glass.GlassCard
-import com.eta.autoledger.ui.glass.GlassSurface
-import com.eta.autoledger.ui.glass.glassHueDrag
+import com.eta.autoledger.ui.window.LocalSnackbar
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.eta.autoledger.ui.LocalDimens
+import top.yukonga.miuix.kmp.icon.extended.Search
+import com.eta.autoledger.ui.components.AppDialog
+import com.eta.autoledger.ui.components.CategoryChip
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,6 +48,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -89,43 +99,13 @@ import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.viewmodel.HomeViewModel
 import com.eta.autoledger.data.LedgerRepository
 
-private val HeroStart: Color get() = LedgerTheme.heroStart
-private val HeroEnd: Color get() = LedgerTheme.heroEnd
 private val AccentBlue: Color get() = LedgerTheme.accent
-private val SourceSms: Color get() = LedgerTheme.chart5
-private val SourceWechat: Color get() = LedgerTheme.chart2
-private val SourceMeituan: Color get() = LedgerTheme.chart3
-private val SourceBank: Color get() = LedgerTheme.chart4
-private val White70: Color get() = LedgerTheme.onHero.copy(alpha = 0.72f)
-private val White20: Color get() = LedgerTheme.onHero.copy(alpha = 0.2f)
-private val White10: Color get() = LedgerTheme.onHero.copy(alpha = 0.1f)
-private val White05: Color get() = LedgerTheme.onHero.copy(alpha = 0.06f)
-
-private data class EntryUi(
-    val ledger: LedgerEntry,
-    val category: String,
-    val emoji: String,
-    val categoryColor: Color,
-    val source: String,
-    val sourceColor: Color,
-    val time: String,
-    val note: String,
-    val signedAmount: Double,
-    val timeText: String,
-    val amountText: String,
-    val noteLine: String,
-)
-
-private data class DayGroupUi(
-    val dateLabel: String,
-    val entries: List<EntryUi>,
-    val expense: Double,
-    val income: Double,
-)
 
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbar = LocalSnackbar.current
     val prefs = remember { AppPrefs.get(context) }
     var amountVisible by rememberSaveable { mutableStateOf(true) }
     var editingEntry by remember { mutableStateOf<LedgerEntry?>(null) }
@@ -139,7 +119,29 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val todayExpense = summary.todayExpense
     val monthExpense = summary.monthExpense
     val monthIncome = summary.monthIncome
-    val groups = remember(entries) { groupEntries(entries) }
+
+    // 预算按「起始日」定义的周期算，与自然月分开：发薪日 25 号时，
+    // 预算周期 = 25 号 ~ 次月 24 号，而首页月度收支仍按自然月展示。
+    val budgetStartDay = prefs.budgetStartDay
+    var budgetSpent by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(budgetStartDay, entries.size, billsState.totalCount) {
+        budgetSpent = runCatching {
+            LedgerRepository.budgetCycleExpense(context, budgetStartDay)
+        }.getOrNull()
+    }
+    // 分组已迁到 ViewModel 增量维护：loadMore 追加时只合并新页，不再全量重算。
+    // 原实现 remember(entries) 的 key 是整个 List，每次翻页都触发 O(n) 重分组 → 累计 O(n²)。
+    val groups = billsState.groups
+
+    // 行容器样式：提到 items{} 之外只算一次。
+    // 原来写在 items 的 lambda 里，每个 item 每次重组都要 new 2 个 RoundedCornerShape
+    // + 2 个 Color 副本；一屏 10 行、每秒多次重组就是几十次无谓分配。
+    // LocalDimens.current 是 CompositionLocal，必须在组合体内取值后传给 remember，
+    // 不能写进 remember 的 lambda（那个 lambda 不是 @Composable）。
+    val cardRadius = LocalDimens.current.radiusCard
+    val rowShape = remember(cardRadius) { RoundedCornerShape(cardRadius) }
+    val rowBg = LedgerTheme.surface.copy(alpha = 0.34f)
+    val rowBorder = LedgerTheme.border.copy(alpha = 0.55f)
 
     androidx.compose.runtime.LaunchedEffect(listState, billsState.bills.size, billsState.hasMore) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
@@ -151,8 +153,8 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 82.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item(key = "overview") {
             OverviewCard(
@@ -168,7 +170,8 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
             item(key = "budget") {
                 BudgetCard(
                     budget = prefs.budgetAmount.toDoubleOrNull() ?: 0.0,
-                    spent = monthExpense,
+                    spent = budgetSpent ?: monthExpense,
+                    startDay = budgetStartDay,
                 )
             }
         }
@@ -176,7 +179,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 4.dp, end = 4.dp, top = 6.dp),
+                    .padding(start = 4.dp, end = 4.dp, top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(text = "最近账目", style = MiuixTheme.textStyles.title4)
@@ -187,13 +190,24 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                     color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                 )
                 Spacer(Modifier.weight(1f))
-                TextButton(
-                    text = "搜索",
-                    onClick = onSearch,
-                    minWidth = 0.dp,
-                    minHeight = 32.dp,
-                    insideMargin = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                )
+                // 48dp 透明热区 + 20dp 图标：文字按钮在 48dp 盒内会被挤成竖排，改用图标。
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = LocalIndication.current,
+                            onClick = onSearch,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.Search,
+                        contentDescription = "搜索",
+                        tint = LedgerTheme.textSecondary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
 
@@ -212,9 +226,9 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                             .fillMaxWidth()
                             .animateItem()
                             .padding(bottom = 8.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(LedgerTheme.surface.copy(alpha = 0.34f))
-                            .border(0.5.dp, LedgerTheme.border.copy(alpha = 0.55f), RoundedCornerShape(20.dp)),
+                            .clip(rowShape)
+                            .background(rowBg)
+                            .border(0.5.dp, rowBorder, rowShape),
                     ) {
                         EntryRow(entry, onClick = { editingEntry = entry.ledger })
                     }
@@ -230,12 +244,18 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
             onSave = { amount, category, note ->
                 vm.updateEntry(entry.copy(amount = amount, category = category, note = note))
                 editingEntry = null
-                Toast.makeText(context, "已更新", Toast.LENGTH_SHORT).show()
+                scope.launch { snackbar.show("已更新") }
             },
             onDelete = {
-                vm.deleteEntry(entry.id)
+                val removed = entry
                 editingEntry = null
-                Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
+                scope.launch {
+                    // 先等删除真正落库，再弹撤销——否则用户可能在 delete 未完成时点撤销，
+                    // restoreEntry 的 insert 会因 id 冲突被 IGNORE 丢弃，随后 delete 又把记录删掉。
+                    vm.deleteEntry(removed.id).await()
+                    val undone = snackbar.showUndo("已删除")
+                    if (undone) vm.restoreEntry(removed)
+                }
             },
         )
     }
@@ -251,6 +271,7 @@ private fun EntryEditDialog(
 ) {
     val context = LocalContext.current
     var amount by remember { mutableStateOf("%.2f".format(entry.amount)) }
+    var amountError by remember { mutableStateOf(false) }
     var category by remember { mutableStateOf(entry.category) }
     var note by remember { mutableStateOf(entry.note) }
     val typeIdx = when (entry.type) {
@@ -263,59 +284,60 @@ private fun EntryEditDialog(
         (CategoryStore.names(context, typeIdx) + entry.category).distinct()
     }
 
-    GlassDialog(
+    AppDialog(
         show = true,
         title = "编辑账目",
         maxWidth = 560.dp,
         onDismissRequest = onDismiss,
     ) {
-        Text("金额", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-        Spacer(Modifier.height(6.dp))
+        Text(
+            "金额",
+            style = MiuixTheme.textStyles.footnote1,
+            color = if (amountError) LedgerTheme.danger else LedgerTheme.textSecondary,
+        )
+        Spacer(Modifier.height(8.dp))
         TextField(
             value = amount,
-            onValueChange = { input -> amount = input.filter { it.isDigit() || it == '.' } },
+            onValueChange = { input ->
+                amount = input.filter { it.isDigit() || it == '.' }
+                if (amountError) amountError = false
+            },
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
         )
+        if (amountError) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "金额格式不正确，请输入大于 0 的数字，如 12.50",
+                style = MiuixTheme.textStyles.footnote1,
+                color = LedgerTheme.danger,
+            )
+        }
 
         Spacer(Modifier.height(14.dp))
         Text("分类", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         Column(modifier = Modifier.heightIn(max = 190.dp).verticalScroll(rememberScrollState())) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 options.forEach { name ->
-                    if (name == category) {
-                        Button(
-                            onClick = { category = name },
-                            cornerRadius = 10.dp,
-                            minWidth = 0.dp,
-                            minHeight = 34.dp,
-                            insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        ) {
-                            Text(name, style = MiuixTheme.textStyles.footnote1)
-                        }
-                    } else {
-                        TextButton(
-                            text = name,
-                            onClick = { category = name },
-                            cornerRadius = 10.dp,
-                            minWidth = 0.dp,
-                            minHeight = 34.dp,
-                            insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            textStyle = MiuixTheme.textStyles.footnote1,
-                        )
-                    }
+                    // selected 用纯分类名比较（不用带 emoji 的展示串），图标与文字分开传
+                    CategoryChip(
+                        text = name,
+                        icon = CategoryStore.emoji(name),
+                        selected = name == category,
+                        onClick = { category = name },
+                    )
                 }
             }
         }
 
         Spacer(Modifier.height(14.dp))
         Text("备注", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         TextField(
             value = note,
             onValueChange = { note = it },
@@ -324,8 +346,8 @@ private fun EntryEditDialog(
             maxLines = 3,
         )
 
-        Spacer(Modifier.height(18.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TextButton(
                 text = "删除",
                 onClick = onDelete,
@@ -340,13 +362,28 @@ private fun EntryEditDialog(
                 onClick = onDismiss,
                 modifier = Modifier.weight(1f),
             )
-            GlassButton(
-                onClick = {
-                    val parsed = amount.toDoubleOrNull() ?: entry.amount
-                    onSave(parsed, category, note)
-                },
-                modifier = Modifier.weight(1f).height(48.dp),
-                tint = LedgerTheme.accent.copy(alpha = 0.45f),
+            val saveInteraction = remember { MutableInteractionSource() }
+            val savePressed by saveInteraction.collectIsPressedAsState()
+            val buttonShape = RoundedCornerShape(LocalDimens.current.radiusCapsule)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(buttonShape)
+                    .background(if (savePressed) LedgerTheme.accentPressed else LedgerTheme.accent)
+                    .clickable(
+                        interactionSource = saveInteraction,
+                        indication = LocalIndication.current,
+                        onClick = {
+                            val parsed = amount.toDoubleOrNull()
+                            if (parsed == null || parsed <= 0.0) {
+                                amountError = true
+                                return@clickable
+                            }
+                            onSave(parsed, category, note)
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
                 Text("保存", color = LedgerTheme.onAccent)
             }
@@ -355,17 +392,22 @@ private fun EntryEditDialog(
 }
 
 @Composable
-private fun BudgetCard(budget: Double, spent: Double) {
+private fun BudgetCard(budget: Double, spent: Double, startDay: Int = 1) {
     val remaining = (budget - spent).coerceAtLeast(0.0)
     val progress = if (budget > 0) (spent / budget).toFloat().coerceIn(0f, 1f) else 0f
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        veil = LedgerTheme.surface.copy(alpha = 0.40f),
-        contentPadding = PaddingValues(18.dp),
+    // 起始日非 1 时标题点明周期口径，避免用户误以为和上方「本月支出」是同一个数
+    val title = if (startDay == 1) "本月预算" else "本期预算（$startDay 日起）"
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, cardShape)
+            .padding(16.dp),
     ) {
-        Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "本月预算", style = MiuixTheme.textStyles.title4)
+                Text(text = title, style = MiuixTheme.textStyles.title4)
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = if (budget > 0) "剩余 ¥ %,.2f".format(remaining) else "未设置预算",
@@ -373,7 +415,7 @@ private fun BudgetCard(budget: Double, spent: Double) {
                     color = MiuixTheme.colorScheme.primary,
                 )
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -398,26 +440,27 @@ private fun BudgetCard(budget: Double, spent: Double) {
                 style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
             )
-        }
     }
 }
 
 @Composable
 private fun EmptyCard() {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        veil = LedgerTheme.surface.copy(alpha = 0.40f),
-        contentPadding = PaddingValues(20.dp),
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, cardShape)
+            .padding(16.dp),
     ) {
-        Column {
-            Text(text = "还没有账目", style = MiuixTheme.textStyles.title3)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "开启通知记账，或用控制中心截屏记第一笔",
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-            )
-        }
+        Text(text = "还没有账目", style = MiuixTheme.textStyles.title3)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "开启通知记账，或用控制中心截屏记第一笔",
+            style = MiuixTheme.textStyles.body2,
+            color = LedgerTheme.textSecondary,
+        )
     }
 }
 
@@ -430,78 +473,73 @@ private fun OverviewCard(
     visible: Boolean,
     onToggle: () -> Unit,
 ) {
-    GlassSurface(
-        modifier = Modifier.fillMaxWidth().glassHueDrag(),
-        shape = RoundedCornerShape(26.dp),
-        tint = Color.hsv(GlassAmbience.hue, 0.45f, 0.32f).copy(alpha = 0.38f),
-        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 20.dp),
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, cardShape)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
     ) {
-        Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "今日支出",
                     style = MiuixTheme.textStyles.body2,
-                    color = White70,
+                    color = LedgerTheme.textSecondary,
                     modifier = Modifier.weight(1f),
                 )
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(White20)
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                        .background(LedgerTheme.inset)
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                 ) {
-                    Text(text = dateLabel, style = MiuixTheme.textStyles.footnote2, color = LedgerTheme.onHero)
+                    Text(text = dateLabel, style = MiuixTheme.textStyles.footnote2, color = LedgerTheme.textSecondary)
                 }
             }
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = if (visible) "¥ %,.2f".format(todayExpense) else "¥ ****",
                     style = MiuixTheme.textStyles.headline2,
-                    color = LedgerTheme.onHero,
+                    color = LedgerTheme.text,
                 )
                 IconButton(onClick = onToggle) {
                     Icon(
                         imageVector = if (visible) MiuixIcons.Show else MiuixIcons.Hide,
                         contentDescription = if (visible) "隐藏金额" else "显示金额",
-                        tint = White70,
+                        tint = LedgerTheme.textSecondary,
                     )
                 }
             }
 
             Spacer(Modifier.height(16.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(White20))
-            Spacer(Modifier.height(14.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(LedgerTheme.divider))
+            Spacer(Modifier.height(16.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("本月支出", style = MiuixTheme.textStyles.footnote1, color = White70)
-                    Spacer(Modifier.height(2.dp))
+                    Text("本月支出", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = if (visible) "¥ %,.2f".format(monthExpense) else "¥ ****",
                         style = MiuixTheme.textStyles.title2,
-                        color = LedgerTheme.onHero,
+                        color = LedgerTheme.text,
                     )
                 }
-                Box(modifier = Modifier.width(0.5.dp).height(30.dp).background(White20))
-                Column(modifier = Modifier.weight(1f).padding(start = 18.dp)) {
-                    Text("本月收入", style = MiuixTheme.textStyles.footnote1, color = White70)
-                    Spacer(Modifier.height(2.dp))
+                Box(modifier = Modifier.width(0.5.dp).height(30.dp).background(LedgerTheme.divider))
+                Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {
+                    Text("本月收入", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = if (visible) "¥ %,.2f".format(monthIncome) else "¥ ****",
                         style = MiuixTheme.textStyles.title2,
-                        color = LedgerTheme.onHero,
+                        color = LedgerTheme.text,
                     )
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = "← 横向拖动卡片可切换氛围色 →",
-                style = MiuixTheme.textStyles.footnote2,
-                color = White70.copy(alpha = 0.65f),
-            )
-        }
     }
 }
 
@@ -515,7 +553,7 @@ private fun DayHeader(group: DayGroupUi) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 6.dp),
+            .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = group.dateLabel, style = MiuixTheme.textStyles.title4, modifier = Modifier.weight(1f))
@@ -534,37 +572,38 @@ private fun DayCard(group: DayGroupUi, onLongPress: (LedgerEntry) -> Unit) {
         if (group.expense > 0 && group.income > 0) append(" · ")
         if (group.income > 0) append("收入 %,.2f".format(group.income))
     }
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        veil = LedgerTheme.surface.copy(alpha = 0.40f),
-        contentPadding = PaddingValues(0.dp),
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, cardShape),
     ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(text = group.dateLabel, style = MiuixTheme.textStyles.title4, modifier = Modifier.weight(1f))
-                Text(
-                    text = summary,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = group.dateLabel, style = MiuixTheme.textStyles.title4, modifier = Modifier.weight(1f))
+            Text(
+                text = summary,
+                style = MiuixTheme.textStyles.footnote1,
+                color = LedgerTheme.textSecondary,
+            )
+        }
+        group.entries.forEachIndexed { index, entry ->
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 66.dp)
+                        .height(0.5.dp)
+                        .background(LedgerTheme.divider),
                 )
             }
-            group.entries.forEachIndexed { index, entry ->
-                if (index > 0) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 66.dp)
-                            .height(0.5.dp)
-                            .background(MiuixTheme.colorScheme.onSurfaceContainerVariant.copy(alpha = 0.15f)),
-                    )
-                }
-                EntryRow(entry, onClick = { onLongPress(entry.ledger) })
-            }
-            Spacer(Modifier.height(6.dp))
+            EntryRow(entry, onClick = { onLongPress(entry.ledger) })
         }
+        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -581,13 +620,13 @@ private fun EntryRow(entry: EntryUi, onClick: () -> Unit) {
         Box(
             modifier = Modifier
                 .size(40.dp)
-                .clip(RoundedCornerShape(13.dp))
+                .clip(RoundedCornerShape(LocalDimens.current.radiusSmall))
                 .background(entry.categoryColor.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
             Text(text = entry.emoji, fontSize = 18.sp)
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -597,17 +636,17 @@ private fun EntryRow(entry: EntryUi, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(5.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(entry.sourceColor.copy(alpha = 0.14f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Text(text = entry.source, style = MiuixTheme.textStyles.footnote2, color = entry.sourceColor)
                 }
             }
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = entry.noteLine,
                 style = MiuixTheme.textStyles.footnote1,
@@ -626,106 +665,9 @@ private fun EntryRow(entry: EntryUi, onClick: () -> Unit) {
     }
 }
 
-private fun entryCalendar(entry: LedgerEntry): Calendar? =
-    if (entry.timeMillis > 0) Calendar.getInstance().apply { timeInMillis = entry.timeMillis }
-    else LedgerRepository.parseTime(entry.time)
-
-private fun groupEntries(entries: List<LedgerEntry>): List<DayGroupUi> {
-    val grouped = LinkedHashMap<String, MutableList<LedgerEntry>>()
-    val calMap = HashMap<String, Calendar>()
-    entries.forEach { entry ->
-        val cal = entryCalendar(entry) ?: Calendar.getInstance()
-        val key = SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(cal.time)
-        calMap[key] = cal
-        grouped.getOrPut(key) { mutableListOf() }.add(entry)
-    }
-    return grouped.map { (key, list) ->
-        val cal = calMap[key] ?: Calendar.getInstance()
-        val ui = list.map { it.toUi() }
-        DayGroupUi(
-            dateLabel = "$key ${LedgerRepository.weekday(cal)}",
-            entries = ui,
-            expense = ui.filter { it.signedAmount < 0 }.sumOf { -it.signedAmount },
-            income = ui.filter { it.signedAmount > 0 }.sumOf { it.signedAmount },
-        )
-    }
-}
-
-private fun LedgerEntry.toUi(): EntryUi {
-    val signed = if (type == "income") amount else -kotlin.math.abs(amount)
-    val cal = entryCalendar(this) ?: Calendar.getInstance()
-    val timeText = SimpleDateFormat("HH:mm", Locale.CHINA).format(cal.time)
-    return EntryUi(
-        ledger = this,
-        category = category.ifBlank { "其他" },
-        emoji = categoryEmoji(category),
-        categoryColor = categoryColor(category),
-        source = source.ifBlank { "自动记账" },
-        sourceColor = sourceColor(source),
-        time = timeText,
-        note = note,
-        signedAmount = signed,
-        timeText = timeText,
-        amountText = if (signed < 0) "-%,.2f".format(-signed) else "+%,.2f".format(signed),
-        noteLine = if (note.isBlank()) timeText else "$timeText · $note",
-    )
-}
-
-private fun isSameDay(entry: LedgerEntry, now: Calendar): Boolean {
-    val cal = entryCalendar(entry) ?: return false
-    return cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
-        cal.get(Calendar.MONTH) == now.get(Calendar.MONTH) &&
-        cal.get(Calendar.DAY_OF_MONTH) == now.get(Calendar.DAY_OF_MONTH)
-}
 
 private fun isSameMonth(entry: LedgerEntry, now: Calendar): Boolean {
     val cal = entryCalendar(entry) ?: return false
     return cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
         cal.get(Calendar.MONTH) == now.get(Calendar.MONTH)
-}
-
-private fun categoryEmoji(category: String): String = when (category) {
-    "餐饮" -> "🍜"
-    "购物" -> "🛍️"
-    "转账" -> "💸"
-    "交通" -> "🚌"
-    "消费" -> "💳"
-    "人情社交" -> "👥"
-    "娱乐" -> "🎮"
-    "教育" -> "📚"
-    "通讯" -> "📱"
-    "美容" -> "💄"
-    "医疗" -> "🏥"
-    "红包" -> "🧧"
-    "旅行" -> "✈️"
-    "宠物" -> "🐾"
-    "住房" -> "🏠"
-    "代付" -> "🤝"
-    "投资" -> "📈"
-    "借出" -> "📤"
-    "还债" -> "💰"
-    "亲子" -> "👨‍👩‍👧"
-    else -> "⚪"
-}
-
-private fun categoryColor(category: String): Color = when (category) {
-    "餐饮" -> LedgerTheme.chart3
-    "购物" -> LedgerTheme.chart4
-    "转账" -> AccentBlue
-    "交通" -> LedgerTheme.chart5
-    "红包" -> LedgerTheme.danger
-    "旅行" -> LedgerTheme.chart5
-    "医疗" -> LedgerTheme.danger
-    "教育" -> LedgerTheme.chart4
-    "娱乐" -> LedgerTheme.chart3
-    else -> LedgerTheme.chart5
-}
-
-private fun sourceColor(source: String): Color = when {
-    source.contains("短信") -> SourceSms
-    source.contains("微信") -> SourceWechat
-    source.contains("美团") -> SourceMeituan
-    source.contains("银行") -> SourceBank
-    source.contains("截屏") -> AccentBlue
-    else -> LedgerTheme.chart2
 }

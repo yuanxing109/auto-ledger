@@ -126,11 +126,14 @@ class LedgerNotificationListener : NotificationListenerService() {
         val seenKey = NotificationRules.dedupeKey(raw)
         if (isDuplicate(seenKey)) return
 
+        val appPrefs = prefs()
         val bill = NotificationRules.parse(
             raw = raw,
             expenseCats = CategoryStore.names(this, 0),
             incomeCats = CategoryStore.names(this, 1),
             otherCats = CategoryStore.names(this, 2),
+            ignoreKeywords = appPrefs.ignoreKeywords,
+            forceKeywords = appPrefs.forceKeywords,
         ) ?: run {
             Log.d(TAG, "未识别为账单：${raw.title} / ${raw.text}")
             return
@@ -160,7 +163,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                 return@launch
             }
             val added = runCatching {
-                LedgerRepository.addImported(this@LedgerNotificationListener, listOf(entry))
+                LedgerRepository.addAutoParsed(this@LedgerNotificationListener, listOf(entry))
             }.getOrElse {
                 Log.w(TAG, "通知账单入库失败", it)
                 0

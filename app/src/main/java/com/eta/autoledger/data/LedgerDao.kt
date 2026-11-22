@@ -12,6 +12,19 @@ data class Bucket(val bucket: String, val total: Double)
 
 data class CategoryAgg(val name: String, val total: Double, val count: Int)
 
+/**
+ * [LedgerDao.observeTotals] 的投影：报表顶部 4 个数，一条 SQL 出全。
+ *
+ * 列别名刻意避开 `current`（SQLite 保留字，CURRENT_DATE 系列）与 `income`
+ * （与同名查询参数撞车），再用 @ColumnInfo 映射回语义化字段名。
+ */
+data class TotalsRow(
+    @ColumnInfo(name = "cur_amount") val current: Double,
+    @ColumnInfo(name = "prev_amount") val previous: Double,
+    @ColumnInfo(name = "exp_amount") val expense: Double,
+    @ColumnInfo(name = "inc_amount") val income: Double,
+)
+
 data class Summary(
     val todayExpense: Double = 0.0,
     val monthExpense: Double = 0.0,
@@ -30,10 +43,10 @@ data class ImportRow(
 @Dao
 interface LedgerDao {
     // id DESC 是必要的：timestamp 只到毫秒，同一毫秒内的多条需要稳定次序，否则分页会漏行/重行。
-    @Query("SELECT * FROM Bill ORDER BY timestamp DESC, id DESC")
+    @Query("SELECT * FROM Bill WHERE is_recurring = 0 ORDER BY timestamp DESC, id DESC")
     fun observeAll(): Flow<List<LedgerEntry>>
 
-    @Query("SELECT * FROM Bill ORDER BY timestamp DESC, id DESC LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM Bill WHERE is_recurring = 0 ORDER BY timestamp DESC, id DESC LIMIT :limit OFFSET :offset")
     fun observePaging(limit: Int, offset: Int): Flow<List<LedgerEntry>>
 
     /**
@@ -41,45 +54,75 @@ interface LedgerDao {
      * 不像 LIMIT/OFFSET 那样每翻一页都要扫描并丢弃前面所有行。
      */
     @Query(
-        "SELECT * FROM Bill WHERE timestamp < :cursorTime OR (timestamp = :cursorTime AND id < :cursorId) " +
+        "SELECT * FROM Bill WHERE is_recurring = 0 AND (timestamp < :cursorTime OR (timestamp = :cursorTime AND id < :cursorId)) " +
             "ORDER BY timestamp DESC, id DESC LIMIT :limit",
     )
     suspend fun pageBefore(cursorTime: Long, cursorId: Long, limit: Int): List<LedgerEntry>
 
-    @Query("SELECT COUNT(*) FROM Bill")
+    @Query("SELECT COUNT(*) FROM Bill WHERE is_recurring = 0")
     fun observeCount(): Flow<Int>
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type = 'expense' AND timestamp >= :start AND timestamp < :end",
+            "WHERE type = 'expense' AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
     )
     fun observeExpense(start: Long, end: Long): Flow<Double>
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type == 'income' AND timestamp >= :start AND timestamp < :end",
+            "WHERE type == 'income' AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
     )
     fun observeIncome(start: Long, end: Long): Flow<Double>
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
             "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
-            "AND timestamp >= :start AND timestamp < :end",
+            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
     )
     fun observeTotal(start: Long, end: Long, income: Int): Flow<Double>
+
+    /**
+     * 报表顶部 4 个数一次取回：本期、上期、本期支出、本期收入。
+     *
+     * 原来这 4 个值走 4 条独立 observeTotal，每条是独立 SQL + 独立 Room invalidation，
+     * 任意一次写库都会让 4 个 Flow 各重跑一次。这里压成 1 条：
+     * 外层 WHERE 用 MIN/MAX 框住两个区间的并集，让 SQLite 能走 (is_recurring, timestamp) 索引，
+     * 再在 SELECT 里用 CASE WHEN 分流到 4 个桶 —— 一次索引扫描出全部结果。
+     */
+    @Query(
+        "SELECT " +
+            "COALESCE(SUM(CASE WHEN timestamp >= :cs AND timestamp < :ce " +
+            "AND ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
+            "THEN amount END), 0.0) AS cur_amount, " +
+            "COALESCE(SUM(CASE WHEN timestamp >= :ps AND timestamp < :pe " +
+            "AND ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
+            "THEN amount END), 0.0) AS prev_amount, " +
+            "COALESCE(SUM(CASE WHEN timestamp >= :cs AND timestamp < :ce AND type = 'expense' " +
+            "THEN amount END), 0.0) AS exp_amount, " +
+            "COALESCE(SUM(CASE WHEN timestamp >= :cs AND timestamp < :ce AND type = 'income' " +
+            "THEN amount END), 0.0) AS inc_amount " +
+            "FROM Bill WHERE is_recurring = 0 " +
+            "AND timestamp >= :outerStart AND timestamp < :outerEnd",
+    )
+    fun observeTotals(
+        cs: Long, ce: Long,
+        ps: Long, pe: Long,
+        outerStart: Long, outerEnd: Long,
+        income: Int,
+    ): Flow<TotalsRow>
 
     @Query(
         "SELECT strftime(:format, timestamp / 1000, 'unixepoch', 'localtime') AS bucket, " +
             "COALESCE(SUM(amount), 0.0) AS total FROM Bill " +
             "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
-            "AND timestamp >= :start AND timestamp < :end GROUP BY bucket ORDER BY bucket",
+            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end GROUP BY bucket ORDER BY bucket",
     )
     fun observeBuckets(format: String, start: Long, end: Long, income: Int): Flow<List<Bucket>>
 
     @Query(
         "SELECT category AS name, COALESCE(SUM(amount), 0.0) AS total, COUNT(*) AS count FROM Bill " +
             "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
-            "AND timestamp >= :start AND timestamp < :end GROUP BY category ORDER BY total DESC",
+            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end GROUP BY category ORDER BY total DESC",
     )
     fun observeCategories(start: Long, end: Long, income: Int): Flow<List<CategoryAgg>>
 
@@ -87,21 +130,26 @@ interface LedgerDao {
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type = 'expense' AND timestamp >= :start AND timestamp < :end",
+            "WHERE type = 'expense' AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
     )
     suspend fun sumExpenseOnce(start: Long, end: Long): Double
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type == 'income' AND timestamp >= :start AND timestamp < :end",
+            "WHERE type == 'income' AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
     )
     suspend fun sumIncomeOnce(start: Long, end: Long): Double
 
-    @Query("SELECT COUNT(*) FROM Bill WHERE timestamp >= :start AND timestamp < :end")
+    @Query("SELECT COUNT(*) FROM Bill WHERE is_recurring = 0 AND timestamp >= :start AND timestamp < :end")
     suspend fun countRange(start: Long, end: Long): Int
 
+    /** 全表（含周期模板）：仅供备份使用，恢复时模板要一起带走。 */
     @Query("SELECT * FROM Bill ORDER BY timestamp DESC, id DESC")
     suspend fun getAllOnce(): List<LedgerEntry>
+
+    /** 只取真实账单（排除周期模板）：供 CSV/XLSX 导出，模板不是交易。 */
+    @Query("SELECT * FROM Bill WHERE is_recurring = 0 ORDER BY timestamp DESC, id DESC")
+    suspend fun getAllOnceReal(): List<LedgerEntry>
 
     /**
      * 组合筛选。
@@ -113,7 +161,8 @@ interface LedgerDao {
     @Query(
         """
         SELECT * FROM Bill
-        WHERE amount BETWEEN :minAmount AND :maxAmount
+        WHERE is_recurring = 0
+          AND amount BETWEEN :minAmount AND :maxAmount
           AND timestamp >= :start AND timestamp < :end
           AND (:type = '' OR type = :type)
           AND (:categoryMode = 0 OR category IN (:categories))
@@ -148,7 +197,8 @@ interface LedgerDao {
     @Query(
         """
         SELECT COUNT(*) FROM Bill
-        WHERE amount BETWEEN :minAmount AND :maxAmount
+        WHERE is_recurring = 0
+          AND amount BETWEEN :minAmount AND :maxAmount
           AND timestamp >= :start AND timestamp < :end
           AND (:type = '' OR type = :type)
           AND (:categoryMode = 0 OR category IN (:categories))
@@ -182,7 +232,7 @@ interface LedgerDao {
      */
     @Query(
         "SELECT COUNT(*) FROM Bill WHERE amount = :amount AND type = :type " +
-            "AND source != :source " +
+            "AND is_recurring = 0 AND source != :source " +
             "AND timestamp >= :since AND timestamp <= :until " +
             "AND external_id IS NOT NULL AND external_id != ''",
     )
@@ -219,4 +269,11 @@ interface LedgerDao {
 
     @Query("DELETE FROM Bill")
     suspend fun clear()
+
+    // ── 周期记账 ────────────────────────────────────────────────────────
+
+    /** 所有模板（isRecurring = true）。模板数量是个位数，全表扫可接受。 */
+    @Query("SELECT * FROM Bill WHERE is_recurring = 1 ORDER BY id ASC")
+    suspend fun recurringTemplates(): List<LedgerEntry>
+
 }

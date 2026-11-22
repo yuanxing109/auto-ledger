@@ -9,7 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.core.content.ContextCompat
 import com.eta.autoledger.service.HealthJobService
 import com.eta.autoledger.ui.LedgerApp
-import com.eta.autoledger.ui.glass.GlassHost
+import com.eta.autoledger.ui.AppRoot
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -25,10 +25,13 @@ class MainActivity : ComponentActivity() {
         com.eta.autoledger.service.BackupJobService.schedule(this)
         // 幂等重排提醒：开机接收器之外再兜一层，避免闹钟被系统静默清空后长期失效
         com.eta.autoledger.reminder.ReminderScheduler.rescheduleAll(this)
+        // 周期记账：先排每日任务，再立刻补跑一次（用户可能几天没开 App）
+        com.eta.autoledger.service.RecurringWorker.schedule(this)
+        com.eta.autoledger.service.RecurringWorker.runNow(this)
         // Android 13+ 通知权限：不在这里申请的话，自动记账/提醒通知会被静默丢弃
         ensureNotificationPermission()
         setContent {
-            GlassHost {
+            AppRoot {
                 LedgerApp(openAiSettings = intent.getBooleanExtra(EXTRA_OPEN_AI_SETTINGS, false))
             }
         }

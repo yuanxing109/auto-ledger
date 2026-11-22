@@ -128,6 +128,33 @@ object NotificationRules {
         "交易成功", "支付成功", "已支付", "已消费", "付款成功", "已付款",
     )
 
+    /**
+     * 【营销 / 待消费 / 团购券】强拦截信号。
+     *
+     * 真实误判样本：
+     *   「你有订单未消费 你购买的【新会员】5小时包时(15.8…还未消费，可前往电竞蜂网咖…」
+     * 这条通知里「消费」「购买」都是被否定的状态描述（"未消费"），钱根本没花出去；
+     * 但：
+     *   1. directionOf 看到「消费」「购买」→ 判成 expense；
+     *   2. extractAmount 的 AMOUNT_NEAR_VERB 把「购买」后 12 字内的「5小时」的 5 抓成金额，
+     *   于是生成一条 5.00 元的假支出并自动记账。
+     *
+     * 规则：命中任一「未消费类」信号，**且**全文没有任何「已扣款」证据时，直接 return null。
+     * 后半句是必需的——否则会把「已支付 99 元，订单未消费可退款」这类真实扣款通知也误杀。
+     */
+    private val NOT_CONSUMED_PATTERNS = listOf(
+        "未消费", "待消费", "待使用", "尚未使用", "未使用", "尚未核销", "待核销", "未核销",
+        "订单未消费", "还未消费", "尚未消费",
+    )
+    /** 明确的「钱已实际扣走」证据：有它才允许在含「未消费」类词时继续记账。 */
+    private val PAID_PROOF_WORDS = listOf(
+        "已支付", "支付成功", "付款成功", "已付款", "已扣款", "扣款成功", "扣费成功",
+        "已扣费", "已消费", "交易成功", "支出",
+    )
+
+    /** 【】内的商户 / 标题名。正常 2~16 字；超过 24 字基本是营销长文，不能当商户名。 */
+    private val MERCHANT_BRACKET = Regex("""【([^】]{1,64})】""")
+
     private val REFUND_WORDS = listOf("退款", "退回", "退货退款", "已退")
     private val REPAY_WORDS = listOf("信用卡还款", "还款成功", "已还款", "自动还款")
     private val WITHDRAW_WORDS = listOf("提现", "提现成功")
@@ -239,9 +266,15 @@ object NotificationRules {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        ignoreKeywords: Set<String> = emptySet(),
+        forceKeywords: Set<String> = emptySet(),
     ): NotifyBill? {
         val channel = channelOf(raw.pkg) ?: return null
-        return parseAs(channel, raw, expenseCats, incomeCats, otherCats)
+        return parseAs(
+            channel, raw, expenseCats, incomeCats, otherCats,
+            ignoreKeywords = ignoreKeywords,
+            forceKeywords = forceKeywords,
+        )
     }
 
     /**
@@ -258,6 +291,8 @@ object NotificationRules {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        ignoreKeywords: Set<String> = emptySet(),
+        forceKeywords: Set<String> = emptySet(),
     ): NotifyBill? {
         val text = body.trim()
         if (text.isEmpty()) return null
@@ -269,7 +304,11 @@ object NotificationRules {
             bigText = "",
             postTime = postTime,
         )
-        return parseAs(NotifyChannel.SMS, raw, expenseCats, incomeCats, otherCats)
+        return parseAs(
+            NotifyChannel.SMS, raw, expenseCats, incomeCats, otherCats,
+            ignoreKeywords = ignoreKeywords,
+            forceKeywords = forceKeywords,
+        )
     }
 
     /**
@@ -281,13 +320,27 @@ object NotificationRules {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        ignoreKeywords: Set<String> = emptySet(),
+        forceKeywords: Set<String> = emptySet(),
     ): NotifyBill? {
         val body = bodyOf(raw)
         if (body.isBlank()) return null
         if (noiseWordsOf(channel).any { body.contains(it) }) return null
+        // ── 用户词库优先判定 ────────────────────────────────────
+        // 顺序刻意如此：认账词在拦截词之前。信用支付短信常同时出现「下单」与「已支付」，
+        // 只有「已支付」才代表钱真的出去了，拦截词此时必须让位，否则真实扣款被吞。
+        val forced = forceKeywords.any { body.contains(it) }
+        if (!forced && ignoreKeywords.any { body.contains(it) }) return null
+        // 营销 / 待消费 / 团购券强拦截：见 NOT_CONSUMED_PATTERNS 的注释。
+        // 「未消费」类词 + 无任何「已扣款」证据 → 直接丢弃，绝不生成账单。
+        if (!forced && NOT_CONSUMED_PATTERNS.any { body.contains(it) } &&
+            PAID_PROOF_WORDS.none { body.contains(it) } &&
+            forceKeywords.none { body.contains(it) }
+        ) return null
         // 预告类提醒（"明天将自动付款18.8"）：钱还没实际发生，等真实扣费通知到了再记。
         // 用「将来时紧邻扣费动词」的正则判定，避免「将于明日发送账单」这类真交易被误杀。
-        if (COMPLETED_WORDS.none(body::contains) &&
+        if (!forced &&
+            COMPLETED_WORDS.none(body::contains) &&
             FUTURE_CHARGE_PATTERNS.any { it.containsMatchIn(body) }
         ) return null
         val amount = extractAmount(body) ?: return null
@@ -438,7 +491,13 @@ object NotificationRules {
     }
 
     private fun noteOf(body: String): String {
-        val cleaned = body.trim()
+        var cleaned = body.trim()
+        // 【】块若超过 24 字，几乎一定是营销长文而不是商户名，剥掉它避免整段广告塞进备注。
+        // 正常的短商户名（如【招商银行】【美团】）不受影响。
+        MERCHANT_BRACKET.findAll(cleaned).forEach { m ->
+            if (m.groupValues[1].length > 24) cleaned = cleaned.replace(m.value, "")
+        }
+        cleaned = cleaned.trim()
         return if (cleaned.length <= 60) cleaned else cleaned.take(60) + "…"
     }
 

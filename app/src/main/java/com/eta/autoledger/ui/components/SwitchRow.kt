@@ -1,4 +1,4 @@
-package com.eta.autoledger.ui.glass
+package com.eta.autoledger.ui.components
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,21 +12,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.eta.autoledger.ui.LedgerTheme
-import com.kyant.backdrop.catalog.components.LiquidToggle
+import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.SwitchDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 设置项 + 液态玻璃开关（对应 AndroidLiquidGlass 的 LiquidToggle）。
+ * 设置项：标题（+可选说明）+ Miuix Switch。
+ *
+ * Switch 显式指定 accent 蓝——设计系统里绿色仅用于收入，交互强调色是 accent。
  */
 @Composable
-fun LiquidSwitchPreference(
+fun SwitchRow(
     title: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     summary: String? = null,
 ) {
-    val backdrop = LocalGlassBackdrop.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -41,12 +43,15 @@ fun LiquidSwitchPreference(
             }
         }
         Spacer(Modifier.width(12.dp))
-        if (backdrop != null) {
-            LiquidToggle(
-                selected = { checked },
-                onSelect = onCheckedChange,
-                backdrop = backdrop,
-            )
-        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.switchColors(
+                checkedThumbColor = LedgerTheme.surface,
+                uncheckedThumbColor = LedgerTheme.textSecondary,
+                checkedTrackColor = LedgerTheme.accent,
+                uncheckedTrackColor = LedgerTheme.divider,
+            ),
+        )
     }
 }

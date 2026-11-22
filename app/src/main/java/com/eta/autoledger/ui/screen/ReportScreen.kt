@@ -1,8 +1,8 @@
 package com.eta.autoledger.ui.screen
 
 import com.eta.autoledger.ui.LedgerTheme
-import com.eta.autoledger.ui.glass.GlassDialog
-import com.eta.autoledger.ui.glass.GlassCard
+import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.components.AppDialog
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -79,6 +79,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.eta.autoledger.data.Bucket
 import com.eta.autoledger.data.ReportAggregate
+import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.ReportRepository
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.LedgerEntry
@@ -100,7 +101,7 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private val PageBg: Color get() = LedgerTheme.page
-private val CardBorder: Color get() = LedgerTheme.cardBorder
+private val CardBorder: Color get() = LedgerTheme.borderSoft
 private val TextPrimary: Color get() = LedgerTheme.text
 private val TextSecondary: Color get() = LedgerTheme.textSecondary
 private val AccentBlue: Color get() = LedgerTheme.accent
@@ -142,15 +143,19 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
 
     LaunchedEffect(tab) { offset = 0 }
     val context = LocalContext.current
+    // 报表口径跟随「预算起始日」：起始日非 1 时，「本月」= 起始日 ~ 次月前一日。
+    // 折线、柱状、分类环图、明细列表全部走同一个 range，保证四张图数据范围一致。
+    val startDay = AppPrefs.get(context).budgetStartDay
     val aggregate by produceState(
         initialValue = ReportAggregate(),
         tab,
         offset,
         income,
+        startDay,
     ) {
         // 防抖：快速切 Tab/月份只查询最后一次
         delay(220)
-        ReportRepository.observe(context, tab, offset, income).collect { value = it }
+        ReportRepository.observe(context, tab, offset, income, startDay).collect { value = it }
     }
     val data = remember(aggregate, tab, income) { toReportData(aggregate, tab, income) }
 
@@ -160,7 +165,7 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 82.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             PeriodRow(
@@ -189,7 +194,7 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
         }
     }
 
-    val range = remember(tab, offset) { ReportRepository.periodRange(tab, offset) }
+    val range = remember(tab, offset, startDay) { ReportRepository.periodRange(tab, offset, startDay) }
     detailSlice?.let { slice ->
         CategoryDetailDialog(slice, range.first, range.second) { detailSlice = null }
     }
@@ -207,7 +212,7 @@ private fun PeriodRow(
         CircleArrow(onClick = onPrev, forward = false)
         Text(
             text = periodLabel,
-            style = TextStyle(fontSize = 14.sp, color = TextPrimary),
+            style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
@@ -221,19 +226,26 @@ private fun PeriodRow(
 private fun CircleArrow(onClick: () -> Unit, forward: Boolean) {
     Box(
         modifier = Modifier
-            .size(30.dp)
+            .size(48.dp)
             .clip(CircleShape)
-            .border(1.dp, CardBorder, CircleShape)
-            .background(LedgerTheme.card)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = if (forward) MiuixIcons.ChevronForward else MiuixIcons.ChevronBackward,
-            contentDescription = if (forward) "下一周期" else "上一周期",
-            tint = TextSecondary,
-            modifier = Modifier.size(16.dp),
-        )
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(CircleShape)
+                .border(1.dp, CardBorder, CircleShape)
+                .background(LedgerTheme.card),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (forward) MiuixIcons.ChevronForward else MiuixIcons.ChevronBackward,
+                contentDescription = if (forward) "下一周期" else "上一周期",
+                tint = TextSecondary,
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }
 
@@ -243,8 +255,8 @@ private fun ModePill(income: Boolean, onMode: (Boolean) -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(AccentSoft)
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         listOf(false to "支出", true to "收入").forEach { (isIncome, label) ->
             val selected = income == isIncome
@@ -253,7 +265,7 @@ private fun ModePill(income: Boolean, onMode: (Boolean) -> Unit) {
                     .clip(RoundedCornerShape(50))
                     .background(if (selected) AccentBlue else Color.Transparent)
                     .clickable { onMode(isIncome) }
-                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
                 Text(
                     text = label,
@@ -269,10 +281,13 @@ private fun ReportCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    GlassCard(
-        modifier = modifier.fillMaxWidth(),
-        veil = LedgerTheme.surface.copy(alpha = 0.40f),
-        contentPadding = PaddingValues(0.dp),
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, cardShape),
     ) {
         content()
     }
@@ -280,13 +295,13 @@ private fun ReportCard(
 
 @Composable
 private fun Sparkle() {
-    Text(text = "✦", style = TextStyle(fontSize = 14.sp, color = AccentBlue))
+    Text(text = "✦", style = MiuixTheme.textStyles.body2.copy(color = AccentBlue))
 }
 
 @Composable
 private fun SummaryCard(data: ReportData, tab: Int, income: Boolean) {
     ReportCard {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row {
                 SummaryCell(
                     label = "${data.periodName}${if (income) "收入" else "支出"}（元）",
@@ -338,13 +353,13 @@ private fun LineCard(data: ReportData, income: Boolean) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Sparkle()
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     text = "${data.periodName}趋势",
-                    style = TextStyle(fontSize = 16.sp, color = TextPrimary),
+                    style = MiuixTheme.textStyles.body1.copy(color = TextPrimary),
                 )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             LineChart(points = data.trend, income = income)
         }
     }
@@ -363,7 +378,7 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
     val textMeasurer = rememberTextMeasurer()
     val lineColor = if (income) AccentBlue else AccentBlue
     val gridColor = LedgerTheme.divider
-    val labelStyle = TextStyle(fontSize = 8.sp, color = TextSecondary)
+    val labelStyle =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary)
     val bubbleWidth = with(density) { 108.dp.toPx() }
     val bubbleHeight = with(density) { 44.dp.toPx() }
 
@@ -485,16 +500,16 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                         .width(108.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(AccentBlue)
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                 ) {
                     Column {
                         Text(
                             text = "${points[index].label}${if (income) "收入" else "支出"}",
-                            style = TextStyle(fontSize = 9.sp, color = LedgerTheme.onAccent.copy(alpha = 0.8f)),
+                            style =MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent.copy(alpha = 0.8f)),
                         )
                         Text(
                             text = "¥ %,.2f".format(points[index].value),
-                            style = TextStyle(fontSize = 11.sp, color = LedgerTheme.onAccent),
+                            style = MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent),
                         )
                     }
                 }
@@ -507,7 +522,7 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
             points.forEach { point ->
                 Text(
                     text = point.label,
-                    style = TextStyle(fontSize = 8.sp, color = TextSecondary),
+                    style =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f),
                 )
@@ -522,13 +537,13 @@ private fun BarCard(data: ReportData, income: Boolean) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Sparkle()
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     text = "${if (income) "收入" else "支出"}趋势",
-                    style = TextStyle(fontSize = 16.sp, color = TextPrimary),
+                    style = MiuixTheme.textStyles.body1.copy(color = TextPrimary),
                 )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             BarChart(points = data.bars, income = income)
         }
     }
@@ -538,7 +553,7 @@ private fun BarCard(data: ReportData, income: Boolean) {
 private fun BarChart(points: List<TrendPoint>, income: Boolean) {
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(fontSize = 8.sp, color = TextSecondary)
+    val labelStyle =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary)
     val gridColor = LedgerTheme.divider
     val barColor = AccentBlue
     val padLeftDp = 44.dp
@@ -654,16 +669,16 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
                         .width(112.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(AccentBlue)
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                 ) {
                     Column {
                         Text(
                             text = "¥ %,.2f".format(points[index].value),
-                            style = TextStyle(fontSize = 11.sp, color = LedgerTheme.onAccent),
+                            style = MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent),
                         )
                         Text(
                             text = points[index].label,
-                            style = TextStyle(fontSize = 8.sp, color = LedgerTheme.onAccent.copy(alpha = 0.8f)),
+                            style =MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent.copy(alpha = 0.8f)),
                         )
                     }
                 }
@@ -676,7 +691,7 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
             points.forEach { point ->
                 Text(
                     text = point.label,
-                    style = TextStyle(fontSize = 8.sp, color = TextSecondary),
+                    style =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f),
                 )
@@ -697,10 +712,10 @@ private fun DonutCard(
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Sparkle()
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     text = "${if (income) "收入" else "支出"}分类构成",
-                    style = TextStyle(fontSize = 16.sp, color = TextPrimary),
+                    style = MiuixTheme.textStyles.body1.copy(color = TextPrimary),
                 )
                 Spacer(Modifier.weight(1f))
                 SubCategoryPill(subCategory = subCategory, onSelect = onSubCategory)
@@ -708,9 +723,14 @@ private fun DonutCard(
             Spacer(Modifier.height(4.dp))
             DonutChart(slices = data.categories, income = income)
             Spacer(Modifier.height(8.dp))
-            data.categories.sortedByDescending { it.amount }.forEachIndexed { index, slice ->
+            // 排序移进 remember：原来直接写在组合体里，DonutCard 每次重组（切 Tab、
+            // 点切片、父级任意状态变化）都要重排一遍。categories 引用不变就不重排。
+            val sortedSlices = remember(data.categories) {
+                data.categories.sortedByDescending { it.amount }
+            }
+            sortedSlices.forEachIndexed { index, slice ->
                 CategoryRow(rank = index + 1, slice = slice, onOpen = { onOpenSlice(slice) })
-                if (index != data.categories.lastIndex) Spacer(Modifier.height(12.dp))
+                if (index != sortedSlices.lastIndex) Spacer(Modifier.height(12.dp))
             }
         }
     }
@@ -722,7 +742,7 @@ private fun SubCategoryPill(subCategory: Boolean, onSelect: (Boolean) -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(AccentSoft)
-            .padding(3.dp),
+            .padding(4.dp),
     ) {
         listOf(false to "主分类", true to "子分类").forEach { (isSub, label) ->
             val selected = subCategory == isSub
@@ -731,11 +751,11 @@ private fun SubCategoryPill(subCategory: Boolean, onSelect: (Boolean) -> Unit) {
                     .clip(RoundedCornerShape(50))
                     .background(if (selected) AccentBlue else Color.Transparent)
                     .clickable { onSelect(isSub) }
-                    .padding(horizontal = 9.dp, vertical = 4.dp),
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
                 Text(
                     text = label,
-                    style = TextStyle(fontSize = 10.sp, color = if (selected) LedgerTheme.onAccent else TextSecondary),
+                    style =MiuixTheme.textStyles.footnote2.copy(color = if (selected) LedgerTheme.onAccent else TextSecondary),
                 )
             }
         }
@@ -745,9 +765,9 @@ private fun SubCategoryPill(subCategory: Boolean, onSelect: (Boolean) -> Unit) {
 @Composable
 private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
     val textMeasurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(fontSize = 9.sp, color = LedgerTheme.textSecondary)
-    val centerAmountStyle = TextStyle(fontSize = 17.sp, color = TextPrimary)
-    val centerLabelStyle = TextStyle(fontSize = 9.sp, color = LedgerTheme.textTertiary)
+    val labelStyle =MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.textSecondary)
+    val centerAmountStyle = MiuixTheme.textStyles.main.copy(color = TextPrimary)
+    val centerLabelStyle =MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.textTertiary)
     val total = slices.sumOf { it.amount }
     Box(modifier = Modifier.fillMaxWidth().height(272.dp)) {
         Canvas(modifier = Modifier.matchParentSize()) {
@@ -874,7 +894,7 @@ private fun CategoryRow(rank: Int, slice: CategorySlice,
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable { onOpen() }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -893,14 +913,14 @@ private fun CategoryRow(rank: Int, slice: CategorySlice,
         ) {
             Text(text = slice.emoji, fontSize = 17.sp)
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = slice.name, style = TextStyle(fontSize = 14.sp, color = TextPrimary))
-                Spacer(Modifier.width(6.dp))
+                Text(text = slice.name, style = MiuixTheme.textStyles.body2.copy(color = TextPrimary))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     text = "${slice.count}笔",
-                    style = TextStyle(fontSize = 11.sp, color = TextSecondary),
+                    style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
@@ -914,12 +934,12 @@ private fun CategoryRow(rank: Int, slice: CategorySlice,
                     modifier = Modifier.size(14.dp),
                 )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(4.dp))
                     .background(TrackGray),
             ) {
                 Box(
@@ -1080,7 +1100,7 @@ private fun CategoryDetailDialog(
         ).collect { value = it }
     }
     val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.5f).dp
-    GlassDialog(
+    AppDialog(
         show = true,
         title = "${slice.emoji} ${slice.name} 明细",
         summary = "%.2f%% · ¥ %,.2f · %d笔".format(slice.percent, slice.amount, slice.count),
@@ -1100,7 +1120,7 @@ private fun CategoryDetailDialog(
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(bottom = 2.dp),
+                    contentPadding = PaddingValues(bottom = 4.dp),
                 ) {
                     items(entries.size) { i -> DetailEntryRow(entries[i]) }
                 }
@@ -1122,7 +1142,7 @@ private fun DetailEntryRow(entry: LedgerEntry) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(LedgerTheme.surfaceVariant)
-            .padding(horizontal = 12.dp, vertical = 11.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -1133,7 +1153,7 @@ private fun DetailEntryRow(entry: LedgerEntry) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = detailTimeLabel(entry),
                 style = MiuixTheme.textStyles.footnote2,

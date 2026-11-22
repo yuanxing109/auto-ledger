@@ -1,8 +1,9 @@
 package com.eta.autoledger.ui.screen
 
 import com.eta.autoledger.ui.LedgerTheme
-import com.eta.autoledger.ui.glass.glassBackground
-import com.eta.autoledger.ui.glass.GlassCard
+import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.components.AppDialog
+import com.eta.autoledger.ui.window.LocalSnackbar
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,7 +11,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +54,8 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.SwitchDefaults
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
@@ -64,6 +66,8 @@ import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.ui.theme.amountDisplayStyle
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
+import com.eta.autoledger.data.RecurringRule
+import com.eta.autoledger.service.RecurringWorker
 import kotlinx.coroutines.launch
 
 private val PageBg: Color get() = LedgerTheme.page
@@ -130,6 +134,7 @@ private fun categoriesFor(context: android.content.Context, type: Int): List<Cat
 fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val snackbar = LocalSnackbar.current
     var type by rememberSaveable { mutableIntStateOf(0) }
     var amountInput by rememberSaveable { mutableStateOf("") }
     var negative by rememberSaveable { mutableStateOf(false) }
@@ -143,6 +148,10 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
         mutableStateOf(SimpleDateFormat("今天 HH:mm", Locale.CHINA).format(calendar.time))
     }
     var showPicker by remember { mutableStateOf(false) }
+    // 周期账单：开启后这条记录变成模板（同时也会作为本期实账入库）
+    var recurring by rememberSaveable { mutableStateOf(false) }
+    var recurringPeriod by rememberSaveable { mutableIntStateOf(1) } // 0=每周 1=每月 2=每年
+    var showPeriodPicker by remember { mutableStateOf(false) }
     var pickYear by remember { mutableIntStateOf(calendar.get(Calendar.YEAR)) }
     var pickMonth by remember { mutableIntStateOf(calendar.get(Calendar.MONTH)) }
     var pickDay by remember { mutableIntStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
@@ -202,7 +211,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     fun save(reset: Boolean) {
         val raw = amountInput.toDoubleOrNull() ?: 0.0
         if (raw <= 0.0) {
-            Toast.makeText(context, "请输入金额", Toast.LENGTH_SHORT).show()
+            scope.launch { snackbar.show("请输入金额") }
             return
         }
         val typeValue = when (type) {
@@ -210,25 +219,74 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             2 -> "other"
             else -> "expense"
         }
+        val timeTextNow = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(calendar.time)
         scope.launch {
             runCatching {
-                LedgerRepository.add(
-                    context,
-                    LedgerEntry(
-                        id = 0L,
-                        amount = raw,
-                        type = typeValue,
-                        category = selectedCategory,
-                        time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(calendar.time),
-                        note = note,
-                        source = "手动记账",
-                    ),
-                )
+                if (recurring) {
+                    // 周期账单 = 一条模板 + 当期一笔实账。
+                    //
+                    // 只存模板的话，用户今天记的这笔不会出现在账目里（模板被统计排除），
+                    // 要等下一个周期日才「凭空」出现一笔，体验很怪。所以两行一起写：
+                    //   1. 模板（is_recurring=1）：不参与任何统计，只供 Worker 匹配；
+                    //   2. 当期实账（is_recurring=0）：用户今天就能看到。
+                    // 幂等靠 external_id 唯一索引，不靠备注（备注可能为空或重名）。
+                    val rule = RecurringRule.fromDate(
+                        when (recurringPeriod) {
+                            0 -> RecurringRule.Period.WEEKLY
+                            2 -> RecurringRule.Period.YEARLY
+                            else -> RecurringRule.Period.MONTHLY
+                        },
+                        calendar,
+                    )
+                    val templateId = LedgerRepository.add(
+                        context,
+                        LedgerEntry(
+                            id = 0L,
+                            amount = raw,
+                            type = typeValue,
+                            category = selectedCategory,
+                            time = timeTextNow,
+                            note = note,
+                            source = RecurringWorker.SOURCE_TEMPLATE,
+                            externalId = "tmpl_" + java.util.UUID.randomUUID().toString().take(12),
+                            isRecurring = true,
+                            recurringRule = rule.raw,
+                        ),
+                    )
+                    val ymd = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(calendar.time)
+                    LedgerRepository.add(
+                        context,
+                        LedgerEntry(
+                            id = 0L,
+                            amount = raw,
+                            type = typeValue,
+                            category = selectedCategory,
+                            time = timeTextNow,
+                            note = note,
+                            source = "手动记账",
+                            externalId = "rec_${templateId}_$ymd",
+                            isRecurring = false,
+                        ),
+                    )
+                } else {
+                    LedgerRepository.add(
+                        context,
+                        LedgerEntry(
+                            id = 0L,
+                            amount = raw,
+                            type = typeValue,
+                            category = selectedCategory,
+                            time = timeTextNow,
+                            note = note,
+                            source = "手动记账",
+                        ),
+                    )
+                }
             }.onFailure {
-                Toast.makeText(context, "保存失败：${it.message}", Toast.LENGTH_LONG).show()
+                scope.launch { snackbar.showLong("保存失败：${it.message}") }
             }
         }
-        Toast.makeText(context, "已记录 ${selectedCategory} ¥ %.2f".format(raw), Toast.LENGTH_SHORT).show()
+        scope.launch { snackbar.show("已记录 ${selectedCategory} ¥ %.2f".format(raw)) }
         amountInput = ""
         negative = false
         note = ""
@@ -240,7 +298,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             TypeDateRow(
                 type = type,
@@ -256,14 +314,22 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                 amount = displayAmount(),
                 note = note,
                 onNoteChange = { note = it },
-                onCamera = { Toast.makeText(context, "拍照待接入", Toast.LENGTH_SHORT).show() },
-                onGallery = { Toast.makeText(context, "相册待接入", Toast.LENGTH_SHORT).show() },
+                onCamera = { },
+                onGallery = { },
             )
             Spacer(Modifier.height(12.dp))
             CategoryCard(
                 categories = currentCategories,
                 selected = selectedCategory,
                 onSelect = { selectedCategory = it },
+            )
+            Spacer(Modifier.height(12.dp))
+            RecurringCard(
+                enabled = recurring,
+                onEnabled = { recurring = it },
+                periodIndex = recurringPeriod,
+                onPeriodClick = { showPeriodPicker = true },
+                dateHint = timeText,
             )
             Spacer(Modifier.height(16.dp))
         }
@@ -272,6 +338,14 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             onKey = ::pressKey,
             onSaveAgain = { save(reset = true) },
             onDone = { save(reset = false) },
+        )
+    }
+
+    if (showPeriodPicker) {
+        PeriodPickerDialog(
+            selected = recurringPeriod,
+            onDismiss = { showPeriodPicker = false },
+            onPick = { recurringPeriod = it; showPeriodPicker = false },
         )
     }
 
@@ -285,6 +359,88 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             onDismiss = { showPicker = false },
             onConfirm = { y, m, d, h, mi -> applyDateTime(y, m, d, h, mi) },
         )
+    }
+}
+
+/**
+ * 周期账单开关 + 周期选择。
+ *
+ * 只做「每周 / 每月 / 每年」三种基础周期，具体日期取自当前选的记账时间，
+ * 不再单独让用户选日期——同一笔账单的日期与周期日应当一致，
+ * 分成两个选择器只会让用户对不上。
+ */
+@Composable
+private fun RecurringCard(
+    enabled: Boolean,
+    onEnabled: (Boolean) -> Unit,
+    periodIndex: Int,
+    onPeriodClick: () -> Unit,
+    dateHint: String,
+) {
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    val periodLabel = listOf("每周", "每月", "每年")[periodIndex.coerceIn(0, 2)]
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.border, cardShape)
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "设为周期账单",
+                    style = MiuixTheme.textStyles.title4,
+                    color = LedgerTheme.text,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = if (enabled) "到期自动入账并通知" else "房租、订阅、工资等固定支出",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = LedgerTheme.textSecondary,
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnabled,
+                colors = SwitchDefaults.switchColors(
+                    checkedThumbColor = LedgerTheme.surface,
+                    uncheckedThumbColor = LedgerTheme.textSecondary,
+                    checkedTrackColor = LedgerTheme.accent,
+                    uncheckedTrackColor = LedgerTheme.divider,
+                ),
+            )
+        }
+        if (enabled) {
+            Spacer(Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(LedgerTheme.inset)
+                    .clickable(onClick = onPeriodClick),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "$periodLabel（按 ${dateHint.take(10)} 的日期）",
+                        style = MiuixTheme.textStyles.body2,
+                        color = LedgerTheme.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "更改",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = LedgerTheme.accent,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -302,13 +458,12 @@ private fun TypeDateRow(
                 Column(
                     modifier = Modifier
                         .clickable { onType(index) }
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
                         text = label,
-                        style = TextStyle(
-                            fontSize = 14.sp,
+                        style = MiuixTheme.textStyles.body2.copy(
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                             color = if (selected) TextPrimary else TextSecondary,
                         ),
@@ -318,7 +473,7 @@ private fun TypeDateRow(
                         modifier = Modifier
                             .width(18.dp)
                             .height(3.dp)
-                            .clip(RoundedCornerShape(2.dp))
+                            .clip(RoundedCornerShape(4.dp))
                             .background(if (selected) AccentBlue else Color.Transparent),
                     )
                 }
@@ -336,7 +491,7 @@ private fun DatePill(timeText: String, onClick: () -> Unit) {
             .border(1.dp, AccentBlue, RoundedCornerShape(50))
             .background(LedgerTheme.card)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -346,7 +501,7 @@ private fun DatePill(timeText: String, onClick: () -> Unit) {
             modifier = Modifier.size(13.dp),
         )
         Spacer(Modifier.width(4.dp))
-        Text(text = timeText, style = TextStyle(fontSize = 11.sp, color = AccentBlue))
+        Text(text = timeText, style = MiuixTheme.textStyles.footnote2.copy(color = AccentBlue))
     }
 }
 
@@ -389,18 +544,21 @@ private fun DateTimeDialog(
         day = day.coerceAtMost(c.getActualMaximum(Calendar.DAY_OF_MONTH))
     }
 
+    val dialogShape = RoundedCornerShape(LocalDimens.current.radiusSheet)
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 32.dp)
-                .glassBackground(RoundedCornerShape(24.dp), veil = LedgerTheme.surface.copy(alpha = 0.60f))
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .clip(dialogShape)
+                .background(LedgerTheme.surface)
+                .border(1.dp, LedgerTheme.borderSoft, dialogShape)
+                .padding(horizontal = 16.dp, vertical = 16.dp),
         ) {
             Column {
                 Text(
                     text = "编辑日期",
-                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary),
+                    style = MiuixTheme.textStyles.main.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -409,7 +567,7 @@ private fun DateTimeDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(48.dp)
                             .clip(CircleShape)
                             .clickable { shiftMonth(-1) },
                         contentAlignment = Alignment.Center,
@@ -429,7 +587,7 @@ private fun DateTimeDialog(
                     )
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(48.dp)
                             .clip(CircleShape)
                             .clickable { shiftMonth(1) },
                         contentAlignment = Alignment.Center,
@@ -448,7 +606,7 @@ private fun DateTimeDialog(
                     listOf("一", "二", "三", "四", "五", "六", "日").forEach { label ->
                         Text(
                             text = label,
-                            style = TextStyle(fontSize = 10.sp, color = TextSecondary),
+                            style =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f),
                         )
@@ -467,19 +625,25 @@ private fun DateTimeDialog(
                                     val selected = value == day
                                     Box(
                                         modifier = Modifier
-                                            .size(32.dp)
+                                            .size(48.dp)
                                             .clip(CircleShape)
-                                            .background(if (selected) AccentBlue else Color.Transparent)
                                             .clickable { day = value },
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        Text(
-                                            text = value.toString(),
-                                            style = TextStyle(
-                                                fontSize = 13.sp,
-                                                color = if (selected) LedgerTheme.onAccent else TextPrimary,
-                                            ),
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(CircleShape)
+                                                .background(if (selected) AccentBlue else Color.Transparent),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                text = value.toString(),
+                                                style = MiuixTheme.textStyles.footnote1.copy(
+                                                    color = if (selected) LedgerTheme.onAccent else TextPrimary,
+                                                ),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -490,7 +654,7 @@ private fun DateTimeDialog(
                     }
                 }
 
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -522,24 +686,24 @@ private fun DateTimeDialog(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(16.dp))
                             .background(LedgerTheme.inset)
                             .clickable(onClick = onDismiss),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(text = "取消", style = TextStyle(fontSize = 14.sp, color = TextSecondary))
+                        Text(text = "取消", style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
                     }
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(16.dp))
                             .background(AccentBlue)
                             .clickable { onConfirm(year, month, day, hour, minute) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(text = "确认", style = TextStyle(fontSize = 14.sp, color = LedgerTheme.onAccent))
+                        Text(text = "确认", style = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.onAccent))
                     }
                 }
             }
@@ -556,21 +720,31 @@ private fun TimeStepper(
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            modifier = Modifier.size(24.dp).clickable(onClick = onUp),
+            modifier = Modifier.size(48.dp).clickable(onClick = onUp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = "▲", style = TextStyle(fontSize = 9.sp, color = TextSecondary))
+            Box(
+                modifier = Modifier.size(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "▲", style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary))
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = "%02d".format(value), style = TextStyle(fontSize = 24.sp, color = AccentBlue))
-            Spacer(Modifier.width(2.dp))
-            Text(text = unit, style = TextStyle(fontSize = 10.sp, color = TextSecondary))
+            Spacer(Modifier.width(4.dp))
+            Text(text = unit, style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary))
         }
         Box(
-            modifier = Modifier.size(24.dp).clickable(onClick = onDown),
+            modifier = Modifier.size(48.dp).clickable(onClick = onDown),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = "▼", style = TextStyle(fontSize = 9.sp, color = TextSecondary))
+            Box(
+                modifier = Modifier.size(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "▼", style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary))
+            }
         }
     }
 }
@@ -583,62 +757,63 @@ private fun AmountCard(
     onCamera: () -> Unit,
     onGallery: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(20.dp)
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        veil = LedgerTheme.surface.copy(alpha = 0.40f),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, cardShape)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
     ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "¥", style = TextStyle(fontSize = 20.sp, color = TextPrimary))
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = amount,
-                    style = amountDisplayStyle().copy(
-                        color = if (amount == "0.00") LedgerTheme.textTertiary else LedgerTheme.text,
-                    ),
-                )
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "¥", style = TextStyle(fontSize = 20.sp, color = TextPrimary))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = amount,
+                style = amountDisplayStyle().copy(
+                    color = if (amount == "0.00") LedgerTheme.textTertiary else LedgerTheme.text,
+                ),
+            )
+        }
 
-            Spacer(Modifier.height(10.dp))
-            BasicTextField(
-                value = note,
-                onValueChange = onNoteChange,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 14.sp, color = TextPrimary),
-                cursorBrush = SolidColor(AccentBlue),
-                decorationBox = { inner ->
-                    Box {
-                        if (note.isEmpty()) {
-                            Text(
-                                text = "点击添加备注",
-                                style = TextStyle(fontSize = 14.sp, color = TextSecondary),
-                            )
-                        }
-                        inner()
+        Spacer(Modifier.height(12.dp))
+        BasicTextField(
+            value = note,
+            onValueChange = onNoteChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+            cursorBrush = SolidColor(AccentBlue),
+            decorationBox = { inner ->
+                Box {
+                    if (note.isEmpty()) {
+                        Text(
+                            text = "点击添加备注",
+                            style = MiuixTheme.textStyles.body2.copy(color = TextSecondary),
+                        )
                     }
-                },
-            )
-
-            Spacer(Modifier.height(8.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(0.5.dp)
-                    .background(LedgerTheme.divider),
-            )
-            Spacer(Modifier.height(6.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onCamera) {
-                    Text("📷", fontSize = 19.sp)
+                    inner()
                 }
-                IconButton(onClick = onGallery) {
-                    Text("🖼️", fontSize = 19.sp)
-                }
+            },
+        )
+
+        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(0.5.dp)
+                .background(LedgerTheme.divider),
+        )
+        Spacer(Modifier.height(8.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onCamera) {
+                Text("📷", fontSize = 19.sp)
+            }
+            IconButton(onClick = onGallery) {
+                Text("🖼️", fontSize = 19.sp)
             }
         }
     }
@@ -650,35 +825,36 @@ private fun CategoryCard(
     selected: String,
     onSelect: (String) -> Unit,
 ) {
-    val shape = RoundedCornerShape(20.dp)
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        veil = LedgerTheme.surface.copy(alpha = 0.40f),
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 14.dp),
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, cardShape)
+            .padding(horizontal = 12.dp, vertical = 16.dp),
     ) {
-        Column {
-            categories.chunked(5).forEachIndexed { index, rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    rowItems.forEach { category ->
-                        CategoryCell(
-                            category = category,
-                            selected = selected == category.name,
-                            onClick = {
-                                if (category.name != "添加") onSelect(category.name)
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    repeat(5 - rowItems.size) {
-                        Spacer(Modifier.weight(1f))
-                    }
+        categories.chunked(5).forEachIndexed { index, rowItems ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                rowItems.forEach { category ->
+                    CategoryCell(
+                        category = category,
+                        selected = selected == category.name,
+                        onClick = {
+                            if (category.name != "添加") onSelect(category.name)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
-                if (index != categories.chunked(5).lastIndex) {
-                    Spacer(Modifier.height(12.dp))
+                repeat(5 - rowItems.size) {
+                    Spacer(Modifier.weight(1f))
                 }
+            }
+            if (index != categories.chunked(5).lastIndex) {
+                Spacer(Modifier.height(12.dp))
             }
         }
     }
@@ -700,7 +876,7 @@ private fun CategoryCell(
                 .size(46.dp)
                 .clip(CircleShape)
                 .then(
-                    if (selected) Modifier.border(1.5.dp, AccentBlue, CircleShape)
+                    if (selected) Modifier.border(2.dp, AccentBlue, CircleShape)
                     else Modifier,
                 ),
             contentAlignment = Alignment.Center,
@@ -708,7 +884,7 @@ private fun CategoryCell(
             Box(
                 modifier = Modifier
                     .size(36.dp)
-                    .clip(RoundedCornerShape(11.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(category.color.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -727,8 +903,7 @@ private fun CategoryCell(
         Spacer(Modifier.height(4.dp))
         Text(
             text = category.name,
-            style = TextStyle(
-                fontSize = 10.sp,
+            style = MiuixTheme.textStyles.footnote2.copy(
                 color = if (selected) TextPrimary else TextSecondary,
             ),
         )
@@ -744,9 +919,10 @@ private fun Keyboard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .glassBackground(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), veil = LedgerTheme.surface.copy(alpha = 0.55f))
+            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(LedgerTheme.surface)
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
     ) {
         Box(
             modifier = Modifier
@@ -754,7 +930,7 @@ private fun Keyboard(
                 .height(0.5.dp)
                 .background(LedgerTheme.divider),
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
 
         val rows = listOf(
             listOf("1", "2", "3", "⌫"),
@@ -814,11 +990,66 @@ private fun KeyboardKey(
     Box(
         modifier = modifier
             .height(50.dp)
-            .clip(RoundedCornerShape(13.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(background)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = label, style = style, color = contentColor)
+    }
+}
+
+/** 周期选择：三项单选，选中态实心 accent。 */
+@Composable
+private fun PeriodPickerDialog(
+    selected: Int,
+    onDismiss: () -> Unit,
+    onPick: (Int) -> Unit,
+) {
+    AppDialog(title = "重复周期", onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            listOf(
+                "每周" to "按当前记账日期的星期几，每周重复",
+                "每月" to "按当前记账日期的号数，每月重复（上限 28 日）",
+                "每年" to "按当前记账日期的月日，每年重复",
+            ).forEachIndexed { index, (label, hint) ->
+                if (index > 0) Spacer(Modifier.height(8.dp))
+                val isSelected = index == selected
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isSelected) LedgerTheme.accent else LedgerTheme.inset)
+                        .clickable { onPick(index) }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                ) {
+                    Text(
+                        text = label,
+                        style = MiuixTheme.textStyles.body1.copy(
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isSelected) LedgerTheme.onAccent else LedgerTheme.text,
+                        ),
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = hint,
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = if (isSelected) LedgerTheme.onAccent else LedgerTheme.textSecondary,
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(LedgerTheme.inset)
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("取消", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+            }
+        }
     }
 }

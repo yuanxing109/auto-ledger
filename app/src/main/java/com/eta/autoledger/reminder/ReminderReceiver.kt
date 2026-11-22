@@ -7,8 +7,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.MainActivity
 import com.eta.autoledger.data.LedgerRepository
+import com.eta.autoledger.notification.IslandNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,26 +36,22 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     private fun post(context: Context, title: String, text: String) {
-        val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "记账提醒", NotificationManager.IMPORTANCE_HIGH),
-        )
-        val content = PendingIntent.getActivity(
+        val prefs = AppPrefs.get(context)
+        // 走统一出口：能在支持的机型上以超级岛/实况窗展示，否则自动降级普通高优通知
+        IslandNotifier.deliver(
             context,
-            0,
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            IslandNotifier.Spec(
+                id = 2000,
+                title = title,
+                text = text,
+                critical = text.lineSequence().firstOrNull().orEmpty().take(24),
+                channelId = CHANNEL,
+                channelName = "记账提醒",
+                // 走 Android16 实况窗时需常驻才能留在超级岛；否则普通一次性通知
+                ongoing = prefs.islandDaily && IslandNotifier.supportsLiveUpdates(),
+                enableVendorIsland = prefs.islandDaily,
+            ),
         )
-        val notification = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_menu_agenda)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(content)
-            .build()
-        runCatching { manager.notify(2000, notification) }
     }
 
     private suspend fun buildSummary(context: Context, kind: String): String {

@@ -47,6 +47,14 @@ class ScreenshotCaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // 总开关最先判：关掉「截屏记账」后，无论是磁贴、通知还是无障碍快捷方式
+        // 触发，都在这里直接退出——不建前台通知、不抓图、不调 AI。
+        // 原来只在磁贴里判 needsSetup，主链路完全不看这个开关，导致关了照样记账。
+        if (!AppPrefs.get(this).screenshotEnabled) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         val progress = progressNotification("正在截屏并交给 AI 解析…")
         val isRootCapture = intent?.action == ACTION_CAPTURE_ROOT
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

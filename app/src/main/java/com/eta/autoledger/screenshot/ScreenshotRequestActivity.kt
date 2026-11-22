@@ -40,6 +40,12 @@ class ScreenshotRequestActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 开关关闭时不必弹出系统录屏授权框，直接退出。
+        if (!com.eta.autoledger.AppPrefs.get(this).screenshotEnabled) {
+            Toast.makeText(this, "截屏记账已在设置中关闭", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
         setContent { }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=

@@ -2,8 +2,13 @@ package com.eta.autoledger.ui.screen
 
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import com.eta.autoledger.ui.LocalDimens
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
-import com.eta.autoledger.ui.glass.GlassButton
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -63,10 +69,10 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eta.autoledger.data.CategoryStore
+import com.eta.autoledger.ui.components.CategoryChip
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.ui.LedgerTheme
-import com.eta.autoledger.ui.glass.glassBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
@@ -160,7 +166,10 @@ fun SearchScreen(onClose: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LedgerTheme.page)
+            // 必须用不透明底：根层只有半透明 page 底色，
+            // LedgerTheme.page 是半透明（浅 0x99 / 深 0x59），会让系统壁纸/窗口色透出来。
+            // surface 是全站不透明底色，与其他页卡片一致。
+            .background(LedgerTheme.surface)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
@@ -169,7 +178,7 @@ fun SearchScreen(onClose: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
-                .padding(start = 6.dp, end = 16.dp),
+                .padding(start = 8.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
@@ -208,7 +217,7 @@ fun SearchScreen(onClose: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 10.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -256,20 +265,19 @@ fun SearchScreen(onClose: () -> Unit) {
                 .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("共 ${results.size} 笔", fontSize = 13.sp, color = LedgerTheme.textSecondary)
+            Text("共 ${results.size} 笔", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary))
             Spacer(Modifier.width(8.dp))
-            Text("·", fontSize = 13.sp, color = LedgerTheme.divider)
+            Text("·", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.divider))
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "支出 ¥${money(expenseSum)}",
-                fontSize = 13.sp,
-                color = LedgerTheme.text,
+                style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.text),
             )
             if (incomeSum > 0) {
                 Spacer(Modifier.width(8.dp))
-                Text("·", fontSize = 13.sp, color = LedgerTheme.divider)
+                Text("·", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.divider))
                 Spacer(Modifier.width(8.dp))
-                Text("收入 ¥${money(incomeSum)}", fontSize = 13.sp, color = LedgerTheme.income)
+                Text("收入 ¥${money(incomeSum)}", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.income))
             }
         }
 
@@ -288,22 +296,21 @@ fun SearchScreen(onClose: () -> Unit) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "试试减少筛选条件，或换个关键字",
-                        fontSize = 13.sp,
-                        color = LedgerTheme.textSecondary,
+                        style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
                     )
                     if (activeCount > 0 || keyword.isNotEmpty()) {
                         Spacer(Modifier.height(14.dp))
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(LedgerTheme.surfaceVariant)
                                 .clickable {
                                     keyword = ""
                                     resetFilters()
                                 }
-                                .padding(horizontal = 16.dp, vertical = 9.dp),
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
                         ) {
-                            Text("清除全部筛选", fontSize = 13.sp, color = LedgerTheme.accent)
+                            Text("清除全部筛选", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.accent))
                         }
                     }
                 }
@@ -311,7 +318,7 @@ fun SearchScreen(onClose: () -> Unit) {
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 82.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 groups.forEach { (day, list) ->
@@ -328,7 +335,7 @@ fun SearchScreen(onClose: () -> Unit) {
                         Text(
                             text = "⚠️ 已显示前 $SEARCH_LIMIT 条，收窄条件可看更早的账单",
                             fontSize = 12.sp,
-                            color = LedgerTheme.textTertiary,
+                            color = LedgerTheme.textSecondary,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 12.dp),
@@ -460,7 +467,7 @@ private fun DayHeader(dayTitle: String, dayExpense: Double) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 6.dp, bottom = 2.dp),
+            .padding(top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(dayTitle, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
@@ -480,16 +487,17 @@ private fun Chip(
 ) {
     val text = if (removable) "$label ✕" else label
     val shape = RoundedCornerShape(50)
-    val bg = if (selected) LedgerTheme.accent.copy(alpha = 0.28f) else LedgerTheme.surface.copy(alpha = 0.28f)
-    val bd = if (selected) LedgerTheme.accent.copy(alpha = 0.55f) else LedgerTheme.border.copy(alpha = 0.55f)
-    val fg = if (selected) LedgerTheme.accent else LedgerTheme.textSecondary
+    // 选中态用实心 accent 底 + onAccent 文字 + accent 边，保证「蓝底/蓝边」清晰可辨
+    val bg = if (selected) LedgerTheme.accent else LedgerTheme.surface
+    val bd = if (selected) LedgerTheme.accentPressed else LedgerTheme.border
+    val fg = if (selected) LedgerTheme.onAccent else LedgerTheme.textSecondary
     Box(
         modifier = Modifier
             .clip(shape)
             .background(bg)
             .border(0.5.dp, bd, shape)
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Text(text, style = MiuixTheme.textStyles.footnote1, color = fg)
     }
@@ -506,14 +514,15 @@ private fun AmountBox(
     Box(
         modifier = modifier
             .clip(shape)
-            .glassBackground(shape, veil = LedgerTheme.surface.copy(alpha = 0.40f))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, shape)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         BasicTextField(
             value = value,
             onValueChange = { input -> onChange(input.filter { it.isDigit() || it == '.' }) },
-            textStyle = TextStyle(fontSize = 15.sp, color = LedgerTheme.text, fontWeight = FontWeight.Medium),
+            textStyle = MiuixTheme.textStyles.body1.copy(color = LedgerTheme.text, fontWeight = FontWeight.Medium),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             cursorBrush = SolidColor(LedgerTheme.accent),
@@ -521,7 +530,7 @@ private fun AmountBox(
             decorationBox = { inner ->
                 Box {
                     if (value.isEmpty()) {
-                        Text(hint, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textTertiary)
+                        Text(hint, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
                     }
                     inner()
                 }
@@ -543,8 +552,8 @@ private fun ResultRow(entry: LedgerEntry) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(LedgerTheme.surface.copy(alpha = 0.34f))
-            .border(0.5.dp, LedgerTheme.border.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .border(0.5.dp, LedgerTheme.borderSoft.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -628,99 +637,137 @@ private fun FilterSheet(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            val sheetShape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .glassBackground(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp), veil = LedgerTheme.surface.copy(alpha = 0.32f))
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                    .fillMaxHeight(0.9f)
+                    .clip(sheetShape)
+                    .background(LedgerTheme.surface)
+                    .border(1.dp, LedgerTheme.borderSoft, sheetShape)
+                    .navigationBarsPadding(),
             ) {
-                Box(
+                // ---- 固定头部：拖拽条 + 标题 ----
+                Column(
                     modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .width(40.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(LedgerTheme.divider),
-                )
-                Spacer(Modifier.height(14.dp))
-                Text("筛选", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.text)
-                Spacer(Modifier.height(14.dp))
-
-                SectionLabel("时间")
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 16.dp),
                 ) {
-                    RANGE_LABELS.forEach { (v, label) ->
-                        Chip(label = label, selected = range == v, onClick = { onRange(v) })
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-
-                SectionLabel("类型")
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TYPE_LABELS.forEach { (v, label) ->
-                        Chip(label = label, selected = type == v, onClick = { onType(v) })
-                    }
-                }
-
-                if (cats.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .width(40.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(LedgerTheme.divider),
+                    )
                     Spacer(Modifier.height(14.dp))
-                    SectionLabel("分类（可多选）")
+                    Text("筛选", style = MiuixTheme.textStyles.main.copy(fontWeight = FontWeight.SemiBold, color = LedgerTheme.text))
+                }
+
+                // ---- 可滚动内容区（weight 占满剩余高度，内容超长上下滑动）----
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 14.dp),
+                ) {
+                    SectionLabel("时间")
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        cats.forEach { name ->
-                            Chip(
-                                label = name,
-                                selected = name in categories,
-                                onClick = {
-                                    onCategories(
-                                        if (name in categories) categories - name else categories + name,
-                                    )
-                                },
-                            )
+                        RANGE_LABELS.forEach { (v, label) ->
+                            Chip(label = label, selected = range == v, onClick = { onRange(v) })
                         }
                     }
-                }
+                    Spacer(Modifier.height(14.dp))
 
-                Spacer(Modifier.height(14.dp))
-                SectionLabel("金额（元）")
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AmountBox(modifier = Modifier.weight(1f), value = minAmount, hint = "最低", onChange = onMin)
-                    Text("—", fontSize = 13.sp, color = LedgerTheme.textTertiary)
-                    AmountBox(modifier = Modifier.weight(1f), value = maxAmount, hint = "最高", onChange = onMax)
-                }
-
-                Spacer(Modifier.height(14.dp))
-                SectionLabel("排序")
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SORT_LABELS.forEach { (v, label) ->
-                        Chip(label = label, selected = sort == v, onClick = { onSort(v) })
+                    SectionLabel("类型")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        TYPE_LABELS.forEach { (v, label) ->
+                            Chip(label = label, selected = type == v, onClick = { onType(v) })
+                        }
                     }
+
+                    if (cats.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        SectionLabel("分类（可多选）")
+                        // 分类数量多：单独限高 + 内滚动，避免把整个弹窗撑爆
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 160.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                cats.forEach { name ->
+                                    // selected 用纯分类名比较；图标与文字分开传
+                                    CategoryChip(
+                                        text = name,
+                                        icon = CategoryStore.emoji(name),
+                                        selected = name in categories,
+                                        onClick = {
+                                            onCategories(
+                                                if (name in categories) categories - name else categories + name,
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+                    SectionLabel("金额（元）")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AmountBox(modifier = Modifier.weight(1f), value = minAmount, hint = "最低", onChange = onMin)
+                        Text("—", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary))
+                        AmountBox(modifier = Modifier.weight(1f), value = maxAmount, hint = "最高", onChange = onMax)
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+                    SectionLabel("排序")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SORT_LABELS.forEach { (v, label) ->
+                            Chip(label = label, selected = sort == v, onClick = { onSort(v) })
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
                 }
 
-                Spacer(Modifier.height(20.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // ---- 固定底部操作栏：始终可见、可点击 ----
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(LedgerTheme.surface)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     val resetShape = RoundedCornerShape(50)
                     Box(
                         modifier = Modifier
                             .weight(0.62f)
                             .height(48.dp)
                             .clip(resetShape)
-                            .background(LedgerTheme.surface.copy(alpha = 0.32f))
-                            .border(0.5.dp, LedgerTheme.border.copy(alpha = 0.55f), resetShape)
+                            .background(LedgerTheme.surfacePressed)
+                            .border(1.dp, LedgerTheme.border, resetShape)
                             .clickable {
                                 onRange(0)
                                 onReset()
@@ -729,10 +776,21 @@ private fun FilterSheet(
                     ) {
                         Text("重置", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
                     }
-                    GlassButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1.38f).height(48.dp),
-                        tint = LedgerTheme.accent.copy(alpha = 0.40f),
+                    val applyInteraction = remember { MutableInteractionSource() }
+                    val applyPressed by applyInteraction.collectIsPressedAsState()
+                    val applyShape = RoundedCornerShape(LocalDimens.current.radiusCapsule)
+                    Box(
+                        modifier = Modifier
+                            .weight(1.38f)
+                            .height(48.dp)
+                            .clip(applyShape)
+                            .background(if (applyPressed) LedgerTheme.accentPressed else LedgerTheme.accent)
+                            .clickable(
+                                interactionSource = applyInteraction,
+                                indication = LocalIndication.current,
+                                onClick = onDismiss,
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             text = if (preview == null) "应用" else "应用（${preview} 条）",

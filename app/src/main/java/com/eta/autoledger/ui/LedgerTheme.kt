@@ -47,13 +47,19 @@ object LedgerTheme {
     /** 卡内的「凹槽」块（比卡片更暗，表达下沉）。 */
     val inset: Color get() = colors.inset
 
+    /** 按下态表面：深色用实心提亮一档（#1C242E），不再用白色透明叠加。 */
+    val surfacePressed: Color get() = colors.surfacePressed
+
     // ---------------- 线 ----------------
 
-    /** 卡片描边。深色靠它分层，不靠阴影。 */
+    /** 可交互组件边界（按钮/chip/输入框/选中态）：WCAG 1.4.11 要求 ≥3:1。 */
     val border: Color get() = colors.border
 
-    /** 兼容旧名：等同于 [border]。 */
-    val cardBorder: Color get() = colors.border
+    /** 装饰性卡片/容器外框：不受 3:1 约束，仅需肉眼可辨。 */
+    val borderSoft: Color get() = colors.borderSoft
+
+    /** 兼容旧名：等同于 [borderSoft]（卡片场景）。 */
+    val cardBorder: Color get() = colors.borderSoft
 
     /** 列表分隔线 / 图表虚线网格。 */
     val divider: Color get() = colors.divider
@@ -92,6 +98,11 @@ object LedgerTheme {
     val danger: Color get() = colors.danger
 
     val warning: Color get() = colors.warning
+
+    // ---- 预算语义：蓝=剩余，琥珀=临界，红=超支；绿只归收入金额 ----
+    val budgetRemaining: Color get() = colors.budgetRemaining
+    val budgetNearLimit: Color get() = colors.budgetNearLimit
+    val budgetOver: Color get() = colors.budgetOver
 
     /**
      * 半透明叠色块（chip 选中底、进度条底槽、图表面积填充）。

@@ -6,6 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.Summary
+import com.eta.autoledger.ui.model.DayGroupUi
+import com.eta.autoledger.ui.model.groupEntries
+import com.eta.autoledger.ui.model.mergeIntoTail
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +27,7 @@ import kotlinx.coroutines.launch
 
 data class BillsUiState(
     val bills: List<LedgerEntry> = emptyList(),
+    val groups: List<DayGroupUi> = emptyList(),
     val isLoading: Boolean = true,
     val hasMore: Boolean = false,
     val totalCount: Int = 0,
@@ -44,6 +50,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private var loadingMore = false
 
+    /**
+     * 已分组结果。翻页时只把新页并进尾部（[mergeIntoTail]），不重算已加载部分。
+     *
+     * 原实现放在 UI：`remember(entries) { groupEntries(entries) }`。
+     * `loadMore` 产生新 List 使 key 失效 → 每次翻页把已加载的 N 条全部重新分组，
+     * 翻到第 k 页单次开销为 N，累计 ΣN ≈ O(n²)。迁到这里后每次翻页只处理新页（O(pageSize)）。
+     */
+    private val groups = MutableStateFlow<List<DayGroupUi>>(emptyList())
+
     private val billsFlow = combine(firstPage, extraPages) { first, extra ->
         // 首屏刷新（新账插入、旧账删除）可能与已加载的追加页重叠，按 id 去重。
         val seen = HashSet<Long>(first.size + extra.size)
@@ -55,9 +70,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         LedgerRepository.observeCount(context),
         loading,
         exhausted,
-    ) { bills, count, isLoading, reachedEnd ->
+        groups,
+    ) { bills, count, isLoading, reachedEnd, grouped ->
         BillsUiState(
             bills = bills,
+            groups = grouped,
             isLoading = isLoading,
             hasMore = !reachedEnd && bills.size < count,
             totalCount = count,
@@ -76,9 +93,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch(Dispatchers.IO) { LedgerRepository.repairTimestamps(context) }
+        // 首屏：全量分组一次。之后翻页只走增量合并，不再进这里。
         viewModelScope.launch {
-            firstPage.first()
-            loading.value = false
+            firstPage.collect { first ->
+                groups.value = groupEntries(first)
+                loading.value = false
+            }
         }
         // 账单总量变了：新账插在顶部会让游标页位移，直接丢掉追加页，从首屏重新开始翻。
         viewModelScope.launch {
@@ -118,6 +138,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         extraPages.value = (extraPages.value + more).distinctBy { it.id }
+        // 增量合并：只对新页做转换并接到末组，已加载部分不重算。
+        // 原实现放在 UI 的 remember(entries) 里，每次翻页都全量重分组 → 累计 O(n²)。
+        groups.value = mergeIntoTail(groups.value, more)
         if (more.size < pageSize) exhausted.value = true
     }
 
@@ -140,10 +163,28 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteEntry(id: Long) {
+    /**
+     * 删除账目，返回的 Deferred 在删除**真正落库后**才完成。
+     *
+     * 调用方（Snackbar 撤销流程）必须先 await 再弹提示：
+     * 否则用户可能在 delete 尚未完成时点撤销，restoreEntry 的 insert 会被
+     * `OnConflictStrategy.IGNORE` 静默丢弃（记录还在，id 冲突），
+     * 随后 delete 完成又把这条删掉——用户点了撤销却什么都没恢复。
+     */
+    fun deleteEntry(id: Long): Deferred<Unit> = viewModelScope.async(Dispatchers.IO) {
+        LedgerRepository.delete(context, id)
+        extraPages.update { list -> list.filterNot { it.id == id } }
+    }
+
+    /**
+     * 撤销删除：把被删的账目按原 id 写回。
+     *
+     * 与 [deleteEntry] 配对使用——Snackbar 的「撤销」动作在删除后触发，
+     * 需要原样恢复（含 id、时间、来源），所以走 `add` 的显式 id 分支而非重新生成。
+     */
+    fun restoreEntry(entry: LedgerEntry) {
         viewModelScope.launch(Dispatchers.IO) {
-            LedgerRepository.delete(context, id)
-            extraPages.update { list -> list.filterNot { it.id == id } }
+            LedgerRepository.restore(context, entry)
         }
     }
 

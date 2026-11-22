@@ -29,7 +29,7 @@ object BackupRunner {
     suspend fun backup(context: Context, prefs: AppPrefs): Result = withContext(Dispatchers.IO) {
         val target = WebDavClient.target(prefs) ?: return@withContext Result(false, "请先填写 WebDAV 地址、账号与应用密码")
         runCatching {
-            val entries = LedgerRepository.load(context)
+            val entries = LedgerRepository.load(context, includeTemplates = true)
             if (entries.isEmpty()) return@withContext Result(false, "本地没有账目，未上传")
             val bytes = BackupCodec.encode(entries)
             val day = SimpleDateFormat(DAY_FMT, Locale.US).format(Date())

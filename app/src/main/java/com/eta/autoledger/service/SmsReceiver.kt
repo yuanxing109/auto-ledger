@@ -68,6 +68,7 @@ class SmsReceiver : BroadcastReceiver() {
                 val body = parts.mapNotNull { it.messageBody }.joinToString("")
                 if (body.isBlank()) return@forEach
                 val postTime = parts.maxOfOrNull { it.timestampMillis } ?: System.currentTimeMillis()
+                val prefs = AppPrefs.get(context)
                 val bill = NotificationRules.parseSms(
                     sender = sender,
                     body = body,
@@ -75,6 +76,8 @@ class SmsReceiver : BroadcastReceiver() {
                     expenseCats = expenseCats,
                     incomeCats = incomeCats,
                     otherCats = otherCats,
+                    ignoreKeywords = prefs.ignoreKeywords,
+                    forceKeywords = prefs.forceKeywords,
                 ) ?: run {
                     Log.d(TAG, "短信未识别为账单：$sender / $body")
                     return@forEach
@@ -90,7 +93,7 @@ class SmsReceiver : BroadcastReceiver() {
                     return@forEach
                 }
                 val added = runCatching {
-                    LedgerRepository.addImported(context, listOf(bill.toEntry(0L)))
+                    LedgerRepository.addAutoParsed(context, listOf(bill.toEntry(0L)))
                 }.getOrElse {
                     Log.w(TAG, "短信账单入库失败", it)
                     0

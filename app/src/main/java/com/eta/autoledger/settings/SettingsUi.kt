@@ -1,7 +1,7 @@
 package com.eta.autoledger.settings
 
-import com.eta.autoledger.ui.glass.GlassCard
 import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.ui.LocalDimens
 import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -25,7 +25,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -100,7 +99,7 @@ internal val PageBg: Color get() = LedgerTheme.page
 internal val AccentBlue: Color get() = LedgerTheme.accent
 internal val TextPrimary: Color get() = LedgerTheme.text
 internal val TextSecondary: Color get() = LedgerTheme.textSecondary
-internal val CardBorder: Color get() = LedgerTheme.border
+internal val CardBorder: Color get() = LedgerTheme.borderSoft
 
 @Composable
 internal fun SettingsPageColumn(content: @Composable () -> Unit) {
@@ -108,21 +107,23 @@ internal fun SettingsPageColumn(content: @Composable () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         content()
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(82.dp))
     }
 }
 
 @Composable
 internal fun SettingsCard(content: @Composable () -> Unit) {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        veil = LedgerTheme.surface.copy(alpha = 0.45f),
-        contentPadding = PaddingValues(0.dp),
+    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, cardShape),
     ) {
         Column { content() }
     }
@@ -154,7 +155,7 @@ internal fun InfoRow(title: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -162,7 +163,7 @@ internal fun InfoRow(title: String, value: String) {
             style = TextStyle(fontSize = 15.sp, color = TextPrimary),
             modifier = Modifier.weight(1f),
         )
-        Text(text = value, style = TextStyle(fontSize = 13.sp, color = TextSecondary))
+        Text(text = value, style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
     }
 }
 

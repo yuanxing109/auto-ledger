@@ -61,9 +61,9 @@ internal fun ledgerLightColors(): Colors {
         surfaceContainer = p.surface,
         onSurfaceContainer = p.text,
         onSurfaceContainerVariant = p.textSecondary,
-        surfaceContainerHigh = p.surfaceVariant,
+        surfaceContainerHigh = p.surfacePressed,
         onSurfaceContainerHigh = p.text,
-        surfaceContainerHighest = p.surfaceVariant,
+        surfaceContainerHighest = p.surfacePressed,
         onSurfaceContainerHighest = p.text,
 
         outline = p.border,
@@ -116,9 +116,9 @@ internal fun ledgerDarkColors(): Colors {
         surfaceContainer = p.surface,
         onSurfaceContainer = p.text,
         onSurfaceContainerVariant = p.textSecondary,
-        surfaceContainerHigh = p.surfaceVariant,
+        surfaceContainerHigh = p.surfacePressed,
         onSurfaceContainerHigh = p.text,
-        surfaceContainerHighest = p.surfaceVariant,
+        surfaceContainerHighest = p.surfacePressed,
         onSurfaceContainerHighest = p.text,
 
         outline = p.border,

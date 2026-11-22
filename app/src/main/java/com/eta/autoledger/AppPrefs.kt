@@ -70,16 +70,6 @@ class AppPrefs private constructor(context: Context) {
         get() = islandDailyState
         set(value) { islandDailyState = value; prefs.edit().putBoolean("island_daily", value).apply() }
 
-    private var calendarDailyState by mutableStateOf(prefs.getBoolean("calendar_daily", false))
-    var calendarDaily: Boolean
-        get() = calendarDailyState
-        set(value) { calendarDailyState = value; prefs.edit().putBoolean("calendar_daily", value).apply() }
-
-    private var dailyMutedState by mutableStateOf(prefs.getBoolean("daily_muted", false))
-    var dailyMuted: Boolean
-        get() = dailyMutedState
-        set(value) { dailyMutedState = value; prefs.edit().putBoolean("daily_muted", value).apply() }
-
     private var islandSingleState by mutableStateOf(prefs.getBoolean("island_single", true))
     var islandSingle: Boolean
         get() = islandSingleState
@@ -95,25 +85,37 @@ class AppPrefs private constructor(context: Context) {
         get() = singleMutedState
         set(value) { singleMutedState = value; prefs.edit().putBoolean("single_muted", value).apply() }
 
+    /** Android 16+ 实况通知（Live Updates）总开关。 */
+    private var islandLiveUpdatesState by mutableStateOf(prefs.getBoolean("island_live_updates", true))
+    var islandLiveUpdates: Boolean
+        get() = islandLiveUpdatesState
+        set(value) { islandLiveUpdatesState = value; prefs.edit().putBoolean("island_live_updates", value).apply() }
+
+    /** 小米超级岛/焦点通知业务ID（需在小米开发者平台开通后获得，留空则不上小米岛）。 */
+    private var miuiBusinessIdState by mutableStateOf(prefs.getString("miui_business_id", "") ?: "")
+    var miuiBusinessId: String
+        get() = miuiBusinessIdState
+        set(value) { miuiBusinessIdState = value; prefs.edit().putString("miui_business_id", value).apply() }
+
     private var budgetAmountState by mutableStateOf(prefs.getString("budget_amount", "0.00") ?: "0.00")
     var budgetAmount: String
         get() = budgetAmountState
         set(value) { budgetAmountState = value; prefs.edit().putString("budget_amount", value).apply() }
 
-    private var budgetRepeatState by mutableStateOf(prefs.getString("budget_repeat", "每月") ?: "每月")
-    var budgetRepeat: String
-        get() = budgetRepeatState
-        set(value) { budgetRepeatState = value; prefs.edit().putString("budget_repeat", value).apply() }
-
-    private var budgetEndState by mutableStateOf(prefs.getString("budget_end", "永不结束") ?: "永不结束")
-    var budgetEnd: String
-        get() = budgetEndState
-        set(value) { budgetEndState = value; prefs.edit().putString("budget_end", value).apply() }
-
-    private var budgetReminderState by mutableStateOf(prefs.getInt("budget_reminder", 80))
-    var budgetReminder: Int
-        get() = budgetReminderState
-        set(value) { budgetReminderState = value; prefs.edit().putInt("budget_reminder", value).apply() }
+    /**
+     * 预算周期的起始日（1..28）。
+     *
+     * 发薪日往往不是 1 号：设成 25 表示「本月预算周期 = 25 号 ~ 次月 24 号」。
+     * 上限 28 是刻意的——29/30/31 在 2 月不存在，会让周期边界漂移甚至跳过整月。
+     */
+    private var budgetStartDayState by mutableStateOf(prefs.getInt("budget_start_day", 1))
+    var budgetStartDay: Int
+        get() = budgetStartDayState
+        set(value) {
+            val clamped = value.coerceIn(1, 28)
+            budgetStartDayState = clamped
+            prefs.edit().putInt("budget_start_day", clamped).apply()
+        }
 
     private var homeBudgetState by mutableStateOf(prefs.getBoolean("home_budget_card", false))
     var homeBudgetCard: Boolean
@@ -189,6 +191,34 @@ class AppPrefs private constructor(context: Context) {
 
     fun davConfigured(): Boolean = davUrl.isNotBlank() && davUser.isNotBlank() && davPass.isNotBlank()
 
+    // ── 解析拦截词库 ────────────────────────────────────────────
+    // 用户自定义 + 默认预设合并后使用；存 SharedPreferences 的 StringSet。
+    // 注意：默认值只作为「初始填充」，用户删掉某个词后不会再被自动加回来。
+
+    private var ignoreKeywordsState by mutableStateOf(
+        prefs.getStringSet(KEY_IGNORE_KEYWORDS, null)?.toSet() ?: DEFAULT_IGNORE_KEYWORDS,
+    )
+
+    /** 命中即丢弃，不生成账单。 */
+    var ignoreKeywords: Set<String>
+        get() = ignoreKeywordsState
+        set(value) {
+            ignoreKeywordsState = value
+            prefs.edit().putStringSet(KEY_IGNORE_KEYWORDS, value).apply()
+        }
+
+    private var forceKeywordsState by mutableStateOf(
+        prefs.getStringSet(KEY_FORCE_KEYWORDS, null)?.toSet() ?: DEFAULT_FORCE_KEYWORDS,
+    )
+
+    /** 命中则无视 [ignoreKeywords]，强制入账。 */
+    var forceKeywords: Set<String>
+        get() = forceKeywordsState
+        set(value) {
+            forceKeywordsState = value
+            prefs.edit().putStringSet(KEY_FORCE_KEYWORDS, value).apply()
+        }
+
     companion object {
         @Volatile
         private var instance: AppPrefs? = null
@@ -201,6 +231,26 @@ class AppPrefs private constructor(context: Context) {
             instance ?: synchronized(this) {
                 instance ?: AppPrefs(context.applicationContext).also { instance = it }
             }
+
+        private const val KEY_IGNORE_KEYWORDS = "parse_ignore_keywords"
+        private const val KEY_FORCE_KEYWORDS = "parse_force_keywords"
+
+        /**
+         * 默认拦截词。
+         *
+         * 「下单 / 待付款 / 先用后付 / 确认收货后 / 下月」来自抖音月付、京东白条这类
+         * 信用支付的下单短信——钱还没真扣，只是占用了额度，记成支出会让当月支出虚高。
+         * 「白条 / 花呗」是渠道名：单独一条「花呗」通知多半是账单提醒而非扣款。
+         */
+        val DEFAULT_IGNORE_KEYWORDS: Set<String> = linkedSetOf(
+            "下单", "待付款", "先用后付", "确认收货后", "下月",
+            "白条", "花呗", "未支付", "订单未消费",
+        )
+
+        /** 默认强制认账词：出现即说明钱已经动了。 */
+        val DEFAULT_FORCE_KEYWORDS: Set<String> = linkedSetOf(
+            "已支付", "支付成功", "已扣款", "退款",
+        )
 
         const val DEFAULT_PROMPT =
             "你是记账助手。请从图片或文本中提取收支信息，只输出严格 JSON：" +

@@ -67,10 +67,12 @@ object BillNotifier {
             "other" -> "其他"
             else -> "支出"
         }
+        val notifyTitle = "自动记账 $kind $sign$amountText"
+        val notifyText = "${bill.category} · ${bill.time} · ${bill.note}"
         val builder = Notification.Builder(context, CHANNEL_AUTO)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("自动记账 $kind $sign$amountText")
-            .setContentText("${bill.category} · ${bill.time} · ${bill.note}")
+            .setContentTitle(notifyTitle)
+            .setContentText(notifyText)
             .setStyle(
                 Notification.BigTextStyle()
                     .bigText("${bill.source} · ${bill.category} · ${bill.time}\n${bill.note}"),
@@ -79,6 +81,10 @@ object BillNotifier {
             .setAutoCancel(true)
             .setOngoing(prefs.persistentSingle)
             .addAction(Notification.Action.Builder(null, "撤销", undo).build())
+        // 单笔自动记账也可上岛/实况窗（受「超级岛·单笔」开关控制，失败自动降级）
+        com.eta.autoledger.notification.IslandNotifier.decorate(
+            context, builder, notifyTitle, notifyText, "$kind $sign$amountText", open, prefs.islandSingle,
+        )
         runCatching { manager.notify(notifyId, builder.build()) }
             .onFailure { Log.w(TAG, "自动记账通知发送失败", it) }
     }

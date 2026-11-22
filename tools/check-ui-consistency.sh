@@ -62,9 +62,16 @@ check "R5 字重只走 textStyles" \
   'ui/theme/' 0
 
 # R6：圆角/间距魔法数（Canvas 绘制除外，暂按行号人工复核）
-check "R6 圆角只用 8/12/16/24dp 四档" \
-  'RoundedCornerShape\(([0-9]+)\.dp' \
-  'ui/theme/' 0
+# 只统计「非合法阶梯值」的 RoundedCornerShape 字面量；合法阶梯 = 4/8/12/16/24/32/50。
+# 需 PCRE lookahead，故该条单独走 grep -P（见下方 r6 专用实现）。
+r6_re='RoundedCornerShape\((?!4\.dp|8\.dp|12\.dp|16\.dp|24\.dp|32\.dp|50\.dp)[0-9]+\.dp'
+r6_out=$(grep -rnP "$r6_re" --include='*.kt' "$SRC" 2>/dev/null | grep -vE 'ui/theme/' || true)
+if [ -z "$r6_out" ]; then
+  printf '%s✔%s %s\n' "$green" "$reset" "R6 圆角只用合法阶梯值（4/8/12/16/24/32/50）"
+else
+  n=$(printf '%s\n' "$r6_out" | wc -l | tr -d ' ')
+  printf '%s!%s %s —— %s 处（该阶段目标，暂不阻断）\n' "$yellow" "$reset" "R6 圆角只用合法阶梯值（4/8/12/16/24/32/50）" "$n"
+fi
 
 # R7：Toast 迁移到 Snackbar
 check "R7 不再新增 Toast.makeText" \

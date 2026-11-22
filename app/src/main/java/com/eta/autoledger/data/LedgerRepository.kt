@@ -105,20 +105,60 @@ object LedgerRepository {
         ) { today, month, income -> Summary(today, month, income) }
     }
 
+    /**
+     * 预算周期区间：从 [startDay] 日到次月 [startDay] 日前一天。
+     *
+     * [startDay] = 1 时就是自然月；= 25 时表示「25 号 ~ 次月 24 号」。
+     * 上限 28 是刻意约束（29/30/31 在 2 月不存在，会让边界漂移）。
+     */
+    fun budgetCycleRange(startDay: Int, now: Calendar = Calendar.getInstance()): Pair<Long, Long> {
+        val day = startDay.coerceIn(1, 28)
+        val todayStart = (now.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        // 本周期起点：若今天 >= startDay，起点在本月；否则在上月
+        val start = (todayStart.clone() as Calendar).apply {
+            set(Calendar.DAY_OF_MONTH, day)
+            if (todayStart.get(Calendar.DAY_OF_MONTH) < day) add(Calendar.MONTH, -1)
+        }
+        val end = (start.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
+        return start.timeInMillis to end.timeInMillis
+    }
+
+    /** 预算周期内的支出合计（单次 SQL 聚合，不读整表）。 */
+    suspend fun budgetCycleExpense(context: Context, startDay: Int): Double {
+        val (start, end) = budgetCycleRange(startDay)
+        return dao(context).sumExpenseOnce(start, end)
+    }
+
     /** 游标分页：拿比 [cursorTime]/[cursorId] 更旧的一页。 */
     suspend fun pageBefore(context: Context, cursorTime: Long, cursorId: Long, limit: Int): List<LedgerEntry> =
         dao(context).pageBefore(cursorTime, cursorId, limit)
 
-    /** 仅供确实在后台线程的调用方（迁移、报表导出）使用。 */
-    suspend fun load(context: Context): List<LedgerEntry> = dao(context).getAllOnce()
+    /**
+     * 仅供确实在后台线程的调用方（备份、导出）使用。
+     *
+     * @param includeTemplates 备份必须为 true（模板要一起备份，否则换机丢周期账单）；
+     *   CSV/XLSX 导出应为 false（模板不是一笔真实交易）。
+     */
+    suspend fun load(context: Context, includeTemplates: Boolean = false): List<LedgerEntry> =
+        if (includeTemplates) dao(context).getAllOnce() else dao(context).getAllOnceReal()
 
-    suspend fun add(context: Context, entry: LedgerEntry) = addAll(context, listOf(entry))
+    /**
+     * 插入一笔账目，返回新记录的 rowId。
+     *
+     * `insertAll` 的 `@Insert` 已返回 `List<Long>`（被 IGNORE 的位置是 -1），
+     * 这里透传第一条即可。调用方需要「刚插入的那笔」时（如截图记账的撤销通知）
+     * 用它定位；不关心的调用点忽略返回值不受影响。
+     */
+    suspend fun add(context: Context, entry: LedgerEntry): Long = addAll(context, listOf(entry)).firstOrNull() ?: -1L
 
-    suspend fun addAll(context: Context, entries: List<LedgerEntry>) {
-        if (entries.isEmpty()) return
+    suspend fun addAll(context: Context, entries: List<LedgerEntry>): List<Long> {
+        if (entries.isEmpty()) return emptyList()
         val normalized = entries.map { it.normalized() }
-        dao(context).insertAll(normalized)
+        val ids = dao(context).insertAll(normalized)
         LedgerWidgetProvider.requestUpdate(context)
+        return ids
     }
 
     /**
@@ -158,6 +198,29 @@ object LedgerRepository {
         LedgerWidgetProvider.requestUpdate(context)
         // 撞上 external_id 唯一索引（IGNORE）的位置返回 -1，不算新增。
         return rowIds.count { it != -1L }
+    }
+
+    /**
+     * 自动记账专用入库：在 [addImported] 的数据库去重之前，再加一道内存级强去重。
+     *
+     * 为什么数据库去重挡不住：`external_id` 由 `pkg|title|text|bigText|postTime` 算出，
+     * 而 postTime 是**毫秒级**的。长短信被拆成多段、接收器被系统连调两次、或进程重启后
+     * 补发时，同一笔账的 postTime 会差几毫秒 → external_id 与「毫秒+金额+收支」指纹
+     * 双双失配 → 同一条短信写出两行。截图里 15:11 的两条 46.94 就是这么来的。
+     *
+     * 这里用「金额 + 商户/标题 + 分钟级时间」作指纹，5 分钟内只放行一次。
+     * 只用于短信 / 通知通道；手动记账、CSV 导入、云恢复走 [addImported] / [add]，行为不变。
+     */
+    suspend fun addAutoParsed(context: Context, entries: List<LedgerEntry>): Int {
+        if (entries.isEmpty()) return 0
+        val now = System.currentTimeMillis()
+        val accepted = entries.filter { entry ->
+            val stamp = entry.timeMillis.takeIf { it > 0 } ?: now
+            val merchant = entry.note.ifBlank { entry.category }
+            ParseDedup.accept(ParseDedup.fingerprint(entry.amount, merchant, stamp), now)
+        }
+        if (accepted.isEmpty()) return 0
+        return addImported(context, accepted)
     }
 
     private fun LedgerEntry.normalized(): LedgerEntry =
@@ -217,6 +280,18 @@ object LedgerRepository {
 
     suspend fun delete(context: Context, id: Long) {
         dao(context).deleteById(id)
+        LedgerWidgetProvider.requestUpdate(context)
+    }
+
+    /**
+     * 撤销删除：把被删账目按原 id 写回。
+     *
+     * 用 `insertAll` 直接写回带原 id 的实体：`add` 会走 autoGenerate 生成新 id，
+     * 撤销后列表顺序会变。DAO 的 `@Insert` 接受显式 id，`IGNORE` 策略下若 id 已存在
+     * （极小概率）会静默跳过，不会产生脏数据。
+     */
+    suspend fun restore(context: Context, entry: LedgerEntry) {
+        dao(context).insertAll(listOf(entry))
         LedgerWidgetProvider.requestUpdate(context)
     }
 

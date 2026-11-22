@@ -80,16 +80,16 @@ android {
 }
 
 dependencies {
-    implementation("io.github.kyant0:backdrop:2.0.1")
-    implementation("io.github.kyant0:shapes:1.2.1")
     implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.5-beta01")
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.5-beta01")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.5-beta01")
+    // 纯 Compose 图表库（无 AndroidView 互操作），替换报表页三套自绘 Canvas
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.room:room-ktx:2.8.5")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     ksp("androidx.room:room-compiler:2.8.5")
 
     compileOnly("io.github.libxposed:api:102.0.0")

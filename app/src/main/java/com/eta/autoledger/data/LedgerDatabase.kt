@@ -9,7 +9,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [LedgerEntry::class], version = 2, exportSchema = false)
+@Database(entities = [LedgerEntry::class], version = 3, exportSchema = false)
 abstract class LedgerDatabase : RoomDatabase() {
     abstract fun ledgerDao(): LedgerDao
 
@@ -26,7 +26,7 @@ abstract class LedgerDatabase : RoomDatabase() {
                         context.applicationContext,
                         LedgerDatabase::class.java,
                         "auto_ledger.db",
-                    ).addMigrations(MIGRATION_1_2).build()
+                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
                     if (isNew) migrateLegacy(context, db)
                     db.also { instance = it }
                 }
@@ -37,6 +37,21 @@ abstract class LedgerDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE Bill ADD COLUMN external_id TEXT")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_Bill_external_id ON Bill(external_id)")
+            }
+        }
+
+        /**
+         * v2 → v3：周期记账。
+         *
+         * 两列都用 NOT NULL + DEFAULT 追加，老数据不需要回填：
+         * 既有账单 is_recurring 全为 0、recurring_rule 全为 NULL，语义上就是「非周期」。
+         * 不加索引——模板数量是个位数，全表扫 is_recurring 的代价可以忽略，
+         * 而多一个索引会让每次插入多一次写放大。
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE Bill ADD COLUMN is_recurring INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE Bill ADD COLUMN recurring_rule TEXT")
             }
         }
 

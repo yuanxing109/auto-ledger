@@ -12,7 +12,7 @@ import org.json.JSONObject
  */
 object BackupCodec {
 
-    const val VERSION = 1
+    const val VERSION = 2
 
     fun encode(entries: List<LedgerEntry>, exportedAt: Long = System.currentTimeMillis()): ByteArray {
         val bills = JSONArray()
@@ -27,6 +27,11 @@ object BackupCodec {
                     put("note", e.note)
                     put("source", e.source)
                     if (!e.externalId.isNullOrBlank()) put("externalId", e.externalId)
+                    // 周期模板必须随备份走，否则换机后周期记账全丢
+                    if (e.isRecurring) {
+                        put("isRecurring", true)
+                        put("recurringRule", e.recurringRule)
+                    }
                 },
             )
         }
@@ -68,6 +73,8 @@ object BackupCodec {
                 note = o.optString("note", ""),
                 source = o.optString("source", "云恢复").ifBlank { "云恢复" },
                 externalId = o.optString("externalId", "").ifBlank { null },
+                isRecurring = o.optBoolean("isRecurring", false),
+                recurringRule = o.optString("recurringRule", "").ifBlank { null },
             )
         }
         return out

@@ -24,4 +24,24 @@ data class LedgerEntry(
     @ColumnInfo(name = "remark") val note: String,
     val source: String,
     @ColumnInfo(name = "external_id") val externalId: String? = null,
+
+    /**
+     * 周期账单模板标记。
+     *
+     * 模板记录本身也会入库（否则用户看不到自己设了什么），
+     * 但报表/首页汇总必须排除它们——所以 [RecurringWorker] 生成的实账
+     * 走 [recurringRule] = null 的普通记录，模板永远不参与统计。
+     */
+    @ColumnInfo(name = "is_recurring", defaultValue = "0")
+    val isRecurring: Boolean = false,
+
+    /**
+     * 重复规则，格式 "WEEKLY_1" / "MONTHLY_5" / "YEARLY_3-15"。
+     *
+     * null 表示这不是模板。模板行保留规则用于下次匹配；
+     * Worker 生成的实账把规则写回同一字段的 [recurringFrom] 溯源字段太绕，
+     * 这里简化：实账不写规则（null），只写 note 前缀与 source = "recurring"。
+     */
+    @ColumnInfo(name = "recurring_rule")
+    val recurringRule: String? = null,
 )

@@ -9,6 +9,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import android.os.Build
+import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.window.LocalSnackbar
 import androidx.compose.runtime.LaunchedEffect
 import com.eta.autoledger.util.SystemAccess
 import java.util.Date
@@ -97,7 +100,10 @@ import com.eta.autoledger.widget.LedgerWidgetProvider
 @Composable
 internal fun SystemAccessPage(prefs: AppPrefs) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbar = LocalSnackbar.current
     var beat by remember { mutableIntStateOf(0) }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
     // 从系统设置返回时本页不会重建，用 1.5s 轮询把状态刷新回来
     LaunchedEffect(Unit) {
@@ -126,7 +132,7 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
         if (granted) {
             prefs.smsEnabled = true
         } else {
-            Toast.makeText(context, "未授予短信权限，短信记账不会生效", Toast.LENGTH_SHORT).show()
+            scope.launch { snackbar.show("未授予短信权限，短信记账不会生效") }
             prefs.smsEnabled = false
         }
         beat++
@@ -145,20 +151,12 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
                 },
                 onClick = {
                     if (!secureOk) {
-                        Toast.makeText(
-                            context,
-                            "需要先用 adb 授予 WRITE_SECURE_SETTINGS",
-                            Toast.LENGTH_LONG,
-                        ).show()
+                        scope.launch { snackbar.showLong("需要先用 adb 授予 WRITE_SECURE_SETTINGS") }
                     } else {
                         val (notifyFixed, accessFixed) = SystemAccess.ensureGrants(context)
                         val fixed = if (notifyFixed) "已开启" else "仍失败"
                         val accessText = if (accessFixed) "已开启" else "仍失败"
-                        Toast.makeText(
-                            context,
-                            "修复结果：通知使用权=$fixed，无障碍=$accessText",
-                            Toast.LENGTH_LONG,
-                        ).show()
+                        scope.launch { snackbar.showLong("修复结果：通知使用权=$fixed，无障碍=$accessText") }
                         beat++
                     }
                 },
@@ -177,7 +175,7 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
                     runCatching {
                         clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("adb", command))
                     }
-                    Toast.makeText(context, "已复制 adb 命令", Toast.LENGTH_SHORT).show()
+                    scope.launch { snackbar.show("已复制 adb 命令") }
                 },
             )
         }
@@ -221,7 +219,7 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
                 summary = "部分系统需要手动允许自启动与后台弹出界面",
                 onClick = {
                     if (!SystemAccess.openAutoStart(context)) {
-                        Toast.makeText(context, "当前系统没有可直达的自启动页，请在应用详情里手动允许", Toast.LENGTH_LONG).show()
+                        scope.launch { snackbar.showLong("当前系统没有可直达的自启动页，请在应用详情里手动允许") }
                         SystemAccess.openAppDetails(context)
                     }
                 },
@@ -273,6 +271,81 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
         }
 
         HintText("改完回到这一页，状态会在 1.5 秒内自动刷新。若「最近入账」长期显示「从未」，说明通道没通，先查上面标 ⚠️ 的项。")
+
+        // 危险操作区：放页尾 + danger 文字，避免在「功能」页被误触
+        SettingsCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showClearConfirm = true }
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "清空记账数据",
+                        style = MiuixTheme.textStyles.body1.copy(color = LedgerTheme.danger),
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "删除全部账目，操作不可恢复",
+                        style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+                    )
+                }
+            }
+        }
+    }
+
+    if (showClearConfirm) {
+        Dialog(onDismissRequest = { showClearConfirm = false }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(LocalDimens.current.radiusSheet))
+                    .background(LedgerTheme.card)
+                    .padding(16.dp),
+            ) {
+                Column {
+                    Text(
+                        "清空所有账目？",
+                        style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "该操作不可恢复，确定要删除全部记账数据吗？",
+                        style = TextStyle(fontSize = 12.sp, color = TextSecondary),
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(
+                            modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp))
+                                .background(LedgerTheme.inset).clickable { showClearConfirm = false },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("取消", style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
+                        }
+                        Box(
+                            modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp))
+                                .background(LedgerTheme.tint(LedgerTheme.danger)).clickable {
+                                    scope.launch { LedgerRepository.clear(context) }
+                                    showClearConfirm = false
+                                    scope.launch { snackbar.show("已清空记账数据") }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "清空",
+                                style = MiuixTheme.textStyles.footnote1.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = LedgerTheme.danger,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

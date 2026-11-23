@@ -65,7 +65,13 @@ class SmsReceiver : BroadcastReceiver() {
         messages
             .groupBy { it.originatingAddress.orEmpty() }
             .forEach { (sender, parts) ->
-                val body = parts.mapNotNull { it.messageBody }.joinToString("")
+                // 归一化必须在「拼完正文的第一现场」做：全角 `１，０００．００元`
+                // 会被金额正则整条漏掉。放在这里还能保证后续算 externalId 时
+                // 用的就是归一化后的文本 —— 归一化若发生在指纹之后，同一笔钱会得到
+                // 两个 externalId，去重直接失效。
+                val body = NotificationRules.normalize(
+                    parts.mapNotNull { it.messageBody }.joinToString(""),
+                )
                 if (body.isBlank()) return@forEach
                 val postTime = parts.maxOfOrNull { it.timestampMillis } ?: System.currentTimeMillis()
                 val prefs = AppPrefs.get(context)

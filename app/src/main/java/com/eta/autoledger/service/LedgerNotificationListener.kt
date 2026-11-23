@@ -41,8 +41,11 @@ class LedgerNotificationListener : NotificationListenerService() {
     }
     private var appPrefs: AppPrefs? = null
 
+    /** 上次尝试重绑的时刻，用于 [REBIND_THROTTLE_MS] 节流。只在主线程（回调线程）读写。 */
+    private var lastRebindAt = 0L
+
     /**
-     * 120 秒窗口内「渠道 + 金额 + 方向」相同的账单只入一次。
+     * [MERGE_WINDOW_MS] 窗口内「渠道 + 金额 + 方向 + 摘要片段」相同的账单只入一次。
      *
      * 折叠摘要到达时会把同组子通知捞一遍解析，随后系统自己也会把子通知逐个 post 过来；
      * 两条路径看到的是同一笔钱，靠这个窗口归并，而不是靠通知 key（每条 key 都不同）。
@@ -66,8 +69,32 @@ class LedgerNotificationListener : NotificationListenerService() {
         Log.i(TAG, "notification listener connected")
     }
 
+    /**
+     * 通道被系统或 ROM 断开后的自愈。
+     *
+     * 触发场景：用户在设置里切换过一次通知使用权、ROM 省电策略清理了绑定、
+     * 或本进程被冻结后恢复。断开期间所有通知都收不到，等于整条采集通道失聪，
+     * 而系统不会自动把监听器绑回来 —— 必须自己调 [requestRebind]。
+     *
+     * 用 30 秒节流防死循环：ROM 反复拒绝重绑时，最坏每分钟重试两次，
+     * 而不是形成「断开→重绑→断开」的紧循环。
+     */
     override fun onListenerDisconnected() {
-        Log.i(TAG, "notification listener disconnected")
+        val now = System.currentTimeMillis()
+        if (now - lastRebindAt < REBIND_THROTTLE_MS) {
+            Log.w(TAG, "通知监听断开，${REBIND_THROTTLE_MS / 1000}s 内已重试过，跳过本次重绑")
+            return
+        }
+        lastRebindAt = now
+        val component = ComponentName(this, LedgerNotificationListener::class.java)
+        // requestRebind 是 void：调用本身不报错不代表重绑成功，ROM 可能静默拒绝，
+        // 所以结果只能靠下一次 onListenerConnected 观察，这里只记录「已请求」。
+        val error = runCatching { requestRebind(component) }.exceptionOrNull()
+        if (error != null) {
+            Log.w(TAG, "通知监听重绑失败：$component", error)
+        } else {
+            Log.i(TAG, "通知监听断开，已请求重绑：$component")
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification, rankingMap: RankingMap) {
@@ -120,8 +147,11 @@ class LedgerNotificationListener : NotificationListenerService() {
             text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty(),
             bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString().orEmpty(),
             postTime = sbn.postTime,
+            subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString().orEmpty(),
         )
-        if (raw.title.isBlank() && raw.text.isBlank() && raw.bigText.isBlank()) return
+        if (raw.title.isBlank() && raw.text.isBlank() && raw.bigText.isBlank() &&
+            raw.subText.isBlank()
+        ) return
 
         val seenKey = NotificationRules.dedupeKey(raw)
         if (isDuplicate(seenKey)) return
@@ -221,8 +251,22 @@ class LedgerNotificationListener : NotificationListenerService() {
         private const val TAG = "AutoLedger"
         private const val MAX_SEEN = 200
 
-        /** 折叠补全的归并窗口：摘要与子通知几乎同秒到达，10s 既能兜住慢机型，也不会误吞连刷的同额真账。 */
+        /**
+         * 折叠补全的归并窗口：摘要与子通知几乎同秒到达，10s 既能兜住慢机型，
+         * 也不会误吞连刷的同额真账。
+         *
+         * 注意：类头 KDoc 早期写的是「120 秒窗口」，与这里的 10 秒矛盾 —— 以本常量为准。
+         */
         private const val MERGE_WINDOW_MS = 10_000L
+
+        /**
+         * 重绑节流：两次 [requestRebind] 之间至少间隔这么久。
+         *
+         * 部分 ROM（EMUI / ColorOS 的省电策略）会接受 requestRebind 后立刻再次断开，
+         * 不加节流就会变成「断开 → 重绑 → 立刻断开 → 重绑」的死循环，白烧电还刷日志。
+         * 30 秒意味着最坏情况下每分钟只重试两次，而一次成功的重绑能让通道恢复数小时。
+         */
+        private const val REBIND_THROTTLE_MS = 30_000L
 
         /** 通知使用权是否已经授予本应用。 */
         fun isEnabled(context: Context): Boolean {

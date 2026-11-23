@@ -77,6 +77,12 @@ android {
     lint {
         abortOnError = false
     }
+
+    testOptions {
+        // 纯 JVM 单测里不碰真实 Android 运行时：CsvImporter 这类纯解析逻辑
+        // 只用到 String/Regex/Calendar，未 stub 的 android.* 调用返回默认值即可。
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -97,6 +103,9 @@ dependencies {
     // List 类型的参数能被跳过重组（普通 List 是接口，编译器无法证明不被修改）。
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2")
     ksp("androidx.room:room-compiler:2.8.5")
+
+    // 解析器单测：CSV 表头定位、金额防护、编码探测都靠断言守住
+    testImplementation("junit:junit:4.13.2")
 
     compileOnly("io.github.libxposed:api:102.0.0")
 }

@@ -17,7 +17,19 @@ object ImportDedup {
 
     private const val AMOUNT_EPS = 0.005
     private const val NAME_THRESHOLD = 0.45
-    private const val BLIND_WINDOW_MS = 3L * 60L * 1000L
+
+    /**
+     * 宽松规则：金额相同 + 时间差 5 分钟以内 → 无条件判为疑似重复，不看商户名。
+     *
+     * 依据是「同一笔钱被两条通道各记一次」的真实形态：微信/支付宝的通知先入账，
+     * 导出的 CSV 里时间只精确到秒甚至分钟，两者差几十秒到几分钟；
+     * 但商户名一边是通知标题（「微信支付」）、一边是账单商品说明（「美团」），
+     * 靠名字相似度根本对不上，只能靠「同金额 + 挨得很近」兜住。
+     */
+    private const val LOOSE_WINDOW_MS = 5L * 60L * 1000L
+
+    /** 宽松规则只在最近 30 天的账目里比对，避免把几个月前的同额消费误判成重复。 */
+    private const val LOOSE_LOOKBACK_MS = 30L * 24L * 60L * 60L * 1000L
     private const val AI_LIMIT = 12
     private const val AI_CONFIDENT_SCORE = 0.75
 
@@ -35,10 +47,18 @@ object ImportDedup {
     data class Plan(
         val fresh: List<LedgerEntry>,
         val suspects: List<Suspect>,
+        /** 解析出来但直接丢掉的条数：外部单号已在库里，或同一文件内重复。 */
+        val skipped: Int = 0,
     ) {
-        val total: Int get() = fresh.size + suspects.size
+        /** 文件里一共解析出多少条（含被跳过的）。 */
+        val total: Int get() = skipped + fresh.size + suspects.size
         val duplicateCount: Int get() = suspects.size
         val isEmpty: Boolean get() = total == 0
+
+        /** 预览弹窗顶部那句话，措辞固定，便于用户一眼看出三个数各自含义。 */
+        val summary: String
+            get() = "共解析 " + total + " 条，跳过老数据 " + skipped + " 条，" +
+                "发现 " + suspects.size + " 条疑似与其他来源重复"
     }
 
     data class CommitResult(val added: Int, val merged: Int, val skipped: Int)
@@ -57,12 +77,27 @@ object ImportDedup {
         val suspects = mutableListOf<Suspect>()
         val claimed = HashSet<Long>()
         val seen = HashSet<String>()
+        // 库里已有的外部单号：CSV 再导一遍时这些行是「老数据」，不必进候选比对。
+        val existingIds = runCatching {
+            dao.importRows().mapNotNull { it.externalId }.toHashSet()
+        }.getOrDefault(HashSet())
+        val looseSince = System.currentTimeMillis() - LOOSE_LOOKBACK_MS
+        var skipped = 0
         for (raw in incoming) {
             val entry = stamp(raw)
             val bucket = (entry.timeMillis / 60_000L).toString()
             val fingerprint = entry.type + "|" + entry.amount + "|" + bucket
+            // 老数据：外部单号已经在库里，直接跳过（重复导入同一份 CSV 就靠这条兜住）
+            val ext = entry.externalId
+            if (!ext.isNullOrBlank() && existingIds.contains(ext)) {
+                skipped++
+                continue
+            }
             // 同一批文件里自己重复的行，只留第一条
-            if (!seen.add(fingerprint)) continue
+            if (!seen.add(fingerprint)) {
+                skipped++
+                continue
+            }
             val candidates = dao.nearbySameAmount(
                 entry.type,
                 entry.amount - AMOUNT_EPS,
@@ -78,9 +113,10 @@ object ImportDedup {
                 val gap = abs(candidate.timeMillis - entry.timeMillis)
                 val score = nameScore(entry.note, candidate.note) +
                     nameScore(entry.category, candidate.category) * 0.2
-                val blind = gap <= BLIND_WINDOW_MS
-                if (!blind && score < NAME_THRESHOLD) continue
-                val rank = score + (if (blind) 1.0 else 0.0) - gap.toDouble() / WINDOW_MS * 0.1
+                // 宽松规则优先：近 30 天内、金额相同、时间差 5 分钟内，无条件算疑似。
+                val loose = gap <= LOOSE_WINDOW_MS && candidate.timeMillis >= looseSince
+                if (!loose && score < NAME_THRESHOLD) continue
+                val rank = score + (if (loose) 1.0 else 0.0) - gap.toDouble() / WINDOW_MS * 0.1
                 if (rank > bestRank) {
                     bestRank = rank
                     bestScore = score
@@ -102,7 +138,7 @@ object ImportDedup {
             }
         }
         if (aiCheck && suspects.isNotEmpty()) aiVerdicts(context, suspects)
-        return Plan(fresh = fresh, suspects = suspects)
+        return Plan(fresh = fresh, suspects = suspects, skipped = skipped)
     }
 
     /** 只把「本地判断不够确定」的几条交给模型，避免一次导入打满请求。 */

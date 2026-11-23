@@ -57,8 +57,7 @@ fun ImportPreviewDialog(
     AppDialog(
         show = show,
         title = "导入预览",
-        summary = "共解析 " + plan.total + " 条，其中 " + plan.fresh.size + " 条正常，" +
-            plan.suspects.size + " 条与现有账目疑似重复",
+        summary = plan.summary,
         maxWidth = 560.dp,
         outsideMargin = DpSize(20.dp, 20.dp),
         panelColor = LedgerTheme.card,
@@ -68,7 +67,13 @@ fun ImportPreviewDialog(
         if (plan.suspects.isEmpty()) {
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "没有发现重复，直接写入即可。",
+                // 全部是老数据时，「没有发现重复」会让人误以为文件是空的，
+                // 这种情况要明确说是「这份账单之前已经导过了」。
+                text = if (plan.fresh.isEmpty() && plan.skipped > 0) {
+                    "这份账单之前已经导入过，没有新账目需要写入。"
+                } else {
+                    "没有发现重复，直接写入即可。"
+                },
                 style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
             )
         } else {
@@ -119,15 +124,15 @@ fun ImportPreviewDialog(
                 }
             }
             Spacer(Modifier.height(12.dp))
+            // 两个主按钮覆盖绝大多数选择：要么信文件全收，要么把疑似重复全滤掉。
+            // 想逐条细调的人用上面的列表点选，不需要第三条「全部合并」——
+            // 全合并等于什么都不做（库里那条原样留着），放个按钮只会误导。
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QuickAction("全部保留", Modifier.weight(1f)) {
                     actions.indices.forEach { actions[it] = ImportDedup.Action.KEEP }
                 }
-                QuickAction("全部跳过", Modifier.weight(1f)) {
+                QuickAction("自动过滤疑似重复项", Modifier.weight(1.4f)) {
                     actions.indices.forEach { actions[it] = ImportDedup.Action.SKIP }
-                }
-                QuickAction("合并", Modifier.weight(1f)) {
-                    actions.indices.forEach { actions[it] = ImportDedup.Action.MERGE }
                 }
             }
         }

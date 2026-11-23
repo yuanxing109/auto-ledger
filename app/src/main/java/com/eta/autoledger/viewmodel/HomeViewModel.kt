@@ -222,6 +222,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun restoreEntry(entry: LedgerEntry) {
         viewModelScope.launch(Dispatchers.IO) {
             LedgerRepository.restore(context, entry)
+            // 撤销后列表要立刻回显：首屏 20 条由 Room Flow 自动推回来，但第 20 条之后
+            // 存在 extraPages 这个手动缓存里，光写库不会让它们回来。丢掉追加页并允许
+            // 重新翻页，用户继续下滑时能重新取到（分组由 firstPage 的收集器自己刷新）。
+            extraPages.value = emptyList()
+            exhausted.value = false
         }
     }
 

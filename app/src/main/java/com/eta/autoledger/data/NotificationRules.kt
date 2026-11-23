@@ -1,6 +1,7 @@
 package com.eta.autoledger.data
 
 import java.security.MessageDigest
+import java.text.Normalizer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -14,13 +15,19 @@ enum class NotifyChannel(val label: String) {
     OTHER("其他"),
 }
 
-/** 一条待解析的通知原文。 */
+/**
+ * 一条待解析的通知原文。
+ *
+ * [subText] 是第三级回落：少数 App（尤其部分银行的定制通知）把金额放在 `EXTRA_SUB_TEXT` 里，
+ * 主文本只剩一句「交易提醒」。字段留空串而不是可空，是为了让三级回落写起来平铺直叙。
+ */
 data class NotifyRaw(
     val pkg: String,
     val title: String,
     val text: String,
     val bigText: String,
     val postTime: Long,
+    val subText: String = "",
 )
 
 /** 解析结果，可直接落库。 */
@@ -240,6 +247,26 @@ object NotificationRules {
         "代付" to listOf("代付"),
     )
 
+    /**
+     * 文本归一化：NFKC 兼容分解。
+     *
+     * 为什么必须有这一步：银行短信里的金额常写成全角 `１，０００．００元`，
+     * 而 [AMOUNT_YUAN] 认的是半角 `\d{1,3}(?:,\d{3})+` —— 全角数字和全角逗号
+     * 一个都匹配不上，整条真实扣款短信被当成「没有金额」丢掉。
+     *
+     * NFKC 一次性解决四类差异：全角数字 → 半角、全角逗号 `，` → `,`、
+     * 全角句点 `．` → `.`、全角 `￥` → `¥`；顺带把 `①` 这类兼容字符摊平。
+     * 对中文正文与关键词匹配无副作用（汉字不在 NFKC 的映射范围内）。
+     *
+     * **必须在算指纹之前调用**：指纹是对文本做哈希的，若一条走归一化、一条不走，
+     * 同一笔钱会得到两个 externalId，去重直接失效。所以统一在「取到文本的第一现场」
+     * （[com.eta.autoledger.service.SmsReceiver] 拿到 body、通知监听拼 [NotifyRaw]）
+     * 就归一化，后续所有环节看到的都是同一份文本。
+     */
+    fun normalize(text: String): String =
+        if (text.isEmpty()) text
+        else runCatching { Normalizer.normalize(text, Normalizer.Form.NFKC) }.getOrDefault(text)
+
     fun channelOf(pkg: String): NotifyChannel? = when {
         pkg in ALIPAY_PKGS -> NotifyChannel.ALIPAY
         pkg in WECHAT_PKGS -> NotifyChannel.WECHAT
@@ -257,9 +284,22 @@ object NotificationRules {
         NotifyChannel.OTHER -> "通知记账"
     }
 
-    /** 同一条通知可能重复回调，先按原文指纹抑制。 */
-    fun dedupeKey(raw: NotifyRaw): String =
-        "${raw.pkg}|${raw.title}|${raw.text}|${raw.bigText}|${raw.postTime}"
+    /**
+     * 同一条通知可能重复回调，先按原文指纹抑制。
+     *
+     * 时间取 `postTime / 1000`（秒级）：同一毫秒内重复投递只是理想情况，
+     * 实际观察到的重复回调会差几毫秒到几百毫秒，毫秒级指纹会双双失配 → 同一条通知入两笔。
+     * 秒级 + [ParseDedup] 的 2 秒促发窗口，两层兜住跨秒边界的重复。
+     */
+    fun dedupeKey(raw: NotifyRaw): String {
+        // 各字段先归一化再拼：同一笔钱若一次以全角、一次以半角文本到达，
+        // 不归一化就会算出两个 externalId，数据库唯一索引与内存去重全部失效。
+        val title = normalize(raw.title)
+        val text = normalize(raw.text)
+        val bigText = normalize(raw.bigText)
+        val subText = normalize(raw.subText)
+        return "${raw.pkg}|$title|$text|$bigText|$subText|${raw.postTime / 1000L}"
+    }
 
     fun parse(
         raw: NotifyRaw,
@@ -294,7 +334,9 @@ object NotificationRules {
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
     ): NotifyBill? {
-        val text = body.trim()
+        // 防御性再归一化一次：本函数是公开 API，任何调用方漏了归一化都不该导致漏记。
+        // NFKC 是幂等的，重复调用没有副作用。
+        val text = normalize(body).trim()
         if (text.isEmpty()) return null
         if (!plausibleSender(sender, text)) return null
         val raw = NotifyRaw(
@@ -323,7 +365,9 @@ object NotificationRules {
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
     ): NotifyBill? {
-        val body = bodyOf(raw)
+        // 归一化后再做一切判定与指纹：全角数字/逗号在这里被摊平成半角，
+        // 否则 AMOUNT_YUAN 直接失配（详见 [normalize] 的注释）。
+        val body = normalize(bodyOf(raw))
         if (body.isBlank()) return null
         if (noiseWordsOf(channel).any { body.contains(it) }) return null
         // ── 用户词库优先判定 ────────────────────────────────────
@@ -418,9 +462,17 @@ object NotificationRules {
 
     private data class Direction(val type: String, val confidence: Float)
 
+    /**
+     * 拼出用于解析的正文：`bigText` → `text` → `subText` 三级回落，再并上标题。
+     *
+     * 三级而不是两级：`EXTRA_BIG_TEXT` 与 `EXTRA_TEXT` 都空、金额只放在 `EXTRA_SUB_TEXT`
+     * 的通知是真实存在的（部分银行的定制模板），少这一档就整条漏记。
+     */
     private fun bodyOf(raw: NotifyRaw): String {
         val title = raw.title.trim()
-        val body = raw.bigText.trim().ifBlank { raw.text.trim() }
+        val body = raw.bigText.trim()
+            .ifBlank { raw.text.trim() }
+            .ifBlank { raw.subText.trim() }
         val merged = if (body.isNotBlank() && title.isNotBlank() && !body.contains(title)) {
             "$title $body"
         } else {

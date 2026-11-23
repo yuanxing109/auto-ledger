@@ -1185,9 +1185,11 @@ private fun ImportPage() {
                         val entries = if (mime.contains("spreadsheetml") || name.endsWith(".xlsx", true)) {
                             XlsxImporter.parse(context, uri)
                         } else {
-                            val text = context.contentResolver.openInputStream(uri)
-                                ?.bufferedReader()?.readText().orEmpty()
-                            CsvImporter.parse(text)
+                            // 必须读原始字节再判编码：支付宝账单常见 GBK，
+                            // 按 UTF-8 硬读会让中文表头全变乱码，解析器随即错位。
+                            val bytes = context.contentResolver.openInputStream(uri)
+                                ?.use { it.readBytes() } ?: ByteArray(0)
+                            CsvImporter.parse(CsvImporter.decode(bytes))
                         }
                         // 本地启发式 + 可选 AI 判重：解析完先出预览，不直接写库
                         ImportDedup.plan(context, entries, aiCheck = true)

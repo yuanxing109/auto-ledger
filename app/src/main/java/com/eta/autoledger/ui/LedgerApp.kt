@@ -90,7 +90,6 @@ import com.eta.autoledger.ui.theme.AppTheme
 import com.eta.autoledger.ui.window.LedgerSnackbar
 import com.eta.autoledger.ui.window.LedgerSnackbarHost
 import com.eta.autoledger.ui.window.LocalSnackbar
-import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 private data class Tab(
     val label: String,
@@ -114,9 +113,9 @@ fun LedgerApp(openAiSettings: Boolean = false) {
         var showSearch by remember { mutableStateOf(false) }
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
-        // 全局 Snackbar：所有页面共用一个宿主，提示从同一位置升起。
-        val snackbarState = remember { SnackbarHostState() }
-        val snackbar = remember(snackbarState) { LedgerSnackbar(snackbarState) }
+        // 全局 Snackbar：自己维护「同一时刻只有一条」的模型（见 LedgerSnackbar），
+        // 新提示直接顶掉旧的，不会在屏幕里排队堆叠。
+        val snackbar = remember { LedgerSnackbar() }
         fun analyzeImage(uri: Uri) {
             scope.launch {
                 Toast.makeText(context, "正在交给 AI 识别…", Toast.LENGTH_SHORT).show()
@@ -156,12 +155,6 @@ fun LedgerApp(openAiSettings: Boolean = false) {
         }
         BackHandler(enabled = selected != 0) { selected = 0 }
 
-        // 全局提示宿主：设置页/搜索页是「整页替换」，要把宿主一起提供，
-        // 否则在子页面里发提示会没有出口。
-        val snackbarHost: @Composable () -> Unit = {
-            LedgerSnackbarHost(state = snackbarState)
-        }
-
         var reportTab by rememberSaveable { mutableIntStateOf(1) }
         val tabs = listOf(
             Tab("记账", MiuixIcons.Home),
@@ -180,87 +173,93 @@ fun LedgerApp(openAiSettings: Boolean = false) {
             showSearch -> 2
             else -> 0
         }
-        AnimatedContent(
-            targetState = overlay,
-            transitionSpec = { fadeIn(tween(overlayDuration)) togetherWith fadeOut(tween(overlayDuration)) },
-            label = "overlay",
-        ) { page ->
-        when (page) {
-            1 -> CompositionLocalProvider(LocalSnackbar provides snackbar) {
-                SettingsScreen(
-                    initialPage = settingsPage,
-                    onClose = { showSettings = false },
-                )
-            }
-            2 -> CompositionLocalProvider(LocalSnackbar provides snackbar) {
-                SearchScreen(onClose = { showSearch = false })
-            }
-            else -> CompositionLocalProvider(LocalSnackbar provides snackbar) {
-            Scaffold(
-                snackbarHost = snackbarHost,
-                topBar = {
-                    if (selected == 2) {
-                        ReportTopBar(
-                            tab = reportTab,
-                            onTab = { reportTab = it },
-                        )
-                    } else {
-                        LedgerTopBar(
-                            title = tabs[selected].label,
-                            isHome = selected == 0,
-                            showAi = selected != 2,
-                            onBack = if (selected == 1) ({ selected = 0 }) else null,
-                            onAi = { showAiSheet = true },
-                            onSettings = {
-                                settingsPage = SettingsPage.Main
-                                showSettings = true
-                            },
-                        )
-                    }
-                },
-                bottomBar = {
-                    if (selected != 1) {
-                        LedgerBottomBar(selected = selected, onSelect = { selected = it })
-                    }
-                },
-            ) { padding ->
+        CompositionLocalProvider(LocalSnackbar provides snackbar) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 AnimatedContent(
-                    targetState = selected,
-                    transitionSpec = {
-                        // 左右滑动 + 淡入淡出：让用户感知「往左/往右切了一页」。
-                        // 方向由目标页与当前页的序号差决定 —— 从首页点到报表往左滑，
-                        // 从报表回首页往右滑，符合底部导航的空间隐喻。
-                        // 纯 fade 的问题是没有方向感，三个页签看起来像同一个页面在换内容。
-                        val forward = targetState > initialState
-                        val dir = if (forward) 1 else -1
-                        // 滑动距离只用页宽的 1/6：整屏平移在快速连点时会显得晃，
-                        // 小位移 + 淡入足够表达方向，也更接近系统页签切换的手感。
-                        (slideInHorizontally(tween(pageDuration)) { full -> dir * full / 6 } +
-                            fadeIn(tween(pageDuration)))
-                            .togetherWith(
-                                slideOutHorizontally(tween(pageDuration)) { full -> -dir * full / 6 } +
-                                    fadeOut(tween(pageDuration))
-                            )
-                    },
-                    label = "page",
+                    targetState = overlay,
+                    transitionSpec = { fadeIn(tween(overlayDuration)) togetherWith fadeOut(tween(overlayDuration)) },
+                    label = "overlay",
                 ) { page ->
                     when (page) {
-                        0 -> HomeScreen(Modifier.padding(padding), onSearch = { showSearch = true })
-                        1 -> AddScreen(Modifier.padding(padding), onDone = { selected = 0 })
-                        else -> ReportScreen(modifier = Modifier.padding(padding), tab = reportTab)
+                        1 -> SettingsScreen(
+                            initialPage = settingsPage,
+                            onClose = { showSettings = false },
+                        )
+
+                        2 -> SearchScreen(onClose = { showSearch = false })
+
+                        else -> Scaffold(
+                            topBar = {
+                                if (selected == 2) {
+                                    ReportTopBar(
+                                        tab = reportTab,
+                                        onTab = { reportTab = it },
+                                    )
+                                } else {
+                                    LedgerTopBar(
+                                        title = tabs[selected].label,
+                                        isHome = selected == 0,
+                                        showAi = selected != 2,
+                                        onBack = if (selected == 1) ({ selected = 0 }) else null,
+                                        onAi = { showAiSheet = true },
+                                        onSettings = {
+                                            settingsPage = SettingsPage.Main
+                                            showSettings = true
+                                        },
+                                    )
+                                }
+                            },
+                            bottomBar = {
+                                if (selected != 1) {
+                                    LedgerBottomBar(selected = selected, onSelect = { selected = it })
+                                }
+                            },
+                        ) { padding ->
+                            AnimatedContent(
+                                targetState = selected,
+                                transitionSpec = {
+                                    // 左右滑动 + 淡入淡出：让用户感知「往左/往右切了一页」。
+                                    // 方向由目标页与当前页的序号差决定 —— 从首页点到报表往左滑，
+                                    // 从报表回首页往右滑，符合底部导航的空间隐喻。
+                                    // 纯 fade 的问题是没有方向感，三个页签看起来像同一个页面在换内容。
+                                    val forward = targetState > initialState
+                                    val dir = if (forward) 1 else -1
+                                    // 滑动距离只用页宽的 1/6：整屏平移在快速连点时会显得晃，
+                                    // 小位移 + 淡入足够表达方向，也更接近系统页签切换的手感。
+                                    (slideInHorizontally(tween(pageDuration)) { full -> dir * full / 6 } +
+                                        fadeIn(tween(pageDuration)))
+                                        .togetherWith(
+                                            slideOutHorizontally(tween(pageDuration)) { full -> -dir * full / 6 } +
+                                                fadeOut(tween(pageDuration))
+                                        )
+                                },
+                                label = "page",
+                            ) { tab ->
+                                when (tab) {
+                                    0 -> HomeScreen(Modifier.padding(padding), onSearch = { showSearch = true })
+                                    1 -> AddScreen(Modifier.padding(padding), onDone = { selected = 0 })
+                                    else -> ReportScreen(modifier = Modifier.padding(padding), tab = reportTab)
+                                }
+                            }
+                        }
                     }
                 }
-            }
 
-            // 常驻组合、只切 show：这样关闭时 AppDialog 内部能播完退场再摘掉窗口。
-            // 外面再包一层 if (showAiSheet) 的话，一点关闭组件就被移出组合，退场动画没机会播。
-            AiActionSheet(
-                show = showAiSheet,
-                onDismiss = { showAiSheet = false },
-                onCamera = { captureVision() },
-                onGallery = { pickImageVision() },
-            )
-        }
+                // 全局提示宿主挂在根层：主页 / 设置页 / 搜索页共用同一个出口，
+                // 而且始终叠在内容之上，不会再像列表项一样堆进账目里。
+                LedgerSnackbarHost(
+                    snackbar = snackbar,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+
+                // 常驻组合、只切 show：这样关闭时 AppDialog 内部能播完退场再摘掉窗口。
+                // 外面再包一层 if (showAiSheet) 的话，一点关闭组件就被移出组合，退场动画没机会播。
+                AiActionSheet(
+                    show = showAiSheet,
+                    onDismiss = { showAiSheet = false },
+                    onCamera = { captureVision() },
+                    onGallery = { pickImageVision() },
+                )
             }
         }
     }

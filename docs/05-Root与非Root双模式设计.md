@@ -69,7 +69,7 @@
 ### 3.2 声明文件（已就位）
 
 `app/src/main/resources/META-INF/xposed/`：
-- `module.prop`：`id=com.eta.autoledger`、`name=自动记账`、`version=0.2.2`、`versionCode=3`、`author=Eta`、`minApiVersion/targetApiVersion=102`；
+- `module.prop`：`id=com.eta.autoledger`、`name=自动记账`、`version=0.3.0`、`versionCode=4`、`author=Eta`、`minApiVersion/targetApiVersion=102`；
 - `scope.list`：`system`（作用域是 system_server）；
 - `java_init.list`：`com.eta.autoledger.xposed.LedgerModule`。
 - 依赖：`compileOnly io.github.libxposed:api:102.0.0`；`packaging { merges += "META-INF/xposed/*" }`。

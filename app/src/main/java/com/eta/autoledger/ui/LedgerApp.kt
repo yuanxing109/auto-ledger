@@ -14,9 +14,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
-import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.rememberMotionDuration
+import com.eta.autoledger.ui.components.AppDialog
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,8 +48,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -126,7 +127,7 @@ fun LedgerApp(openAiSettings: Boolean = false) {
                             error("请先在设置中配置 AI 模型")
                         }
                         val base64 = VisionHelper.readImageBase64(context, uri)
-                        VisionHelper.callVisionModel(prefs, base64)
+                        VisionHelper.callVisionModel(prefs, base64, VisionHelper.MIME_JPEG)
                     }
                 }
                 result.onSuccess { entry -> VisionHelper.postResult(context, entry, null) }
@@ -170,8 +171,10 @@ fun LedgerApp(openAiSettings: Boolean = false) {
 
         // 系统「移除动画」开关：开发者选项 / 无障碍里的 animator_duration_scale 为 0 时，
         // ValueAnimator.getDurationScale() 返回 0f。此时把过渡时长压到 0，等价于瞬时切换。
-        val animScale = remember { android.animation.ValueAnimator.getDurationScale() }
-        val overlayDuration = if (animScale == 0f) 0 else 200
+        // 三处转场（overlay / 底部页签 / 报表周期）共用 rememberMotionDuration，
+        // 避免出现「主页动画关了、报表页还在淡入」这种不一致。
+        val overlayDuration = rememberMotionDuration(200)
+        val pageDuration = rememberMotionDuration(180)
         val overlay = when {
             showSettings -> 1
             showSearch -> 2
@@ -224,7 +227,20 @@ fun LedgerApp(openAiSettings: Boolean = false) {
                 AnimatedContent(
                     targetState = selected,
                     transitionSpec = {
-                        fadeIn(tween(160)) togetherWith fadeOut(tween(120))
+                        // 左右滑动 + 淡入淡出：让用户感知「往左/往右切了一页」。
+                        // 方向由目标页与当前页的序号差决定 —— 从首页点到报表往左滑，
+                        // 从报表回首页往右滑，符合底部导航的空间隐喻。
+                        // 纯 fade 的问题是没有方向感，三个页签看起来像同一个页面在换内容。
+                        val forward = targetState > initialState
+                        val dir = if (forward) 1 else -1
+                        // 滑动距离只用页宽的 1/6：整屏平移在快速连点时会显得晃，
+                        // 小位移 + 淡入足够表达方向，也更接近系统页签切换的手感。
+                        (slideInHorizontally(tween(pageDuration)) { full -> dir * full / 6 } +
+                            fadeIn(tween(pageDuration)))
+                            .togetherWith(
+                                slideOutHorizontally(tween(pageDuration)) { full -> -dir * full / 6 } +
+                                    fadeOut(tween(pageDuration))
+                            )
                     },
                     label = "page",
                 ) { page ->
@@ -236,13 +252,14 @@ fun LedgerApp(openAiSettings: Boolean = false) {
                 }
             }
 
-            if (showAiSheet) {
-                AiActionSheet(
-                    onDismiss = { showAiSheet = false },
-                    onCamera = { captureVision() },
-                    onGallery = { pickImageVision() },
-                )
-            }
+            // 常驻组合、只切 show：这样关闭时 AppDialog 内部能播完退场再摘掉窗口。
+            // 外面再包一层 if (showAiSheet) 的话，一点关闭组件就被移出组合，退场动画没机会播。
+            AiActionSheet(
+                show = showAiSheet,
+                onDismiss = { showAiSheet = false },
+                onCamera = { captureVision() },
+                onGallery = { pickImageVision() },
+            )
         }
             }
         }
@@ -250,28 +267,22 @@ fun LedgerApp(openAiSettings: Boolean = false) {
 }
 
 @Composable
-private fun AiActionSheet(onDismiss: () -> Unit, onCamera: () -> Unit, onGallery: () -> Unit) {
-    Dialog(
+private fun AiActionSheet(
+    show: Boolean,
+    onDismiss: () -> Unit,
+    onCamera: () -> Unit,
+    onGallery: () -> Unit,
+) {
+    AppDialog(
+        show = show,
+        title = "识图记账",
+        summary = "拍照或上传账单图片，交给已配置的 AI 解析。",
+        widthFraction = 0.88f,
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        val sheetShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .clip(sheetShape)
-                .background(LedgerTheme.surface)
-                .border(1.dp, LedgerTheme.borderSoft, sheetShape)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-        ) {
-                Text("识图记账", style = MiuixTheme.textStyles.title3, color = LedgerTheme.text)
-                Spacer(Modifier.height(6.dp))
-                Text("拍照或上传账单图片，交给已配置的 AI 解析。", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-                Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SheetOption("📷", "拍照识图", Modifier.weight(1f), onCamera)
-                    SheetOption("🖼️", "上传图片识图", Modifier.weight(1f), onGallery)
-                }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SheetOption("📷", "拍照识图", Modifier.weight(1f), onCamera)
+            SheetOption("🖼️", "上传图片识图", Modifier.weight(1f), onGallery)
         }
     }
 }

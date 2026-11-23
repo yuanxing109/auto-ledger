@@ -2,8 +2,10 @@ package com.eta.autoledger.settings
 
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.rememberMotionDuration
 import com.eta.autoledger.ui.window.LocalSnackbar
 import com.eta.autoledger.ui.theme.LedgerDimens
+import com.eta.autoledger.ui.components.ImportPreviewDialog
 import com.eta.autoledger.notification.IslandNotifier
 import android.Manifest
 import android.app.DatePickerDialog
@@ -26,6 +28,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -63,9 +72,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,6 +100,7 @@ import com.eta.autoledger.ui.components.SwitchRow as SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.CategoryStore
+import com.eta.autoledger.data.ImportDedup
 import com.eta.autoledger.data.CsvImporter
 import com.eta.autoledger.data.XlsxImporter
 import com.eta.autoledger.data.XlsxExporter
@@ -133,11 +143,29 @@ enum class SettingsPage(val title: String, val parent: SettingsPage?) {
     ParseRules("高级解析设置", Auto),
 }
 
+/**
+ * 页面层级：Main 为 0，一级 1，二级 2。
+ *
+ * 转场方向由层级差决定 —— 进入更深一层从右侧滑入，退回上一层从左侧滑入，
+ * 与用户「往里点 / 往回退」的心理模型一致。不用页面栈存历史，是因为
+ * 层级本身就由 [SettingsPage.parent] 链定义好了，多存一份反而会不一致。
+ */
+private fun SettingsPage.depth(): Int {
+    var depth = 0
+    var cursor = parent
+    while (cursor != null) {
+        depth++
+        cursor = cursor.parent
+    }
+    return depth
+}
+
 @Composable
 fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () -> Unit) {
     var page by rememberSaveable { mutableStateOf(initialPage) }
     val context = LocalContext.current
     val prefs = remember(context) { AppPrefs.get(context) }
+    val motion = rememberMotionDuration(200)
 
     BackHandler {
         val parent = page.parent
@@ -158,38 +186,57 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
                 .background(PageBg)
                 .padding(padding),
         ) {
-            when (page) {
-                // ── 一级 ──
-                SettingsPage.Main -> MainPage(onOpen = { page = it })
-                SettingsPage.Auto -> AutoPage(
-                    prefs = prefs,
-                    onImport = { page = SettingsPage.Import },
-                    onParseRules = { page = SettingsPage.ParseRules },
-                )
-                SettingsPage.ParseRules -> ParseRulesPage(prefs)
-                SettingsPage.LedgerSettings -> LedgerSettingsPage(onOpen = { page = it })
-                SettingsPage.Notifications -> NotificationsPage(
-                    prefs = prefs,
-                    onDaily = { page = SettingsPage.DailyReminder },
-                    onSingle = { page = SettingsPage.SingleNotify },
-                )
-                SettingsPage.DataBackup -> DataBackupPage(onOpen = { page = it })
-                SettingsPage.AppearanceWidget -> AppearanceWidgetPage(prefs = prefs, onOpen = { page = it })
-                SettingsPage.Features -> FeaturesPage(prefs, onAi = { page = SettingsPage.Ai })
-                SettingsPage.SysAccess -> SystemAccessPage(prefs = prefs)
-                SettingsPage.About -> AboutPage()
+            AnimatedContent(
+                targetState = page,
+                transitionSpec = {
+                    // 层级变深 = 往里进，新页从右边推入、旧页往左退；
+                    // 层级变浅 = 往回退，新页从左边推入、旧页往右退。
+                    // 位移只用 1/4 屏宽：整屏平移在层级间跳转时会显得晃，
+                    // 小位移 + 淡入已经足够表达方向。
+                    val forward = targetState.depth() >= initialState.depth()
+                    val dir = if (forward) 1 else -1
+                    (slideInHorizontally(tween(motion)) { full -> dir * full / 4 } +
+                        fadeIn(tween(motion)))
+                        .togetherWith(
+                            slideOutHorizontally(tween(motion)) { full -> -dir * full / 4 } +
+                                fadeOut(tween(motion))
+                        )
+                },
+                label = "settings-page",
+            ) { current ->
+                when (current) {
+                    // ── 一级 ──
+                    SettingsPage.Main -> MainPage(onOpen = { page = it })
+                    SettingsPage.Auto -> AutoPage(
+                        prefs = prefs,
+                        onImport = { page = SettingsPage.Import },
+                        onParseRules = { page = SettingsPage.ParseRules },
+                    )
+                    SettingsPage.ParseRules -> ParseRulesPage(prefs)
+                    SettingsPage.LedgerSettings -> LedgerSettingsPage(onOpen = { page = it })
+                    SettingsPage.Notifications -> NotificationsPage(
+                        prefs = prefs,
+                        onDaily = { page = SettingsPage.DailyReminder },
+                        onSingle = { page = SettingsPage.SingleNotify },
+                    )
+                    SettingsPage.DataBackup -> DataBackupPage(onOpen = { page = it })
+                    SettingsPage.AppearanceWidget -> AppearanceWidgetPage(prefs = prefs, onOpen = { page = it })
+                    SettingsPage.Features -> FeaturesPage(prefs, onAi = { page = SettingsPage.Ai })
+                    SettingsPage.SysAccess -> SystemAccessPage(prefs = prefs)
+                    SettingsPage.About -> AboutPage()
 
-                // ── 二级 ──
-                SettingsPage.DailyReminder -> DailyReminderPage(prefs)
-                SettingsPage.SingleNotify -> SingleNotifyPage(prefs)
-                SettingsPage.Categories -> CategoriesPage()
-                SettingsPage.Budget -> BudgetPage(prefs, onDone = { page = SettingsPage.LedgerSettings })
-                SettingsPage.Import -> ImportPage()
-                SettingsPage.Export -> ExportPage()
-                SettingsPage.Backup -> BackupPage(prefs = prefs)
-                SettingsPage.Appearance -> AppearancePage(prefs = prefs)
-                SettingsPage.Widget -> WidgetPage()
-                SettingsPage.Ai -> AiPage(prefs)
+                    // ── 二级 ──
+                    SettingsPage.DailyReminder -> DailyReminderPage(prefs)
+                    SettingsPage.SingleNotify -> SingleNotifyPage(prefs)
+                    SettingsPage.Categories -> CategoriesPage()
+                    SettingsPage.Budget -> BudgetPage(prefs, onDone = { page = SettingsPage.LedgerSettings })
+                    SettingsPage.Import -> ImportPage()
+                    SettingsPage.Export -> ExportPage()
+                    SettingsPage.Backup -> BackupPage(prefs = prefs)
+                    SettingsPage.Appearance -> AppearancePage(prefs = prefs)
+                    SettingsPage.Widget -> WidgetPage()
+                    SettingsPage.Ai -> AiPage(prefs)
+                }
             }
         }
     }
@@ -702,6 +749,11 @@ private fun CategoriesPage() {
     var other by remember { mutableStateOf(loadCategoryList(context, KEY_OTHER, otherNames)) }
     var editing by remember { mutableStateOf<Pair<List<ManagedCategory>, ManagedCategory>?>(null) }
     var addingTo by remember { mutableStateOf<List<ManagedCategory>?>(null) }
+    // 弹窗要常驻组合才能播完退场动画，关闭后仍留一份数据给退场帧渲染。
+    var lastEditing by remember { mutableStateOf<Pair<List<ManagedCategory>, ManagedCategory>?>(null) }
+    var lastAddingTo by remember { mutableStateOf<List<ManagedCategory>?>(null) }
+    LaunchedEffect(editing) { if (editing != null) lastEditing = editing }
+    LaunchedEffect(addingTo) { if (addingTo != null) lastAddingTo = addingTo }
 
     SettingsPageColumn {
         HintText("轻触分类可编辑或删除，末尾的 + 用于新增。")
@@ -725,8 +777,9 @@ private fun CategoriesPage() {
         )
     }
 
-    editing?.let { (list, item) ->
+    lastEditing?.let { (list, item) ->
         CategoryEditDialog(
+            show = editing != null,
             title = "编辑分类",
             initialName = item.name,
             onDismiss = { editing = null },
@@ -748,8 +801,9 @@ private fun CategoriesPage() {
             },
         )
     }
-    addingTo?.let { list ->
+    lastAddingTo?.let { list ->
         CategoryEditDialog(
+            show = addingTo != null,
             title = "添加分类",
             initialName = "",
             onDismiss = { addingTo = null },
@@ -872,83 +926,80 @@ private fun categoryColor(name: String): Color = when (name) {
 
 @Composable
 private fun CategoryEditDialog(
+    show: Boolean,
     title: String,
     initialName: String,
     onDismiss: () -> Unit,
     onDelete: (() -> Unit)?,
     onSave: (String) -> Unit,
 ) {
-    var name by remember { mutableStateOf(initialName) }
-    Dialog(onDismissRequest = onDismiss) {
-        Box(
+    // 以 show 为 key：重新打开时按 initialName 重建，不残留上一次输入。
+    var name by remember(show) { mutableStateOf(initialName) }
+    AppDialog(
+        show = show,
+        maxWidth = 400.dp,
+        outsideMargin = DpSize(32.dp, 24.dp),
+        panelColor = LedgerTheme.card,
+        onDismissRequest = onDismiss,
+    ) {
+        Text(text = title, style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
+        Spacer(Modifier.height(16.dp))
+        BasicTextField(
+            value = name,
+            onValueChange = { name = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .clip(RoundedCornerShape(LocalDimens.current.radiusSheet))
-                .background(LedgerTheme.card)
-                .padding(16.dp),
-        ) {
-            Column {
-                Text(text = title, style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
-                Spacer(Modifier.height(16.dp))
-                BasicTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(LedgerTheme.inset)
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                    singleLine = true,
-                    textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
-                    cursorBrush = SolidColor(AccentBlue),
-                    decorationBox = { inner ->
-                        Box {
-                            if (name.isEmpty()) Text("分类名称", style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
-                            inner()
-                        }
-                    },
-                )
-                Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (onDelete != null) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(LedgerTheme.tint(LedgerTheme.danger))
-                                .clickable(onClick = onDelete),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("删除", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.danger))
-                        }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(LedgerTheme.inset)
-                            .clickable(onClick = onDismiss),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("取消", style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(AccentBlue)
-                            .clickable {
-                                if (name.isNotBlank()) onSave(name.trim())
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("保存", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.onAccent))
-                    }
+                .clip(RoundedCornerShape(12.dp))
+                .background(LedgerTheme.inset)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            singleLine = true,
+            textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+            cursorBrush = SolidColor(AccentBlue),
+            decorationBox = { inner ->
+                Box {
+                    if (name.isEmpty()) Text("分类名称", style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
+                    inner()
                 }
+            },
+        )
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (onDelete != null) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(LedgerTheme.tint(LedgerTheme.danger))
+                        .clickable(onClick = onDelete),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("删除", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.danger))
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(LedgerTheme.inset)
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("取消", style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AccentBlue)
+                    .clickable {
+                        if (name.isNotBlank()) onSave(name.trim())
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("保存", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.onAccent))
             }
         }
     }
@@ -1031,16 +1082,17 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
         }
     }
 
-    if (showStartDayPicker) {
-        StartDayPickerDialog(
-            selected = prefs.budgetStartDay,
-            onDismiss = { showStartDayPicker = false },
-            onPick = { day ->
-                prefs.budgetStartDay = day
-                showStartDayPicker = false
-            },
-        )
-    }
+    // 常驻组合、只切 show：外面用 if 包起来的话，一点选或点遮罩组件就被移出组合，
+    // AppDialog 接管的退场动画没机会播。
+    StartDayPickerDialog(
+        show = showStartDayPicker,
+        selected = prefs.budgetStartDay,
+        onDismiss = { showStartDayPicker = false },
+        onPick = { day ->
+            prefs.budgetStartDay = day
+            showStartDayPicker = false
+        },
+    )
 }
 
 /**
@@ -1051,11 +1103,12 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
  */
 @Composable
 private fun StartDayPickerDialog(
+    show: Boolean,
     selected: Int,
     onDismiss: () -> Unit,
     onPick: (Int) -> Unit,
 ) {
-    AppDialog(title = "预算起始日", onDismissRequest = onDismiss) {
+    AppDialog(show = show, title = "预算起始日", onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = "选发薪日；预算周期 = 该日 ~ 次月该日前一天。1 号即自然月。",
@@ -1118,31 +1171,67 @@ private fun ImportPage() {
     val scope = rememberCoroutineScope()
     // 教程卡：原本 3 个 onClick 都是空实现（点了没反应）。改为弹出说明对话框。
     var guideFor by remember { mutableStateOf<String?>(null) }
+    var importPlan by remember { mutableStateOf<ImportDedup.Plan?>(null) }
+    var importing by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
-            scope.launch { snackbar.show("正在导入，请稍候…") }
+            scope.launch { snackbar.show("正在解析，请稍候…") }
             scope.launch {
                 // 解析任意用户文件，畸形 CSV/XLSX/编码异常都可能抛异常，必须兜住否则直接崩溃
-                val result = withContext(Dispatchers.IO) {
+                val parsed = withContext(Dispatchers.IO) {
                     runCatching {
                         val mime = context.contentResolver.getType(uri).orEmpty()
                         val name = uri.lastPathSegment.orEmpty()
-                        if (mime.contains("spreadsheetml") || name.endsWith(".xlsx", true)) {
-                            XlsxImporter.import(context, uri)
+                        val entries = if (mime.contains("spreadsheetml") || name.endsWith(".xlsx", true)) {
+                            XlsxImporter.parse(context, uri)
                         } else {
                             val text = context.contentResolver.openInputStream(uri)
                                 ?.bufferedReader()?.readText().orEmpty()
-                            CsvImporter.import(context, text)
+                            CsvImporter.parse(text)
                         }
+                        // 本地启发式 + 可选 AI 判重：解析完先出预览，不直接写库
+                        ImportDedup.plan(context, entries, aiCheck = true)
                     }
                 }
-                result.onSuccess { count ->
-                    scope.launch { snackbar.show("导入完成：新增 $count 笔，重复记录已跳过") }
+                parsed.onSuccess { value ->
+                    if (value.isEmpty) {
+                        snackbar.showLong("这个文件里没有解析到账目，确认导出的是账单明细吗？")
+                    } else {
+                        importPlan = value
+                    }
                 }.onFailure { e ->
                     scope.launch { snackbar.showLong("导入失败：文件格式无法识别（${e.message ?: "解析错误"}）") }
                 }
             }
         }
+    }
+    val currentPlan = importPlan
+    if (currentPlan != null) {
+        ImportPreviewDialog(
+            show = true,
+            plan = currentPlan,
+            busy = importing,
+            onDismiss = { if (!importing) importPlan = null },
+            onCommit = { decisions ->
+                importing = true
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching { ImportDedup.commit(context, currentPlan, decisions) }
+                    }
+                    importing = false
+                    importPlan = null
+                    result.onSuccess { r ->
+                        val extra = buildString {
+                            if (r.merged > 0) append("，合并 ").append(r.merged).append(" 笔")
+                            if (r.skipped > 0) append("，跳过 ").append(r.skipped).append(" 笔")
+                        }
+                        snackbar.show("导入完成：新增 " + r.added + " 笔" + extra)
+                    }.onFailure { e ->
+                        snackbar.showLong("写入失败：" + (e.message ?: "数据库异常"))
+                    }
+                }
+            },
+        )
     }
     SettingsPageColumn {
         HintText("支持导入 Excel / CSV 格式，推荐单次 1MB 以内。")
@@ -1173,40 +1262,37 @@ private fun ImportPage() {
     }
 
     // 教程卡说明对话框：给出可执行的导出路径，而不是一句空提示。
-    guideFor?.let { platform ->
+    // 常驻组合、只切 show：外面用 guideFor?.let { } 包起来的话，一点「知道了」组件就被移出组合，
+    // AppDialog 接管的退场动画播不出来。关闭后 guideFor 置 null，这里留住最后一次的平台名。
+    var lastGuideFor by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(guideFor) { if (guideFor != null) lastGuideFor = guideFor }
+    lastGuideFor?.let { platform ->
         val steps = when (platform) {
             "微信" -> "微信 → 我 → 服务 → 钱包 → 账单 → 右上角「常见问题」→「下载账单」→ 选「用于个人对账」→ 填邮箱收 CSV"
             "支付宝" -> "支付宝 → 我的 → 账单 → 右上角「⋯」→「开具交易流水证明」→ 选「用于个人对账」→ 填邮箱收 CSV"
             else -> "各银行/电商 App 一般在「我的 → 账单 / 订单」里提供导出或邮件发送 CSV/Excel；" +
                     "也可以在对应 App 内搜索「账单导出」查看官方指引。"
         }
-        Dialog(onDismissRequest = { guideFor = null }) {
+        AppDialog(
+            show = guideFor != null,
+            title = "$platform 账单导出",
+            maxWidth = 420.dp,
+            outsideMargin = DpSize(24.dp, 24.dp),
+            onDismissRequest = { guideFor = null },
+        ) {
+            Spacer(Modifier.height(10.dp))
+            Text(steps, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+            Spacer(Modifier.height(16.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .clip(RoundedCornerShape(LocalDimens.current.radiusSheet))
-                    .background(LedgerTheme.surface)
-                    .border(1.dp, LedgerTheme.borderSoft, RoundedCornerShape(LocalDimens.current.radiusSheet))
-                    .padding(20.dp),
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(LedgerTheme.accent)
+                    .clickable { guideFor = null },
+                contentAlignment = Alignment.Center,
             ) {
-                Column {
-                    Text("$platform 账单导出", style = MiuixTheme.textStyles.title4, color = LedgerTheme.text)
-                    Spacer(Modifier.height(10.dp))
-                    Text(steps, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-                    Spacer(Modifier.height(16.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(LedgerTheme.accent)
-                            .clickable { guideFor = null },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("知道了", style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
-                    }
-                }
+                Text("知道了", style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
             }
         }
     }
@@ -1435,44 +1521,38 @@ private fun AiPage(prefs: AppPrefs) {
         }
     }
 
-    if (showModels) {
-        Dialog(onDismissRequest = { showModels = false }) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .clip(RoundedCornerShape(LocalDimens.current.radiusSheet))
-                    .background(LedgerTheme.card)
-                    .padding(16.dp),
-            ) {
-                Column {
-                    Text("选择模型", style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
-                    Spacer(Modifier.height(8.dp))
-                    Column(modifier = Modifier.height(280.dp).verticalScroll(rememberScrollState())) {
-                        models.forEach { name ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        model = name
-                                        showModels = false
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                            ) {
-                                Text(
-                                    text = name,
-                                    style = MiuixTheme.textStyles.footnote1.copy(
-                                        color = if (name == model) AccentBlue else TextPrimary,
-                                    ),
-                                )
+    AppDialog(
+        show = showModels,
+        title = "选择模型",
+        maxWidth = 420.dp,
+        outsideMargin = DpSize(24.dp, 24.dp),
+        panelColor = LedgerTheme.card,
+        onDismissRequest = { showModels = false },
+    ) {
+            Text("选择模型", style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
+            Spacer(Modifier.height(8.dp))
+            Column(modifier = Modifier.height(280.dp).verticalScroll(rememberScrollState())) {
+                models.forEach { name ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                model = name
+                                showModels = false
                             }
-                        }
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                    ) {
+                        Text(
+                            text = name,
+                            style = MiuixTheme.textStyles.footnote1.copy(
+                                color = if (name == model) AccentBlue else TextPrimary,
+                            ),
+                        )
                     }
                 }
             }
         }
-    }
 }
 
 @Composable
@@ -1578,6 +1658,7 @@ private fun BackupPage(prefs: AppPrefs) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var lastResult by remember { mutableStateOf(prefs.davLastResult) }
+    var restorePlan by remember { mutableStateOf<ImportDedup.Plan?>(null) }
 
     fun run(label: String, block: suspend () -> com.eta.autoledger.data.BackupRunner.Result) {
         if (busy) return
@@ -1658,9 +1739,30 @@ private fun BackupPage(prefs: AppPrefs) {
             RowDivider()
             ArrowPreference(
                 title = "从云端恢复",
-                summary = "读取云端最新备份，按去重规则合并进本地",
+                summary = "读取云端最新备份，先出预览再决定合并哪些",
                 onClick = {
-                    run("正在恢复") { com.eta.autoledger.data.BackupRunner.restore(context, prefs) }
+                    if (busy) {
+                        scope.launch { snackbar.show("上一个操作还没结束") }
+                    } else {
+                        busy = true
+                        scope.launch {
+                            snackbar.show("正在读取云端备份…")
+                            val stage = com.eta.autoledger.data.BackupRunner.prepareRestore(context, prefs)
+                            lastResult = prefs.davLastResult
+                            busy = false
+                            when (stage) {
+                                is com.eta.autoledger.data.BackupRunner.Stage.Ready -> {
+                                    if (stage.plan.isEmpty) {
+                                        snackbar.showLong("备份里没有可恢复的账目")
+                                    } else {
+                                        restorePlan = stage.plan
+                                    }
+                                }
+                                is com.eta.autoledger.data.BackupRunner.Stage.Failed ->
+                                    snackbar.showLong(stage.message)
+                            }
+                        }
+                    }
                 },
             )
             RowDivider()
@@ -1710,6 +1812,33 @@ private fun BackupPage(prefs: AppPrefs) {
             "坚果云：网页版「账户信息 → 安全选项 → 添加应用密码」，用那串密码填上面的「应用密码」。\n" +
                 "群晖：控制面板启用 WebDAV Server 后，地址填 https://你的域名:5006/备份目录。\n" +
                 "备份文件为 JSON（不是数据库文件），换机后先装 App，再点「从云端恢复」即可。",
+        )
+    }
+
+    val plan = restorePlan
+    if (plan != null) {
+        ImportPreviewDialog(
+            show = true,
+            plan = plan,
+            busy = busy,
+            onDismiss = { if (!busy) restorePlan = null },
+            onCommit = { decisions ->
+                if (busy) return@ImportPreviewDialog
+                busy = true
+                scope.launch {
+                    snackbar.show("正在写入本地…")
+                    val result = com.eta.autoledger.data.BackupRunner.commitRestore(
+                        context,
+                        prefs,
+                        plan,
+                        decisions,
+                    )
+                    lastResult = prefs.davLastResult
+                    restorePlan = null
+                    busy = false
+                    snackbar.showLong(result.message)
+                }
+            },
         )
     }
 }

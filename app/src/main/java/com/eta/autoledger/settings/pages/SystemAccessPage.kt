@@ -62,9 +62,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -88,6 +88,7 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.AppPrefs
+import com.eta.autoledger.ui.components.AppDialog
 import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.CsvImporter
 import com.eta.autoledger.data.XlsxImporter
@@ -296,54 +297,40 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
         }
     }
 
-    if (showClearConfirm) {
-        Dialog(onDismissRequest = { showClearConfirm = false }) {
+    AppDialog(
+        show = showClearConfirm,
+        title = "清空所有账目？",
+        summary = "该操作不可恢复，确定要删除全部记账数据吗？",
+        maxWidth = 420.dp,
+        outsideMargin = DpSize(24.dp, 24.dp),
+        panelColor = LedgerTheme.card,
+        onDismissRequest = { showClearConfirm = false },
+    ) {
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .clip(RoundedCornerShape(LocalDimens.current.radiusSheet))
-                    .background(LedgerTheme.card)
-                    .padding(16.dp),
+                modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp))
+                    .background(LedgerTheme.inset).clickable { showClearConfirm = false },
+                contentAlignment = Alignment.Center,
             ) {
-                Column {
-                    Text(
-                        "清空所有账目？",
-                        style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "该操作不可恢复，确定要删除全部记账数据吗？",
-                        style = TextStyle(fontSize = 12.sp, color = TextSecondary),
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(
-                            modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp))
-                                .background(LedgerTheme.inset).clickable { showClearConfirm = false },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("取消", style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
-                        }
-                        Box(
-                            modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp))
-                                .background(LedgerTheme.tint(LedgerTheme.danger)).clickable {
-                                    scope.launch { LedgerRepository.clear(context) }
-                                    showClearConfirm = false
-                                    scope.launch { snackbar.show("已清空记账数据") }
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "清空",
-                                style = MiuixTheme.textStyles.footnote1.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = LedgerTheme.danger,
-                                ),
-                            )
-                        }
-                    }
-                }
+                Text("取消", style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
+            }
+            Box(
+                modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp))
+                    .background(LedgerTheme.tint(LedgerTheme.danger)).clickable {
+                        scope.launch { LedgerRepository.clear(context) }
+                        showClearConfirm = false
+                        scope.launch { snackbar.show("已清空记账数据") }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "清空",
+                    style = MiuixTheme.textStyles.footnote1.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = LedgerTheme.danger,
+                    ),
+                )
             }
         }
     }

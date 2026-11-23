@@ -8,10 +8,11 @@ import java.util.zip.ZipFile
 /** 轻量 XLSX 读取：解析 sharedStrings 与第一个 worksheet，再交给 CsvImporter。 */
 object XlsxImporter {
 
-    suspend fun import(context: Context, uri: Uri): Int {
+    /** 只解析不入库，供导入预览使用。 */
+    fun parse(context: Context, uri: Uri): List<LedgerEntry> {
         val temp = File.createTempFile("ledger_import", ".xlsx", context.cacheDir)
         try {
-            val input = context.contentResolver.openInputStream(uri) ?: return 0
+            val input = context.contentResolver.openInputStream(uri) ?: return emptyList()
             input.use { ins -> temp.outputStream().use { outs -> ins.copyTo(outs) } }
 
             val rows = ZipFile(temp).use { zip ->
@@ -20,20 +21,23 @@ object XlsxImporter {
                     ?: zip.entries().asSequence().firstOrNull {
                         it.name.startsWith("xl/worksheets/sheet") && it.name.endsWith(".xml")
                     }
-                    ?: return 0
+                    ?: return emptyList()
                 zip.getInputStream(sheet).use { parseRows(it.bufferedReader().readText(), shared) }
             }
-            if (rows.isEmpty()) return 0
+            if (rows.isEmpty()) return emptyList()
             val csv = rows.joinToString("\n") { row ->
                 row.joinToString(",") { escape(it) }
             }
-            return CsvImporter.import(context, csv)
+            return CsvImporter.parse(csv)
         } catch (_: Throwable) {
-            return 0
+            return emptyList()
         } finally {
             temp.delete()
         }
     }
+
+    suspend fun import(context: Context, uri: Uri): Int =
+        LedgerRepository.addImported(context, parse(context, uri))
 
     private fun readSharedStrings(zip: ZipFile): List<String> {
         val entry = zip.getEntry("xl/sharedStrings.xml") ?: return emptyList()

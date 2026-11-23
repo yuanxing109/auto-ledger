@@ -24,6 +24,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * 账目内容版本号：只随「内容真的变了」递增，与翻页无关。
+ *
+ * [count] 覆盖新增/删除（Room 的 COUNT 流会自己推），[editTick] 覆盖「改金额但条数不变」的编辑。
+ * 预算卡这类派生数据拿它当 key，就不会因为翻页而重算。
+ */
+data class LedgerDataVersion(val count: Int = 0, val editTick: Int = 0)
 
 data class BillsUiState(
     val bills: List<LedgerEntry> = emptyList(),
@@ -58,6 +67,26 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
      * 翻到第 k 页单次开销为 N，累计 ΣN ≈ O(n²)。迁到这里后每次翻页只处理新页（O(pageSize)）。
      */
     private val groups = MutableStateFlow<List<DayGroupUi>>(emptyList())
+
+    /** 内容编辑计数：改金额/分类但条数不变时，只有它能反映「数据变了」。 */
+    private val editTick = MutableStateFlow(0)
+
+    /**
+     * 给「依赖账目内容的派生计算」用的版本号。
+     *
+     * 之前首页预算卡用 `LaunchedEffect(budgetStartDay, entries.size, billsState.totalCount)`：
+     * `entries.size` 会随翻页增长，于是每翻一页就白跑一次预算汇总 SQL —— 而翻页并没有改任何账目。
+     * 换成这个版本号后，只有真正新增/删除（count 变）或编辑（editTick 变）才会重算。
+     */
+    val dataVersion: StateFlow<LedgerDataVersion> = combine(
+        LedgerRepository.observeCount(context),
+        editTick,
+    ) { count, tick -> LedgerDataVersion(count = count, editTick = tick) }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            LedgerDataVersion(),
+        )
 
     private val billsFlow = combine(firstPage, extraPages) { first, extra ->
         // 首屏刷新（新账插入、旧账删除）可能与已加载的追加页重叠，按 id 去重。
@@ -94,9 +123,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch(Dispatchers.IO) { LedgerRepository.repairTimestamps(context) }
         // 首屏：全量分组一次。之后翻页只走增量合并，不再进这里。
+        // 分组本身是 CPU 活（每条账目要算日期键、金额文本、分类配色），首屏 20 条虽小，
+        // 但账单多的用户首次启动仍是几百条，放到 Default 上做，别占主线程。
         viewModelScope.launch {
             firstPage.collect { first ->
-                groups.value = groupEntries(first)
+                groups.value = withContext(Dispatchers.Default) { groupEntries(first) }
                 loading.value = false
             }
         }
@@ -140,7 +171,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         extraPages.value = (extraPages.value + more).distinctBy { it.id }
         // 增量合并：只对新页做转换并接到末组，已加载部分不重算。
         // 原实现放在 UI 的 remember(entries) 里，每次翻页都全量重分组 → 累计 O(n²)。
-        groups.value = mergeIntoTail(groups.value, more)
+        // 合并本身仍是 CPU 活（新页每条都要算日期键/金额文本/配色），挪到 Default 上，
+        // 主线程只负责最后一次性赋值。LedgerGrouping 的格式化器已换成线程安全的
+        // java.time.DateTimeFormatter，正是为了这里能安全地跨线程调用。
+        val merged = withContext(Dispatchers.Default) { mergeIntoTail(groups.value, more) }
+        groups.value = merged
         if (more.size < pageSize) exhausted.value = true
     }
 
@@ -160,6 +195,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     list
                 }
             }
+            // 编辑不改条数，count 流不会动，靠这个 tick 通知预算卡等派生数据重算。
+            editTick.update { it + 1 }
         }
     }
 

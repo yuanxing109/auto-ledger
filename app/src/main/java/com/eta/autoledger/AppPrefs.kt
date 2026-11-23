@@ -8,6 +8,44 @@ import androidx.compose.runtime.setValue
 class AppPrefs private constructor(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("auto_ledger", Context.MODE_PRIVATE)
 
+    /** 加密存储；Keystore 不可用时为 null，敏感字段退回 [prefs]（保证 App 仍能启动）。 */
+    private val securePrefs = SecurePrefs.get(context.applicationContext)
+
+    /**
+     * 读敏感字段，并完成一次性明文→密文迁移。
+     *
+     * 迁移条件：加密存储可用、密文里没有该键、明文里**有**该键。三条同时成立才搬，
+     * 搬完立刻删明文键。这样：
+     * - 老用户升级：第一次读就把旧值接管过来，不需要用户重填；
+     * - 新用户：明文里没有键，什么都不做；
+     * - 用户主动清空过（写成空串）：密文里键已存在，不会拿明文旧值覆盖回去。
+     */
+    private fun readSecret(key: String): String {
+        val secure = securePrefs
+        if (secure == null) return prefs.getString(key, "") ?: ""
+        if (!secure.contains(key) && prefs.contains(key)) {
+            val legacy = prefs.getString(key, "") ?: ""
+            secure.edit().putString(key, legacy).apply()
+            prefs.edit().remove(key).apply()
+            return legacy
+        }
+        // 迁移中途被杀（密文已写、明文没删）时，这里补一刀，别让明文长期残留
+        if (secure.contains(key) && prefs.contains(key)) prefs.edit().remove(key).apply()
+        return secure.getString(key, "") ?: ""
+    }
+
+    /** 写敏感字段：加密存储可用时只写密文（并清掉可能残留的明文键），否则退回明文。 */
+    private fun writeSecret(key: String, value: String) {
+        val secure = securePrefs
+        if (secure == null) {
+            prefs.edit().putString(key, value).apply()
+            return
+        }
+        secure.edit().putString(key, value).apply()
+        // 明文键若还留着（迁移中断、降级期间写入过），这里顺手清掉
+        if (prefs.contains(key)) prefs.edit().remove(key).apply()
+    }
+
     private var smsState by mutableStateOf(prefs.getBoolean("sms_enabled", true))
     var smsEnabled: Boolean
         get() = smsState
@@ -127,10 +165,11 @@ class AppPrefs private constructor(context: Context) {
         get() = aiBaseUrlState
         set(value) { aiBaseUrlState = value; prefs.edit().putString("ai_base_url", value).apply() }
 
-    private var aiKeyState by mutableStateOf(prefs.getString("ai_key", "") ?: "")
+    private var aiKeyState by mutableStateOf(readSecret("ai_key"))
+    /** AI 服务商的 API Key。存加密存储（见 [SecurePrefs]），不再明文落盘。 */
     var aiKey: String
         get() = aiKeyState
-        set(value) { aiKeyState = value; prefs.edit().putString("ai_key", value).apply() }
+        set(value) { aiKeyState = value; writeSecret("ai_key", value) }
 
     private var aiModelState by mutableStateOf(prefs.getString("ai_model", "") ?: "")
     var aiModel: String
@@ -156,16 +195,16 @@ class AppPrefs private constructor(context: Context) {
         get() = davUrlState
         set(value) { davUrlState = value; prefs.edit().putString("dav_url", value).apply() }
 
-    private var davUserState by mutableStateOf(prefs.getString("dav_user", "") ?: "")
+    private var davUserState by mutableStateOf(readSecret("dav_user"))
     var davUser: String
         get() = davUserState
-        set(value) { davUserState = value; prefs.edit().putString("dav_user", value).apply() }
+        set(value) { davUserState = value; writeSecret("dav_user", value) }
 
-    private var davPassState by mutableStateOf(prefs.getString("dav_pass", "") ?: "")
-    /** 坚果云要填**应用密码**，不是登录密码。 */
+    private var davPassState by mutableStateOf(readSecret("dav_pass"))
+    /** 坚果云要填**应用密码**，不是登录密码。存加密存储（见 [SecurePrefs]）。 */
     var davPass: String
         get() = davPassState
-        set(value) { davPassState = value; prefs.edit().putString("dav_pass", value).apply() }
+        set(value) { davPassState = value; writeSecret("dav_pass", value) }
 
     private var davAutoState by mutableStateOf(prefs.getBoolean("dav_auto", false))
     private var davAutoTimeState by mutableStateOf(prefs.getString("dav_auto_time", "03:00") ?: "03:00")

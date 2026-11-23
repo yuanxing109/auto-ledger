@@ -34,18 +34,11 @@ data class ParsedEntry(
 
 object VisionHelper {
 
-    fun callVisionModel(prefs: AppPrefs, base64: String): ParsedEntry {
-        val url = endpoint(prefs.aiBaseUrl, "/chat/completions")
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15_000
-            readTimeout = 60_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json")
-            if (prefs.aiKey.isNotBlank()) {
-                setRequestProperty("Authorization", "Bearer ${prefs.aiKey}")
-            }
-        }
+    /**
+     * 图片 MIME 必须由调用方传入：相册导入走 JPEG，截屏服务走 PNG，
+     * 早先写死 "image/png" 会让 JPEG 的 base64 被当成 PNG 解析而报 400。
+     */
+    fun callVisionModel(prefs: AppPrefs, base64: String, mime: String = MIME_JPEG): ParsedEntry {
         val content = JSONArray().apply {
             put(JSONObject().apply {
                 put("type", "text")
@@ -54,7 +47,7 @@ object VisionHelper {
             put(JSONObject().apply {
                 put("type", "image_url")
                 put("image_url", JSONObject().apply {
-                    put("url", "data:image/png;base64,$base64")
+                    put("url", "data:" + mime + ";base64," + base64)
                 })
             })
         }
@@ -62,20 +55,65 @@ object VisionHelper {
             put("role", "user")
             put("content", content)
         })
+        val contentText = postChat(prefs, messages, 400)
+        val obj = parseJsonObject(contentText)
+            ?: error("模型没有返回 JSON：" + contentText.take(120))
+        val amount = obj.optDouble("amount", 0.0)
+        if (!amount.isFinite() || amount <= 0.0) {
+            error("模型返回的金额无效：" + contentText.take(120))
+        }
+        val rawType = obj.optString("type", "expense").trim().lowercase(Locale.ROOT)
+        val type = if (rawType == "income" || rawType == "other") rawType else "expense"
+        val category = obj.optString("category", "").trim().ifBlank { "其他" }.take(12)
+        return ParsedEntry(
+            amount = amount,
+            type = type,
+            category = category,
+            time = saneTime(obj.optString("time", "")),
+            note = obj.optString("note", "").trim().take(120),
+        )
+    }
+
+    /** 纯文本补全：导入去重的 YES/NO 判定复用同一端点与鉴权，避免第二套 HTTP 代码。 */
+    fun callTextModel(prefs: AppPrefs, prompt: String, maxTokens: Int = 8): String {
+        val messages = JSONArray().put(JSONObject().apply {
+            put("role", "user")
+            put("content", prompt)
+        })
+        return postChat(prefs, messages, maxTokens)
+    }
+
+    private fun postChat(prefs: AppPrefs, messages: JSONArray, maxTokens: Int): String {
+        val url = endpoint(prefs.aiBaseUrl, "/chat/completions")
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 15_000
+            readTimeout = 60_000
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json")
+            if (prefs.aiKey.isNotBlank()) {
+                setRequestProperty("Authorization", "Bearer " + prefs.aiKey)
+            }
+        }
         val payload = JSONObject().apply {
             put("model", prefs.aiModel)
             put("temperature", 0.1)
-            put("max_tokens", 400)
+            put("max_tokens", maxTokens)
             put("messages", messages)
         }
-        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-        val code = conn.responseCode
-        val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-            ?.bufferedReader()?.readText().orEmpty()
-        if (code !in 200..299) error("HTTP $code ${body.take(160)}")
-
+        val code: Int
+        val body: String
+        try {
+            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+            code = conn.responseCode
+            body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.readText().orEmpty()
+        } finally {
+            conn.disconnect()
+        }
+        if (code !in 200..299) error("HTTP " + code + " " + body.take(160))
         val root = runCatching { JSONObject(body) }.getOrElse {
-            error("响应不是 JSON（HTTP $code）：${body.take(120)}")
+            error("响应不是 JSON（HTTP " + code + "）：" + body.take(120))
         }
         val choice = root.optJSONArray("choices")?.optJSONObject(0)
         val message = choice?.optJSONObject("message")
@@ -86,19 +124,44 @@ object VisionHelper {
             root.optString("content"),
         ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
         if (contentText.isBlank()) {
-            error("模型返回为空（HTTP $code），请确认该模型支持图片输入")
+            error("模型返回为空（HTTP " + code + "），请确认该模型支持当前输入")
         }
-        val cleaned = contentText.replace("```json", "").replace("```", "").trim()
-        val jsonText = Regex("\\{[\\s\\S]*\\}").find(cleaned)?.value
-            ?: error("模型没有返回 JSON：${cleaned.take(120)}")
-        val obj = JSONObject(jsonText)
-        return ParsedEntry(
-            amount = obj.optDouble("amount", 0.0),
-            type = obj.optString("type", "expense"),
-            category = obj.optString("category", "其他"),
-            time = saneTime(obj.optString("time", "")),
-            note = obj.optString("note", ""),
-        )
+        return contentText
+    }
+
+    /**
+     * 从模型输出里取第一个完整的 JSON 对象：按括号深度扫描，并跳过字符串里的括号。
+     * 比贪婪正则 "\\{[\\s\\S]*\\}" 稳——模型后面多解释几句、正文里带花括号也不会截错。
+     */
+    internal fun parseJsonObject(raw: String): JSONObject? {
+        val text = raw.replace("\u0060\u0060\u0060json", "").replace("\u0060", "").trim()
+        val start = text.indexOf('{')
+        if (start < 0) return null
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (i in start until text.length) {
+            val c = text[i]
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    c == '\\' -> escaped = true
+                    c == '"' -> inString = false
+                }
+                continue
+            }
+            when (c) {
+                '"' -> inString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) {
+                        return runCatching { JSONObject(text.substring(start, i + 1)) }.getOrNull()
+                    }
+                }
+            }
+        }
+        return null
     }
 
     /**
@@ -208,6 +271,12 @@ object VisionHelper {
         }
         runCatching { manager.notify(ScreenshotCaptureService.RESULT_ID, builder.build()) }
     }
+
+    /** 相册导入：readImageBase64 统一压成 JPEG。 */
+    const val MIME_JPEG = "image/jpeg"
+
+    /** 截屏服务：Bitmap.CompressFormat.PNG。 */
+    const val MIME_PNG = "image/png"
 
     private const val CHANNEL = "screenshot_result"
 

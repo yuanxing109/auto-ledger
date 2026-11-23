@@ -225,6 +225,25 @@ interface LedgerDao {
     suspend fun importRows(): List<ImportRow>
 
     /**
+     * 导入查重的候选集：同收支、金额在 ±0.005 内、时间落在窗口里的实账。
+     *
+     * 只回候选、判定留给 [com.eta.autoledger.data.ImportDedup] —— 商户名相似度、
+     * 备注谁更详细这些判断 SQL 表达不了，塞进 SQL 只会变成一条谁都不敢改的巨型 CASE。
+     */
+    @Query(
+        "SELECT * FROM Bill WHERE is_recurring = 0 AND type = :type " +
+            "AND amount BETWEEN :amountLow AND :amountHigh " +
+            "AND timestamp BETWEEN :since AND :until ORDER BY timestamp ASC",
+    )
+    suspend fun nearbySameAmount(
+        type: String,
+        amountLow: Double,
+        amountHigh: Double,
+        since: Long,
+        until: Long,
+    ): List<LedgerEntry>
+
+    /**
      * 自动记账跨渠道去重：同一笔实际扣费常以短信 + 通知两条通道各送一次，
      * 两者文本不同、时间戳差几秒，externalId 与时间指纹都对不上。
      * 时间窗内「同金额 + 同收支 + 不同来源 + 已带外部单号」的账单才视为同一笔，

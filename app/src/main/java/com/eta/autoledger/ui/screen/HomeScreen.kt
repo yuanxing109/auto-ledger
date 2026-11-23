@@ -3,20 +3,18 @@ package com.eta.autoledger.ui.screen
 import com.eta.autoledger.ui.model.DayGroupUi
 import com.eta.autoledger.ui.model.EntryUi
 import com.eta.autoledger.ui.model.entryCalendar
-import com.eta.autoledger.ui.model.groupEntries
-import com.eta.autoledger.ui.model.toEntryUi
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.window.LocalSnackbar
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import com.eta.autoledger.ui.LocalDimens
 import top.yukonga.miuix.kmp.icon.extended.Search
-import com.eta.autoledger.ui.components.AppDialog
-import com.eta.autoledger.ui.components.CategoryChip
+import com.eta.autoledger.ui.components.drawRowSurface
+import com.eta.autoledger.ui.components.EntryEditDialog
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,11 +29,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,38 +48,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Locale
-import android.widget.Toast
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Hide
 import top.yukonga.miuix.kmp.icon.extended.Show
@@ -94,12 +71,18 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.eta.autoledger.AppPrefs
-import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.viewmodel.HomeViewModel
 import com.eta.autoledger.data.LedgerRepository
 
 private val AccentBlue: Color get() = LedgerTheme.accent
+
+/**
+ * 概览卡右上角的日期。提到文件级：原先写在 item 的 lambda 里，
+ * 每次概览卡重组都 new 一个 SimpleDateFormat（要建 DateFormatSymbols + 加载 locale 数据）。
+ */
+private val overviewDateFmt: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("M月d日", Locale.CHINA).withZone(ZoneId.systemDefault())
 
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
@@ -109,10 +92,14 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val prefs = remember { AppPrefs.get(context) }
     var amountVisible by rememberSaveable { mutableStateOf(true) }
     var editingEntry by remember { mutableStateOf<LedgerEntry?>(null) }
+    // 弹窗需要「常驻组合、只切 show」才能播完退场动画，所以关掉后还要留一份数据给退场帧渲染。
+    // 直接读 editingEntry 会在关闭瞬间变成 null，弹窗内容当场清空。
+    var lastEditingEntry by remember { mutableStateOf<LedgerEntry?>(null) }
+    LaunchedEffect(editingEntry) { if (editingEntry != null) lastEditingEntry = editingEntry }
     val vm: HomeViewModel = viewModel()
     val billsState by vm.billsState.collectAsStateWithLifecycle()
     val summary by vm.summaryState.collectAsStateWithLifecycle()
-    val entries = billsState.bills
+    val dataVersion by vm.dataVersion.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
     val now = remember { Calendar.getInstance() }
@@ -124,7 +111,10 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     // 预算周期 = 25 号 ~ 次月 24 号，而首页月度收支仍按自然月展示。
     val budgetStartDay = prefs.budgetStartDay
     var budgetSpent by remember { mutableStateOf<Double?>(null) }
-    LaunchedEffect(budgetStartDay, entries.size, billsState.totalCount) {
+    // 依赖「内容版本号」而不是 entries.size：翻页只让 entries 变长，账目内容没变，
+    // 原先每翻一页都白跑一次预算汇总 SQL。现在只有新增/删除（count 变）
+    // 或编辑（editTick 变）才重算。
+    LaunchedEffect(budgetStartDay, dataVersion) {
         budgetSpent = runCatching {
             LedgerRepository.budgetCycleExpense(context, budgetStartDay)
         }.getOrNull()
@@ -143,10 +133,26 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val rowBg = LedgerTheme.surface.copy(alpha = 0.34f)
     val rowBorder = LedgerTheme.border.copy(alpha = 0.55f)
 
-    androidx.compose.runtime.LaunchedEffect(listState, billsState.bills.size, billsState.hasMore) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-            .collect { last ->
-                if (billsState.hasMore && last >= billsState.bills.size - 5) vm.loadMore()
+    // 触底判断：拿 LazyColumn 的 item 下标与 item 总数比，两者同量纲。
+    //
+    // 原实现是 `last >= billsState.bills.size - 5`，但 layoutInfo 的 index 是
+    // 「LazyColumn 里的第几个 item」，而 bills.size 只是账目条数 —— 中间还夹着
+    // overview / budget / recent_header / 每个 DayHeader。列表一长，item 下标就比
+    // 账目条数大得多，于是条件几乎永远成立：每帧都 loadMore，被 debounce(300) 拦成
+    // 每 300ms 一次翻页，滚动时一路把后面的页全拉下来。
+    // 改成与 totalItemsCount 比（同一个下标空间），并要求最后一个可见项确实是账目行，
+    // 避免停在分组标题上时误触发。
+    LaunchedEffect(listState, billsState.hasMore) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            // 只上报「最后一个可见项的下标 + 总数 + 它是不是账目行」，三者一起做去重，
+            // 相同快照不会重复触发。
+            Triple(last?.index ?: -1, info.totalItemsCount, last?.contentType == "entry")
+        }
+            .distinctUntilChanged()
+            .collect { (lastIndex, total, lastIsEntry) ->
+                if (billsState.hasMore && lastIsEntry && lastIndex >= total - 3) vm.loadMore()
             }
     }
 
@@ -161,7 +167,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                 todayExpense = todayExpense,
                 monthExpense = monthExpense,
                 monthIncome = monthIncome,
-                dateLabel = SimpleDateFormat("M月d日", Locale.CHINA).format(now.time),
+                dateLabel = overviewDateFmt.format(Instant.ofEpochMilli(now.timeInMillis)),
                 visible = amountVisible,
                 onToggle = { amountVisible = !amountVisible },
             )
@@ -227,8 +233,10 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                             .animateItem()
                             .padding(bottom = 8.dp)
                             .clip(rowShape)
-                            .background(rowBg)
-                            .border(0.5.dp, rowBorder, rowShape),
+                            // 一次绘制同时铺背景和描边：原先是 background + border 两条
+                            // modifier，每行每帧要走两遍绘制节点，且 border 还要再建一个
+                            // 内缩的 outline。drawBehind 里 outline 只算一次。
+                            .drawBehind { drawRowSurface(rowShape, rowBg, rowBorder) },
                     ) {
                         EntryRow(entry, onClick = { editingEntry = entry.ledger })
                     }
@@ -237,8 +245,9 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
         }
     }
 
-    editingEntry?.let { entry ->
+    lastEditingEntry?.let { entry ->
         EntryEditDialog(
+            show = editingEntry != null,
             entry = entry,
             onDismiss = { editingEntry = null },
             onSave = { amount, category, note ->
@@ -258,136 +267,6 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                 }
             },
         )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun EntryEditDialog(
-    entry: LedgerEntry,
-    onDismiss: () -> Unit,
-    onSave: (Double, String, String) -> Unit,
-    onDelete: () -> Unit,
-) {
-    val context = LocalContext.current
-    var amount by remember { mutableStateOf("%.2f".format(entry.amount)) }
-    var amountError by remember { mutableStateOf(false) }
-    var category by remember { mutableStateOf(entry.category) }
-    var note by remember { mutableStateOf(entry.note) }
-    val typeIdx = when (entry.type) {
-        "income" -> 1
-        "other" -> 2
-        else -> 0
-    }
-    // 分类选项来自「设置 → 记账分类管理」，与那里共用同一份 CategoryStore 数据
-    val options = remember(entry.type) {
-        (CategoryStore.names(context, typeIdx) + entry.category).distinct()
-    }
-
-    AppDialog(
-        show = true,
-        title = "编辑账目",
-        maxWidth = 560.dp,
-        onDismissRequest = onDismiss,
-    ) {
-        Text(
-            "金额",
-            style = MiuixTheme.textStyles.footnote1,
-            color = if (amountError) LedgerTheme.danger else LedgerTheme.textSecondary,
-        )
-        Spacer(Modifier.height(8.dp))
-        TextField(
-            value = amount,
-            onValueChange = { input ->
-                amount = input.filter { it.isDigit() || it == '.' }
-                if (amountError) amountError = false
-            },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
-        )
-        if (amountError) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "金额格式不正确，请输入大于 0 的数字，如 12.50",
-                style = MiuixTheme.textStyles.footnote1,
-                color = LedgerTheme.danger,
-            )
-        }
-
-        Spacer(Modifier.height(14.dp))
-        Text("分类", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-        Spacer(Modifier.height(8.dp))
-        Column(modifier = Modifier.heightIn(max = 190.dp).verticalScroll(rememberScrollState())) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                options.forEach { name ->
-                    // selected 用纯分类名比较（不用带 emoji 的展示串），图标与文字分开传
-                    CategoryChip(
-                        text = name,
-                        icon = CategoryStore.emoji(name),
-                        selected = name == category,
-                        onClick = { category = name },
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-        Text("备注", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-        Spacer(Modifier.height(8.dp))
-        TextField(
-            value = note,
-            onValueChange = { note = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = false,
-            maxLines = 3,
-        )
-
-        Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(
-                text = "删除",
-                onClick = onDelete,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.textButtonColors(
-                    color = LedgerTheme.tint(LedgerTheme.danger, 0.14f),
-                    textColor = LedgerTheme.danger,
-                ),
-            )
-            TextButton(
-                text = "取消",
-                onClick = onDismiss,
-                modifier = Modifier.weight(1f),
-            )
-            val saveInteraction = remember { MutableInteractionSource() }
-            val savePressed by saveInteraction.collectIsPressedAsState()
-            val buttonShape = RoundedCornerShape(LocalDimens.current.radiusCapsule)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .clip(buttonShape)
-                    .background(if (savePressed) LedgerTheme.accentPressed else LedgerTheme.accent)
-                    .clickable(
-                        interactionSource = saveInteraction,
-                        indication = LocalIndication.current,
-                        onClick = {
-                            val parsed = amount.toDoubleOrNull()
-                            if (parsed == null || parsed <= 0.0) {
-                                amountError = true
-                                return@clickable
-                            }
-                            onSave(parsed, category, note)
-                        },
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("保存", color = LedgerTheme.onAccent)
-            }
-        }
     }
 }
 
@@ -565,48 +444,6 @@ private fun DayHeader(group: DayGroupUi) {
     }
 }
 
-@Composable
-private fun DayCard(group: DayGroupUi, onLongPress: (LedgerEntry) -> Unit) {
-    val summary = buildString {
-        if (group.expense > 0) append("支出 %,.2f".format(group.expense))
-        if (group.expense > 0 && group.income > 0) append(" · ")
-        if (group.income > 0) append("收入 %,.2f".format(group.income))
-    }
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, cardShape),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(text = group.dateLabel, style = MiuixTheme.textStyles.title4, modifier = Modifier.weight(1f))
-            Text(
-                text = summary,
-                style = MiuixTheme.textStyles.footnote1,
-                color = LedgerTheme.textSecondary,
-            )
-        }
-        group.entries.forEachIndexed { index, entry ->
-            if (index > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 66.dp)
-                        .height(0.5.dp)
-                        .background(LedgerTheme.divider),
-                )
-            }
-            EntryRow(entry, onClick = { onLongPress(entry.ledger) })
-        }
-        Spacer(Modifier.height(8.dp))
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EntryRow(entry: EntryUi, onClick: () -> Unit) {
@@ -624,7 +461,7 @@ private fun EntryRow(entry: EntryUi, onClick: () -> Unit) {
                 .background(entry.categoryColor.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = entry.emoji, fontSize = 18.sp)
+            Text(text = entry.emoji, style = MiuixTheme.textStyles.title3)
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

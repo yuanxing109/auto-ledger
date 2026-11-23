@@ -44,7 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
@@ -157,7 +157,11 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     var pickDay by remember { mutableIntStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
     var pickHour by remember { mutableIntStateOf(calendar.get(Calendar.HOUR_OF_DAY)) }
     var pickMinute by remember { mutableIntStateOf(calendar.get(Calendar.MINUTE)) }
-    val currentCategories = categoriesFor(context, type)
+    // 分类列表只在「切类型」时才需要重读：CategoryStore.names 每次都要
+    // getSharedPreferences + getString + JSONArray 全量解析 + 逐项查 emoji/配色，
+    // 原来写在组合体里，按一次数字键（amountInput 变化 → 整页重组）就重跑一遍。
+    // 键用 type 而不是空：切到「收入/其他」时分类表本来就不同，必须重新取。
+    val currentCategories = remember(type) { categoriesFor(context, type) }
 
     fun displayAmount(): String {
         val value = amountInput.ifEmpty { "0.00" }
@@ -341,25 +345,25 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
         )
     }
 
-    if (showPeriodPicker) {
-        PeriodPickerDialog(
-            selected = recurringPeriod,
-            onDismiss = { showPeriodPicker = false },
-            onPick = { recurringPeriod = it; showPeriodPicker = false },
-        )
-    }
+    PeriodPickerDialog(
+        show = showPeriodPicker,
+        selected = recurringPeriod,
+        onDismiss = { showPeriodPicker = false },
+        onPick = { recurringPeriod = it; showPeriodPicker = false },
+    )
 
-    if (showPicker) {
-        DateTimeDialog(
-            initialYear = pickYear,
-            initialMonth = pickMonth,
-            initialDay = pickDay,
-            initialHour = pickHour,
-            initialMinute = pickMinute,
-            onDismiss = { showPicker = false },
-            onConfirm = { y, m, d, h, mi -> applyDateTime(y, m, d, h, mi) },
-        )
-    }
+    // 常驻组合、只切 show：父级若用 if (showPicker) 包起来，一点取消组件就被移出组合，
+    // AppDialog 内部接管的那段退场动画永远播不到。
+    DateTimeDialog(
+        show = showPicker,
+        initialYear = pickYear,
+        initialMonth = pickMonth,
+        initialDay = pickDay,
+        initialHour = pickHour,
+        initialMinute = pickMinute,
+        onDismiss = { showPicker = false },
+        onConfirm = { y, m, d, h, mi -> applyDateTime(y, m, d, h, mi) },
+    )
 }
 
 /**
@@ -507,6 +511,7 @@ private fun DatePill(timeText: String, onClick: () -> Unit) {
 
 @Composable
 private fun DateTimeDialog(
+    show: Boolean,
     initialYear: Int,
     initialMonth: Int,
     initialDay: Int,
@@ -515,11 +520,13 @@ private fun DateTimeDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int, Int, Int, Int, Int) -> Unit,
 ) {
-    var year by remember { mutableIntStateOf(initialYear) }
-    var month by remember { mutableIntStateOf(initialMonth) }
-    var day by remember { mutableIntStateOf(initialDay) }
-    var hour by remember { mutableIntStateOf(initialHour) }
-    var minute by remember { mutableIntStateOf(initialMinute) }
+    // 以 show 为 key：每次重新打开都从调用方传进来的时间重建，不会残留上次改到一半的年月日。
+    // 退场动画期间 show 已为 false，但 initial* 仍是调用方最后一次的值，重建结果与原值一致，不会跳。
+    var year by remember(show) { mutableIntStateOf(initialYear) }
+    var month by remember(show) { mutableIntStateOf(initialMonth) }
+    var day by remember(show) { mutableIntStateOf(initialDay) }
+    var hour by remember(show) { mutableIntStateOf(initialHour) }
+    var minute by remember(show) { mutableIntStateOf(initialMinute) }
 
     val monthCal = remember(year, month) {
         Calendar.getInstance().apply {
@@ -544,168 +551,162 @@ private fun DateTimeDialog(
         day = day.coerceAtMost(c.getActualMaximum(Calendar.DAY_OF_MONTH))
     }
 
-    val dialogShape = RoundedCornerShape(LocalDimens.current.radiusSheet)
-    Dialog(onDismissRequest = onDismiss) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 32.dp)
-                .clip(dialogShape)
-                .background(LedgerTheme.surface)
-                .border(1.dp, LedgerTheme.borderSoft, dialogShape)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-        ) {
-            Column {
-                Text(
-                    text = "编辑日期",
-                    style = MiuixTheme.textStyles.main.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
+    // 收编到统一 AppDialog：自带进出场动画、遮罩渐隐、外部点击与返回键关闭。
+    // 内容区保持原布局（月份翻页 + 日历格 + 时分步进 + 取消/确认）。
+    AppDialog(
+        show = show,
+        maxWidth = 400.dp,
+        outsideMargin = DpSize(24.dp, 32.dp),
+        onDismissRequest = onDismiss,
+    ) {
+        Text(
+            text = "编辑日期",
+            style = MiuixTheme.textStyles.main.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable { shiftMonth(-1) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.ChevronBackward,
+                    contentDescription = "上个月",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(16.dp),
                 )
-                Spacer(Modifier.height(12.dp))
+            }
+            Text(
+                text = "${year}年${month + 1}月",
+                style = TextStyle(fontSize = 15.sp, color = TextPrimary),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable { shiftMonth(1) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.ChevronForward,
+                    contentDescription = "下个月",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            listOf("一", "二", "三", "四", "五", "六", "日").forEach { label ->
+                Text(
+                    text = label,
+                    style =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+
+        cells.chunked(7).forEach { row ->
+            Row(modifier = Modifier.fillMaxWidth()) {
+                row.forEach { value ->
                     Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .clickable { shiftMonth(-1) },
+                        modifier = Modifier.weight(1f).height(36.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronBackward,
-                            contentDescription = "上个月",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                    Text(
-                        text = "${year}年${month + 1}月",
-                        style = TextStyle(fontSize = 15.sp, color = TextPrimary),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .clickable { shiftMonth(1) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronForward,
-                            contentDescription = "下个月",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    listOf("一", "二", "三", "四", "五", "六", "日").forEach { label ->
-                        Text(
-                            text = label,
-                            style =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-
-                cells.chunked(7).forEach { row ->
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        row.forEach { value ->
+                        if (value != null) {
+                            val selected = value == day
                             Box(
-                                modifier = Modifier.weight(1f).height(36.dp),
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .clickable { day = value },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                if (value != null) {
-                                    val selected = value == day
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(CircleShape)
-                                            .clickable { day = value },
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(32.dp)
-                                                .clip(CircleShape)
-                                                .background(if (selected) AccentBlue else Color.Transparent),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Text(
-                                                text = value.toString(),
-                                                style = MiuixTheme.textStyles.footnote1.copy(
-                                                    color = if (selected) LedgerTheme.onAccent else TextPrimary,
-                                                ),
-                                            )
-                                        }
-                                    }
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(if (selected) AccentBlue else Color.Transparent),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = value.toString(),
+                                        style = MiuixTheme.textStyles.footnote1.copy(
+                                            color = if (selected) LedgerTheme.onAccent else TextPrimary,
+                                        ),
+                                    )
                                 }
                             }
                         }
-                        repeat(7 - row.size) {
-                            Spacer(Modifier.weight(1f))
-                        }
                     }
                 }
-
-                Spacer(Modifier.height(8.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(0.5.dp)
-                        .background(LedgerTheme.divider),
-                )
-                Spacer(Modifier.height(8.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "时刻", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+                repeat(7 - row.size) {
                     Spacer(Modifier.weight(1f))
-                    TimeStepper(
-                        value = hour,
-                        unit = "时",
-                        onUp = { hour = (hour + 1) % 24 },
-                        onDown = { hour = (hour + 23) % 24 },
-                    )
-                    Text(text = ":", style = TextStyle(fontSize = 18.sp, color = TextSecondary))
-                    TimeStepper(
-                        value = minute,
-                        unit = "分",
-                        onUp = { minute = (minute + 1) % 60 },
-                        onDown = { minute = (minute + 59) % 60 },
-                    )
                 }
+            }
+        }
 
-                Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(LedgerTheme.inset)
-                            .clickable(onClick = onDismiss),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(text = "取消", style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(AccentBlue)
-                            .clickable { onConfirm(year, month, day, hour, minute) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(text = "确认", style = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.onAccent))
-                    }
-                }
+        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(0.5.dp)
+                .background(LedgerTheme.divider),
+        )
+        Spacer(Modifier.height(8.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "时刻", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+            Spacer(Modifier.weight(1f))
+            TimeStepper(
+                value = hour,
+                unit = "时",
+                onUp = { hour = (hour + 1) % 24 },
+                onDown = { hour = (hour + 23) % 24 },
+            )
+            Text(text = ":", style = TextStyle(fontSize = 18.sp, color = TextSecondary))
+            TimeStepper(
+                value = minute,
+                unit = "分",
+                onUp = { minute = (minute + 1) % 60 },
+                onDown = { minute = (minute + 59) % 60 },
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(LedgerTheme.inset)
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "取消", style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(AccentBlue)
+                    .clickable { onConfirm(year, month, day, hour, minute) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "确认", style = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.onAccent))
             }
         }
     }
@@ -896,7 +897,7 @@ private fun CategoryCell(
                         modifier = Modifier.size(18.dp),
                     )
                 } else {
-                    Text(text = category.emoji, fontSize = 18.sp)
+                    Text(text = category.emoji, style = MiuixTheme.textStyles.title3)
                 }
             }
         }
@@ -1002,11 +1003,12 @@ private fun KeyboardKey(
 /** 周期选择：三项单选，选中态实心 accent。 */
 @Composable
 private fun PeriodPickerDialog(
+    show: Boolean,
     selected: Int,
     onDismiss: () -> Unit,
     onPick: (Int) -> Unit,
 ) {
-    AppDialog(title = "重复周期", onDismissRequest = onDismiss) {
+    AppDialog(show = show, title = "重复周期", onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth()) {
             listOf(
                 "每周" to "按当前记账日期的星期几，每周重复",

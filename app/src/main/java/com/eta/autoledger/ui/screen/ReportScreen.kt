@@ -2,6 +2,7 @@ package com.eta.autoledger.ui.screen
 
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.rememberMotionDuration
 import com.eta.autoledger.ui.components.AppDialog
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -27,16 +28,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,7 +75,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Locale
 import androidx.lifecycle.Lifecycle
@@ -108,6 +113,43 @@ private val AccentBlue: Color get() = LedgerTheme.accent
 private val AccentSoft: Color get() = LedgerTheme.inset
 private val TrackGray: Color get() = LedgerTheme.divider
 
+/**
+ * 一次「周期 key + 渲染数据」的快照。
+ *
+ * 交给 AnimatedContent 当 targetState：内容相等即不触发转场，内容不同则进出两帧
+ * 各自持有自己那份数据 —— 交叉淡入时看到的才是「上个月的图」淡成「这个月的图」，
+ * 而不是同一张图淡给自己看。
+ *
+ * 用 data class 是为了拿结构相等：每帧新建实例也不会被误判成状态变化。
+ */
+private data class ReportFrame(
+    val tab: Int,
+    val offset: Int,
+    val income: Boolean,
+    val data: ReportData,
+)
+
+/**
+ * 一次查询的结果连同「是哪个周期、哪个口径查出来的」。
+ *
+ * 单存 aggregate 不够：界面上的 tab/offset 可能已经走到下一次查询了，
+ * 光看 aggregate 分不清这份数字属于哪个周期。把 key 一起存下来，
+ * 渲染时就不会出现「标题已是年报、数字还是月报」。
+ */
+private data class LoadedReport(
+    val tab: Int,
+    val offset: Int,
+    val income: Boolean,
+    val aggregate: ReportAggregate,
+)
+
+/**
+ * 周期/口径变化后的合并窗口。只用于「已有数据」之后的切换：
+ * 连点箭头、或切 Tab 触发 offset 归零时，把一次交互里的多次状态变化合成一次查询。
+ * 首次进页面不等这个时间。
+ */
+private const val QUERY_DEBOUNCE_MS = 120L
+
 private data class TrendPoint(val label: String, val value: Double)
 
 private val DonutPalette: List<Color> get() = LedgerTheme.chartSeries
@@ -140,63 +182,121 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
     var income by rememberSaveable { mutableStateOf(false) }
     var subCategory by rememberSaveable { mutableStateOf(false) }
     var detailSlice by remember { mutableStateOf<CategorySlice?>(null) }
+    // 常驻组合、只切 show：外面用 detailSlice?.let { } 包起来的话，一关闭组件就被移出组合，
+    // AppDialog 接管的退场动画播不出来。留一份最后一次的切片给退场帧渲染。
+    var lastDetailSlice by remember { mutableStateOf<CategorySlice?>(null) }
+    LaunchedEffect(detailSlice) { if (detailSlice != null) lastDetailSlice = detailSlice }
 
     LaunchedEffect(tab) { offset = 0 }
     val context = LocalContext.current
     // 报表口径跟随「预算起始日」：起始日非 1 时，「本月」= 起始日 ~ 次月前一日。
     // 折线、柱状、分类环图、明细列表全部走同一个 range，保证四张图数据范围一致。
     val startDay = AppPrefs.get(context).budgetStartDay
-    val aggregate by produceState(
-        initialValue = ReportAggregate(),
-        tab,
-        offset,
-        income,
-        startDay,
-    ) {
-        // 防抖：快速切 Tab/月份只查询最后一次
-        delay(220)
-        ReportRepository.observe(context, tab, offset, income, startDay).collect { value = it }
+
+    // null 表示「还没拿到第一份数据」。保留上一份直到新查询回来，
+    // 这样切周期时数字不会先掉到 0 再跳回来。
+    var loaded by remember { mutableStateOf<LoadedReport?>(null) }
+    LaunchedEffect(tab, offset, income, startDay) {
+        // 首次进页面立刻查，不再无条件干等。
+        // 之后周期/口径变化时等一小段，把「连点箭头」和「切 Tab 时 offset 归零」
+        // 这类同一次交互里的多次状态变化合并成一次查询 —— 这是原先 delay(220)
+        // 想做的事，但它连首屏也一起罚了 220ms。
+        if (loaded != null) delay(QUERY_DEBOUNCE_MS)
+        ReportRepository.observe(context, tab, offset, income, startDay).collect {
+            loaded = LoadedReport(tab, offset, income, it)
+        }
     }
-    val data = remember(aggregate, tab, income) { toReportData(aggregate, tab, income) }
+
+    // 转场：周期/口径变化时整块内容淡入淡出。
+    // 时长走 rememberMotionDuration，系统「移除动画」开启时压到 0。
+    val motion = rememberMotionDuration(180)
+
+    // 转场要淡出的是「上一份数据」，不是「新数据再画一遍」。
+    // 只按 tab/offset 换 key、内容却读外层最新状态的话，进出两帧画面完全一致，
+    // 交叉淡入等于什么都没发生，还白搭一次全量重组（4 张 Canvas + 分类列表）。
+    // 这里把「周期 + 口径 + 算好的数据」整体打包成快照交给 AnimatedContent，
+    // 正在淡出的那一帧天然持有旧快照，不用手动留存上一份。
+    val frame = remember(loaded) {
+        loaded?.let {
+            ReportFrame(
+                tab = it.tab,
+                offset = it.offset,
+                income = it.income,
+                data = toReportData(it.aggregate, it.tab, it.income),
+            )
+        }
+    }
+    // 滚动位置放在 AnimatedContent 外面：放里面的话每次切周期都会新建一个
+    // ScrollState，用户滚到一半换个月就弹回顶部。
+    val reportScroll = rememberScrollState()
 
     Box(modifier = modifier.fillMaxSize().background(PageBg)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 82.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            PeriodRow(
-                periodLabel = data.periodLabel,
-                income = income,
-                onPrev = { offset += 1 },
-                onNext = { if (offset > 0) offset -= 1 },
-                onMode = { income = it },
-            )
+        AnimatedContent(
+            targetState = frame,
+            transitionSpec = { fadeIn(tween(motion)) togetherWith fadeOut(tween(motion)) },
+            // contentKey 只认「周期 + 口径」：同一周期内数据被刷新（别处记了一笔、
+            // 周期账单补跑）时原地重组即可，不该整块淡一次 —— 那会让报表无端闪。
+            contentKey = { it?.let { f -> Triple(f.tab, f.offset, f.income) } },
+            label = "report-period",
+        ) { snapshot ->
+            // 首帧还没有数据：给一句轻提示，而不是先画一屏 0 元、空折线、空环图。
+            if (snapshot == null) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "正在统计…",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = TextSecondary,
+                    )
+                }
+                return@AnimatedContent
+            }
+            val frameData = snapshot.data
+            // 淡出帧用自己的 tab/income 渲染，否则「月报」淡出时标题已变成「年报」，
+            // 画面自相矛盾。交互回调仍改外层 state，触发下一次查询。
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(reportScroll)
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 82.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PeriodRow(
+                    periodLabel = frameData.periodLabel,
+                    income = snapshot.income,
+                    onPrev = { offset += 1 },
+                    onNext = { if (offset > 0) offset -= 1 },
+                    onMode = { income = it },
+                )
 
-            SummaryCard(data = data, tab = tab, income = income)
+                SummaryCard(data = frameData, tab = snapshot.tab, income = snapshot.income)
 
-            LineCard(data = data, income = income)
+                LineCard(data = frameData, income = snapshot.income)
 
-            BarCard(data = data, income = income)
+                BarCard(data = frameData, income = snapshot.income)
 
-            DonutCard(
-                data = data,
-                income = income,
-                subCategory = subCategory,
-                onSubCategory = { subCategory = it },
-                onOpenSlice = { detailSlice = it },
-            )
+                DonutCard(
+                    data = frameData,
+                    income = snapshot.income,
+                    subCategory = subCategory,
+                    onSubCategory = { subCategory = it },
+                    onOpenSlice = { detailSlice = it },
+                )
 
-            Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
+            }
         }
     }
 
     val range = remember(tab, offset, startDay) { ReportRepository.periodRange(tab, offset, startDay) }
-    detailSlice?.let { slice ->
-        CategoryDetailDialog(slice, range.first, range.second) { detailSlice = null }
+    lastDetailSlice?.let { slice ->
+        CategoryDetailDialog(
+            show = detailSlice != null,
+            slice = slice,
+            startMillis = range.first,
+            endMillis = range.second,
+            onDismiss = { detailSlice = null },
+        )
     }
 }
 
@@ -1080,6 +1180,7 @@ private fun categoryColor(category: String): Color = when (category) {
 
 @Composable
 private fun CategoryDetailDialog(
+    show: Boolean,
     slice: CategorySlice,
     startMillis: Long,
     endMillis: Long,
@@ -1101,7 +1202,7 @@ private fun CategoryDetailDialog(
     }
     val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.5f).dp
     AppDialog(
-        show = true,
+        show = show,
         title = "${slice.emoji} ${slice.name} 明细",
         summary = "%.2f%% · ¥ %,.2f · %d笔".format(slice.percent, slice.amount, slice.count),
         maxWidth = 640.dp,
@@ -1122,7 +1223,12 @@ private fun CategoryDetailDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(bottom = 4.dp),
                 ) {
-                    items(entries.size) { i -> DetailEntryRow(entries[i]) }
+                    // key 必须用账单主键：用下标做 key 时，列表复用会把旧行的
+                    // remember 状态（滚动位置、动画进度）套到另一条账目上，
+                    // 表现为"滚一下就串数据"。entries 里同一 id 唯一（Room 主键）。
+                    items(entries.size, key = { entries[it].id }) { i ->
+                        DetailEntryRow(entries[i])
+                    }
                 }
             }
         }
@@ -1174,6 +1280,13 @@ private fun DetailEntryRow(entry: LedgerEntry) {
     }
 }
 
+/**
+ * 明细弹窗每一行的时间。提到文件级 + 换 DateTimeFormatter：
+ * 原先是逐行 new SimpleDateFormat，明细最多 300 行，等于每次打开弹窗 300 次重量级构造。
+ */
+private val detailTimeFmt: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.CHINA).withZone(ZoneId.systemDefault())
+
 private fun detailTimeLabel(entry: LedgerEntry): String =
-    if (entry.timeMillis > 0) SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(entry.timeMillis)
+    if (entry.timeMillis > 0) detailTimeFmt.format(Instant.ofEpochMilli(entry.timeMillis))
     else entry.time

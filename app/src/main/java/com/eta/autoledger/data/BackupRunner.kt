@@ -48,24 +48,61 @@ object BackupRunner {
         }
     }
 
-    /**
-     * 恢复：合并而非覆盖。
-     * 走 `addImported` 的去重（external_id + 时间/金额指纹），重复导入不会翻倍。
-     */
-    suspend fun restore(context: Context, prefs: AppPrefs): Result = withContext(Dispatchers.IO) {
-        val target = WebDavClient.target(prefs) ?: return@withContext Result(false, "请先填写 WebDAV 地址、账号与应用密码")
+    /** 恢复的两段式：先下载并算出「哪些是新的、哪些疑似重复」，再让用户决定怎么写库。 */
+    sealed class Stage {
+        data class Ready(val plan: ImportDedup.Plan, val incoming: Int) : Stage()
+        data class Failed(val message: String) : Stage()
+    }
+
+    suspend fun prepareRestore(context: Context, prefs: AppPrefs): Stage = withContext(Dispatchers.IO) {
+        val target = WebDavClient.target(prefs) ?: return@withContext Stage.Failed("请先填写 WebDAV 地址、账号与应用密码")
         runCatching {
             val raw = WebDavClient.download(target, FILE_LATEST)
-                ?: return@withContext Result(false, "云端没有找到 $FILE_LATEST")
+                ?: return@withContext Stage.Failed("云端没有找到 " + FILE_LATEST)
             val entries = BackupCodec.decode(raw)
-            if (entries.isEmpty()) return@withContext Result(false, "备份文件里没有可用账目")
-            val added = LedgerRepository.addImported(context, entries)
-            prefs.davLastResult = "恢复 · 新增 $added 笔"
-            Result(true, "恢复完成：新增 $added 笔，跳过 ${entries.size - added} 笔重复")
+            if (entries.isEmpty()) return@withContext Stage.Failed("备份文件里没有可用账目")
+            val plan = ImportDedup.plan(context, entries, aiCheck = true)
+            prefs.davLastResult = "恢复预览 · " + plan.total + " 笔"
+            Stage.Ready(plan = plan, incoming = entries.size)
         }.getOrElse {
             val msg = it.message ?: it.javaClass.simpleName
-            prefs.davLastResult = "恢复失败 · $msg"
+            prefs.davLastResult = "恢复失败 · " + msg
+            Stage.Failed(msg)
+        }
+    }
+
+    suspend fun commitRestore(
+        context: Context,
+        prefs: AppPrefs,
+        plan: ImportDedup.Plan,
+        decisions: List<ImportDedup.Action>,
+    ): Result = withContext(Dispatchers.IO) {
+        runCatching {
+            val r = ImportDedup.commit(context, plan, decisions)
+            prefs.davLastResult = "恢复 · 新增 " + r.added + " 笔"
+            val extra = buildString {
+                if (r.merged > 0) append("，合并 ").append(r.merged).append(" 笔")
+                if (r.skipped > 0) append("，跳过 ").append(r.skipped).append(" 笔")
+            }
+            Result(true, "恢复完成：新增 " + r.added + " 笔" + extra)
+        }.getOrElse {
+            val msg = it.message ?: it.javaClass.simpleName
+            prefs.davLastResult = "恢复失败 · " + msg
             Result(false, msg)
+        }
+    }
+
+    /** 不需要交互的恢复（定时/命令行）：全部按「合并」处理，行为与旧版一致。 */
+    suspend fun restore(context: Context, prefs: AppPrefs): Result {
+        val stage = prepareRestore(context, prefs)
+        return when (stage) {
+            is Stage.Failed -> Result(false, stage.message)
+            is Stage.Ready -> commitRestore(
+                context,
+                prefs,
+                stage.plan,
+                ImportDedup.decisions(stage.plan, ImportDedup.Action.MERGE),
+            )
         }
     }
 

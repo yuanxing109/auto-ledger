@@ -24,3 +24,5 @@ keystore.properties
 *.jks
 *.keystore
 .dsh/
+local.properties
+性能与缺陷分析报告-2026-11-22.md

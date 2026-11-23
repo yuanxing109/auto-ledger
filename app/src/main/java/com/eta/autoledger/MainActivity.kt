@@ -19,6 +19,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 加密存储（AI Key / WebDAV 密码）首次初始化要走 Android Keystore，
+        // 提前在后台线程预热，避免用户点进设置页时才在主线程付这笔开销。
+        SecurePrefs.warmUp(this)
         // 幂等：每次冷启动确认自愈心跳还在（系统清理后台任务后会把它丢掉）
         HealthJobService.schedule(this)
         // 定时云备份（未配置 WebDAV 时任务空转，代价可忽略）

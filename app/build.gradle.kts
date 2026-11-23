@@ -90,6 +90,12 @@ dependencies {
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.room:room-ktx:2.8.5")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    // 敏感凭据（AI Key / WebDAV 密码）加密落盘。见 SecurePrefs.kt
+    implementation("androidx.security:security-crypto:1.1.0")
+
+    // 不可变集合：给 Compose 提供「稳定」的类型保证，配合 @Immutable 让
+    // List 类型的参数能被跳过重组（普通 List 是接口，编译器无法证明不被修改）。
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2")
     ksp("androidx.room:room-compiler:2.8.5")
 
     compileOnly("io.github.libxposed:api:102.0.0")

@@ -8,12 +8,13 @@ object CsvImporter {
     private val dateRegex = Pattern.compile("\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}(?:[ T]\\d{1,2}:\\d{2}(?::\\d{2})?)?")
     private val amountRegex = Pattern.compile("-?\\d+(?:\\.\\d{1,2})?")
 
-    suspend fun import(context: Context, raw: String): Int {
+    /** 只解析不入库：导入预览要先看清单，再由用户决定写哪些。 */
+    fun parse(raw: String): List<LedgerEntry> {
         val lines = raw.lineSequence()
             .map { it.trim().trim('\uFEFF') }
             .filter { it.isNotBlank() }
             .toList()
-        if (lines.isEmpty()) return 0
+        if (lines.isEmpty()) return emptyList()
         val (validFrom, validTo) = parseFileRange(raw)
 
         val headerIndex = lines.indexOfFirst { line ->
@@ -126,8 +127,12 @@ object CsvImporter {
             }
         }
 
-        return LedgerRepository.addImported(context, result)
+        return result
     }
+
+    /** 无预览的直连导入，保留给备份恢复等不需要交互的路径。 */
+    suspend fun import(context: Context, raw: String): Int =
+        LedgerRepository.addImported(context, parse(raw))
 
     fun export(entries: List<LedgerEntry>): String = buildString {
         appendLine("id,type,category,amount,time,note,source")

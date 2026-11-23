@@ -1,10 +1,15 @@
 package com.eta.autoledger.ui.model
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.ui.LedgerTheme
-import java.text.SimpleDateFormat
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Locale
 
@@ -15,15 +20,33 @@ import java.util.Locale
  * 而是随分页增量维护。这里只依赖 [LedgerTheme]（它是普通 object + getter，
  * 不是 CompositionLocal），所以离开 @Composable 上下文依然可用。
  *
- * 日期格式化器提到文件级：SimpleDateFormat 构造要建 DateFormatSymbols 并加载 locale 数据，
- * 是重操作。原实现每条账目 new 两次（分组一次、toUi 一次），2525 条就是 5000+ 次构造。
- *
- * 注意：SimpleDateFormat 非线程安全。本文件目前只在主线程 / ViewModel 单协程内使用；
- * 若日后并行化，改用 java.time.DateTimeFormatter（不可变、线程安全）。
+ * 日期格式化器提到文件级，并且用 java.time.DateTimeFormatter 而不是 SimpleDateFormat：
+ * - 构造成本：SimpleDateFormat 每次 new 要建 DateFormatSymbols 并加载 locale 数据，是重操作。
+ *   原实现每条账目 new 两次（分组一次、toUi 一次），2525 条就是 5000+ 次构造。
+ * - 线程安全：SimpleDateFormat 内部有可变 Calendar，跨线程用会算出错乱的日期。
+ *   本文件的 mergeIntoTail 现在跑在 Dispatchers.Default 上（HomeViewModel），
+ *   首屏 groupEntries 也在 ViewModel 协程里，必须换成不可变的 DateTimeFormatter。
  */
-private val dayKeyFmt = SimpleDateFormat("yyyy.MM.dd", Locale.CHINA)
-private val clockFmt = SimpleDateFormat("HH:mm", Locale.CHINA)
+private val dayKeyFmt: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy.MM.dd", Locale.CHINA).withZone(ZoneId.systemDefault())
 
+private val clockFmt: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA).withZone(ZoneId.systemDefault())
+
+/**
+ * DateTimeFormatter 只认 TemporalAccessor，java.util.Date 不是，所以统一走 Instant。
+ * 两个小函数把「毫秒 → 字符串」收在一处，调用点不必再碰 Calendar。
+ */
+private fun dayKeyOf(millis: Long): String = dayKeyFmt.format(Instant.ofEpochMilli(millis))
+
+private fun clockOf(millis: Long): String = clockFmt.format(Instant.ofEpochMilli(millis))
+
+/**
+ * 标记为 @Immutable：所有字段都是 val 且类型不可变（String/Double/Color/ImmutableList），
+ * Compose 可以据此跳过不必要的重组。不加这个注解时，编译器只看到 data class，
+ * 无法证明调用方不会改它，每次父级重组都会重新执行子 Composable。
+ */
+@Immutable
 data class EntryUi(
     val ledger: LedgerEntry,
     val category: String,
@@ -39,11 +62,17 @@ data class EntryUi(
     val noteLine: String,
 )
 
+/**
+ * [entries] 用 ImmutableList 而非 List：`List` 是接口，Compose 无法证明它不会被原地修改，
+ * 于是把整个 DayGroupUi 判为不稳定；ImmutableList 是带稳定性契约的实现类型，
+ * 配合 @Immutable 才能让「分组没变的日子」在翻页时被真正跳过。
+ */
+@Immutable
 data class DayGroupUi(
     /** 纯日期键（yyyy.MM.dd），用于增量合并时判断「是否同一天」；dateLabel 带星期，不适合比较。 */
     val dayKey: String,
     val dateLabel: String,
-    val entries: List<EntryUi>,
+    val entries: ImmutableList<EntryUi>,
     val expense: Double,
     val income: Double,
 )
@@ -58,7 +87,7 @@ fun groupEntries(entries: List<LedgerEntry>): List<DayGroupUi> {
     val grouped = LinkedHashMap<String, MutableList<LedgerEntry>>()
     entries.forEach { entry ->
         val cal = entryCalendar(entry) ?: Calendar.getInstance()
-        val key = dayKeyFmt.format(cal.time)
+        val key = dayKeyOf(cal.timeInMillis)
         grouped.getOrPut(key) { mutableListOf() }.add(entry)
     }
     return grouped.map { (key, list) -> buildGroup(key, list) }
@@ -88,12 +117,12 @@ fun mergeIntoTail(
     var consumed = 0
 
     // 第一段：可能并入末组
-    val firstKey = dayKeyFmt.format((entryCalendar(newRows[0]) ?: Calendar.getInstance()).time)
+    val firstKey = dayKeyOf((entryCalendar(newRows[0]) ?: Calendar.getInstance()).timeInMillis)
     val last = result.last()
     if (last.dayKey == firstKey) {
         val sameDay = ArrayList<LedgerEntry>()
         for (row in newRows) {
-            val key = dayKeyFmt.format((entryCalendar(row) ?: Calendar.getInstance()).time)
+            val key = dayKeyOf((entryCalendar(row) ?: Calendar.getInstance()).timeInMillis)
             if (key != firstKey) break
             sameDay.add(row)
             consumed++
@@ -105,7 +134,9 @@ fun mergeIntoTail(
             if (ui.signedAmount < 0) addExpense += -ui.signedAmount else addIncome += ui.signedAmount
         }
         result[result.lastIndex] = last.copy(
-            entries = last.entries + addUi,
+            // 用 addAll 构造新的 ImmutableList：`last.entries + addUi` 会退化成普通 List，
+            // 类型一变 DayGroupUi 就不再是稳定的，@Immutable 的收益会被抹掉。
+            entries = (last.entries + addUi).toImmutableList(),
             expense = last.expense + addExpense,
             income = last.income + addIncome,
         )
@@ -130,7 +161,7 @@ private fun buildGroup(key: String, list: List<LedgerEntry>): DayGroupUi {
     return DayGroupUi(
         dayKey = key,
         dateLabel = "$key ${LedgerRepository.weekday(cal)}",
-        entries = ui,
+        entries = ui.toImmutableList(),
         expense = expense,
         income = income,
     )
@@ -139,7 +170,7 @@ private fun buildGroup(key: String, list: List<LedgerEntry>): DayGroupUi {
 fun LedgerEntry.toEntryUi(): EntryUi {
     val signed = if (type == "income") amount else -kotlin.math.abs(amount)
     val cal = entryCalendar(this) ?: Calendar.getInstance()
-    val timeText = clockFmt.format(cal.time)
+    val timeText = clockOf(cal.timeInMillis)
     return EntryUi(
         ledger = this,
         category = category.ifBlank { "其他" },

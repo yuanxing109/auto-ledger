@@ -29,3 +29,13 @@
 # 第三方 UI 库若未自带 consumer 规则时的兜底
 -dontwarn io.github.kyant0.**
 -dontwarn top.yukonga.miuix.**
+
+# androidx.security:security-crypto → tink-android。
+# tink 的编译期注解依赖（errorprone / jsr305）不在运行时 classpath 上，
+# R8 会把它们报成 missing classes；只是注解，没有反射调用，直接放过。
+# 生成来源：app/build/outputs/mapping/release/missing_rules.txt
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+# tink 自带的 META-INF/proguard/protobuf.pro 已覆盖其 protobuf 反射点，
+# 这里只需确认不会被误删。
+-keep class com.google.crypto.tink.shaded.protobuf.** { *; }

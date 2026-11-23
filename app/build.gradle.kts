@@ -106,6 +106,14 @@ dependencies {
 
     // 解析器单测：CSV 表头定位、金额防护、编码探测都靠断言守住
     testImplementation("junit:junit:4.13.2")
+    // Room 迁移测试：真 SQLite（内存库）跑一遍 MIGRATION_3_4 的 DDL。
+    // 不用 room-testing + Robolectric —— 那要拖进整套 Android 运行时，
+    // 而迁移里真正会写错的只有 DDL 本身，纯 SQL 就能验。
+    testImplementation("org.xerial:sqlite-jdbc:3.41.2.2")
+    // 单测里的 org.json 是 android.jar 的桩实现（isReturnDefaultValues 下方法返回
+    // null/0），JSONObject().toString() 会返回 null。补一份真实现，让规则 JSON 的
+    // 拼装与解析在 JVM 上真的跑起来。只在测试配置里，不进 APK。
+    testImplementation("org.json:json:20231013")
 
     compileOnly("io.github.libxposed:api:102.0.0")
 }

@@ -65,8 +65,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -76,6 +76,8 @@ import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.GridView
+import top.yukonga.miuix.kmp.icon.extended.Photos
+import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.ui.screen.AddScreen
@@ -272,42 +274,80 @@ private fun AiActionSheet(
     onCamera: () -> Unit,
     onGallery: () -> Unit,
 ) {
+    val dimens = LocalDimens.current
     AppDialog(
         show = show,
-        title = "识图记账",
-        summary = "拍照或上传账单图片，交给已配置的 AI 解析。",
         widthFraction = 0.88f,
+        outsideMargin = DpSize(dimens.cardPadding, dimens.cardPadding),
+        insideMargin = DpSize(dimens.cardPadding, dimens.cardPadding),
+        panelColor = LedgerTheme.surface,
         onDismissRequest = onDismiss,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SheetOption("📷", "拍照识图", Modifier.weight(1f), onCamera)
-            SheetOption("🖼️", "上传图片识图", Modifier.weight(1f), onGallery)
+        Text(
+            text = "识图记账",
+            style = MiuixTheme.textStyles.title3,
+            color = LedgerTheme.text,
+        )
+        Spacer(Modifier.height(dimens.gapSmall))
+        Text(
+            text = "拍照或上传账单图片，交给已配置的 AI 解析。",
+            style = MiuixTheme.textStyles.footnote1,
+            color = LedgerTheme.textSecondary,
+        )
+        Spacer(Modifier.height(dimens.cardPadding))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(dimens.gap),
+        ) {
+            SheetOption(MiuixIcons.Scan, "拍照识图", Modifier.weight(1f), onCamera)
+            SheetOption(MiuixIcons.Photos, "上传图片识图", Modifier.weight(1f), onGallery)
         }
     }
 }
 
 @Composable
 private fun SheetOption(
-    emoji: String,
+    icon: ImageVector,
     label: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val dimens = LocalDimens.current
+    val shape = RoundedCornerShape(dimens.radiusCard)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(shape)
             .background(LedgerTheme.inset)
+            .border(1.dp, LedgerTheme.borderSoft, shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = LocalIndication.current,
                 onClick = onClick,
             )
-            .padding(vertical = 16.dp),
+            .padding(horizontal = dimens.gap, vertical = dimens.gap),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text = emoji, fontSize = 26.sp)
-        Spacer(Modifier.height(8.dp))
-        Text(text = label, style = MiuixTheme.textStyles.body1, color = LedgerTheme.text)
+        Box(
+            modifier = Modifier
+                .size(dimens.gapLarge)
+                .clip(CircleShape)
+                .background(LedgerTheme.tint(LedgerTheme.accent, 0.1f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = LedgerTheme.accent,
+                modifier = Modifier.size(dimens.cardPadding),
+            )
+        }
+        Spacer(Modifier.height(dimens.gapSmall))
+        Text(
+            text = label,
+            style = MiuixTheme.textStyles.title4,
+            color = LedgerTheme.text,
+            maxLines = 1,
+        )
     }
 }
 

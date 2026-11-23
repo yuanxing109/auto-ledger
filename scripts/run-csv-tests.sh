@@ -48,11 +48,18 @@ JUNIT=$(jar "D:/Dev/.gradle/caches/modules-2/files-2.1/junit/junit/4.13.2/*/juni
 HAMCREST=$(jar "D:/Dev/.gradle/caches/modules-2/files-2.1/org.hamcrest/hamcrest-core/1.3/*/hamcrest-core-1.3.jar")
 KOTLIN_STDLIB=$(jar "D:/Dev/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/2.4.20/*/kotlin-stdlib-2.4.20.jar")
 
-for f in "$JUNIT" "$HAMCREST" "$KOTLIN_STDLIB"; do
+# 业务代码用到的运行期依赖。JUnitCore 直接跑的时候没有 Gradle 帮忙拼 classpath，
+# 少一个就是 NoClassDefFoundError —— 表现成「所有用例一起红」，很容易误判成代码写错了。
+COROUTINES=$(jar "D:/Dev/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.10.2/*/kotlinx-coroutines-core-jvm-1.10.2.jar")
+ORG_JSON=$(jar "D:/Dev/.gradle/caches/modules-2/files-2.1/org.json/json/20231013/*/json-20231013.jar")
+SQLITE=$(jar "D:/Dev/.gradle/caches/modules-2/files-2.1/org.xerial/sqlite-jdbc/3.41.2.2/*/sqlite-jdbc-3.41.2.2.jar")
+ANDROID_JAR="D:/Dev/android-sdk/platforms/android-37.2/android.jar"
+
+for f in "$JUNIT" "$HAMCREST" "$KOTLIN_STDLIB" "$COROUTINES" "$ORG_JSON" "$SQLITE" "$ANDROID_JAR"; do
     [ -n "$f" ] || { echo "缺少依赖 jar，先跑一次 compileDebugUnitTestKotlin 让它落缓存"; exit 1; }
 done
 
-CP="$(IFS=';'; echo "${CLASSES[*]}");$KOTLIN_STDLIB;$JUNIT;$HAMCREST"
+CP="$(IFS=';'; echo "${CLASSES[*]}");$KOTLIN_STDLIB;$JUNIT;$HAMCREST;$COROUTINES;$ORG_JSON;$SQLITE;$ANDROID_JAR"
 
 TMP=".tmp/csv-tests"
 mkdir -p "$TMP"
@@ -76,10 +83,40 @@ public class RunTests {
 JAVA
 
 echo "== 2/3 编译测试驱动 =="
-"$JAVA_HOME/bin/javac" -encoding UTF-8 -cp "$CP" -d "$TMP" "$TMP/RunTests.java" || exit 1
+# android.jar 里的 Log 是桩实现，调用即抛 RuntimeException("Stub!")。
+# 业务代码里有 Log.w 的兜底日志（规则表读失败等），直接跑就会炸成「用例失败」。
+# 这里编一个同名类放进 TMP，靠 -cp 顺序压过 android.jar。
+mkdir -p "$TMP/android/util"
+cat > "$TMP/android/util/Log.java" <<'JAVA'
+package android.util;
+
+/** 单测用的空实现：真实 Log 在 JVM 上只有桩。 */
+public final class Log {
+    public static int v(String tag, String msg) { return 0; }
+    public static int d(String tag, String msg) { return 0; }
+    public static int i(String tag, String msg) { return 0; }
+    public static int w(String tag, String msg) { return 0; }
+    public static int e(String tag, String msg) { return 0; }
+    public static int v(String tag, String msg, Throwable tr) { return 0; }
+    public static int d(String tag, String msg, Throwable tr) { return 0; }
+    public static int i(String tag, String msg, Throwable tr) { return 0; }
+    public static int w(String tag, String msg, Throwable tr) { return 0; }
+    public static int e(String tag, String msg, Throwable tr) { return 0; }
+    public static int wtf(String tag, String msg) { return 0; }
+    public static int wtf(String tag, String msg, Throwable tr) { return 0; }
+    public static String getStackTraceString(Throwable tr) { return String.valueOf(tr); }
+}
+JAVA
+# MSYS 会把含分号的 Windows classpath 当成 POSIX 路径列表改写，结果是 javac
+# 明明拿到了 JUnit jar、却报「程序包 org.junit.runner 不存在」。对传给 JDK 的命令
+# 关闭参数转换，保留分号原样。
+MSYS2_ARG_CONV_EXCL='*' "$JAVA_HOME/bin/javac" \
+    -encoding UTF-8 -cp "$CP" -d "$TMP" \
+    "$TMP/RunTests.java" "$TMP/android/util/Log.java" || exit 1
 
 echo "== 3/3 运行 $TEST_CLASS =="
-"$JAVA_HOME/bin/java" -Dfile.encoding=UTF-8 -cp "$TMP;$CP" RunTests "$TEST_CLASS"
+MSYS2_ARG_CONV_EXCL='*' "$JAVA_HOME/bin/java" \
+    -Dfile.encoding=UTF-8 -cp "$TMP;$CP" RunTests "$TEST_CLASS"
 STATUS=$?
 rm -rf .tmp
 exit $STATUS

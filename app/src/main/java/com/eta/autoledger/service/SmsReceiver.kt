@@ -8,8 +8,12 @@ import android.telephony.SmsMessage
 import android.util.Log
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.CategoryStore
+import com.eta.autoledger.data.LedgerDatabase
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.NotificationRules
+import com.eta.autoledger.data.NotifyRaw
+import com.eta.autoledger.data.ParsePipeline
+import com.eta.autoledger.data.SeenStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,8 +27,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * `SMS_RECEIVED`（系统广播）
  *   -> 读「短信通知」开关（[AppPrefs.smsEnabled]），关闭直接返回
  *   -> 同一次广播里的多条 PDU 按发送方合并（长短信会被拆成多段，必须拼回去）
- *   -> [NotificationRules.parseSms] 过滤营销/验证码、提金额、判收支、猜分类
- *   -> `LedgerRepository.addImported`（externalId 唯一索引去重）入库
+ *   -> [SeenStore] 查持久化去重表，命中直接跳过
+ *   -> [ParsePipeline.parseSms]：先跑 `rule` 表里的动态规则，未命中回退内置短信规则
+ *   -> `LedgerRepository.addAutoParsed`（externalId 唯一索引 + 窗口去重）入库
  *   -> 入库成功时发一条可撤销的通知（走 [BillNotifier]，与通知监听同渠道）
  *
  * 广播里不能用主线程做 IO，用 `goAsync()` 把处理挪到 IO 协程，处理完必须 `finish()`，
@@ -75,7 +80,25 @@ class SmsReceiver : BroadcastReceiver() {
                 if (body.isBlank()) return@forEach
                 val postTime = parts.maxOfOrNull { it.timestampMillis } ?: System.currentTimeMillis()
                 val prefs = AppPrefs.get(context)
-                val bill = NotificationRules.parseSms(
+
+                // 持久化去重的键必须是**原文**，且要包含 postTime：
+                // 银行催收、额度提醒这类模板短信每月都会重复一次，只按正文算键会把
+                // 下个月的真实扣费也当成重复丢掉。
+                val seenKey = NotificationRules.dedupeKey(
+                    NotifyRaw(
+                        pkg = sender,
+                        title = sender,
+                        text = body,
+                        bigText = "",
+                        postTime = postTime,
+                    ),
+                )
+                if (SeenStore.contains(context, seenKey)) {
+                    Log.d(TAG, "持久化去重命中，跳过短信：$sender")
+                    return@forEach
+                }
+
+                val bill = ParsePipeline.parseSms(
                     sender = sender,
                     body = body,
                     postTime = postTime,
@@ -84,8 +107,16 @@ class SmsReceiver : BroadcastReceiver() {
                     otherCats = otherCats,
                     ignoreKeywords = prefs.ignoreKeywords,
                     forceKeywords = prefs.forceKeywords,
+                    dao = LedgerDatabase.get(context).ruleDao(),
                 ) ?: run {
                     Log.d(TAG, "短信未识别为账单：$sender / $body")
+                    return@forEach
+                }
+
+                // 规则被设成「只识别不记账」：认得出来，但不入库，仍记去重键避免重复解析
+                if (!bill.autoRecord) {
+                    Log.i(TAG, "规则要求不自动记账：${bill.source} ${bill.amount} ${bill.category}")
+                    SeenStore.remember(context, seenKey)
                     return@forEach
                 }
 
@@ -107,6 +138,8 @@ class SmsReceiver : BroadcastReceiver() {
                 if (added > 0) {
                     AppPrefs.get(context).lastSmsAt = System.currentTimeMillis()
                     Log.i(TAG, "短信记账：${bill.source} ${bill.amount} ${bill.category}")
+                    // 只在真入库之后落键，与通知通道保持一致
+                    SeenStore.remember(context, seenKey)
                     BillNotifier.notifyAdded(context, bill)
                 }
             }

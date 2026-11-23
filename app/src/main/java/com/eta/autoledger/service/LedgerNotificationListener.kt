@@ -10,11 +10,15 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.CategoryStore
+import com.eta.autoledger.data.LedgerDatabase
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.NotifyBill
 import com.eta.autoledger.data.NotifyChannel
 import com.eta.autoledger.data.NotificationRules
 import com.eta.autoledger.data.NotifyRaw
+import com.eta.autoledger.data.ParsePipeline
+import com.eta.autoledger.data.SeenStore
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,13 +32,28 @@ import kotlinx.coroutines.launch
  * onNotificationPosted（主线程）
  *   -> 过滤自身通知、常驻通知、通知组摘要
  *   -> 按包名归类，检查对应开关（支付宝 / 微信 / 短信 / 其他）
- *   -> [NotificationRules.parse] 用正则与关键词提金额、判收支、猜分类
- *   -> 投递到 IO 协程，`LedgerRepository.addImported`（externalId 唯一索引去重）入库
+ *   -> 投递到 IO 协程：[SeenStore] 查持久化去重表（进程被杀后重启仍有效）
+ *   -> [ParsePipeline.parse]：先跑 `rule` 表里的动态规则，未命中回退内置正则与关键词
+ *   -> `LedgerRepository.addAutoParsed`（externalId 唯一索引 + 窗口去重）入库
  *   -> 入库成功且未开启「不提示」时，发一条可撤销的通知
  */
 class LedgerNotificationListener : NotificationListenerService() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * 解析协程的异常边界。
+     *
+     * [SupervisorJob] 只保证一个子任务失败不会取消兄弟任务；它不会替根协程吞掉异常。
+     * 外层 `onNotificationPosted` 的 `runCatching` 只能覆盖主线程上的同步部分，覆盖不到
+     * [launch] 之后才执行的规则加载与正则匹配。没有这个处理器时，边界正则抛出的
+     * [StackOverflowError] 等异常仍会交给线程默认处理器，可能直接终止 App 进程。
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() +
+            Dispatchers.IO +
+            CoroutineExceptionHandler { _, error ->
+                Log.w(TAG, "通知处理协程异常，已隔离；监听器继续接收后续通知", error)
+            },
+    )
     private val seen = object : LinkedHashMap<String, Long>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean =
             size > MAX_SEEN
@@ -157,29 +176,49 @@ class LedgerNotificationListener : NotificationListenerService() {
         if (isDuplicate(seenKey)) return
 
         val appPrefs = prefs()
-        val bill = NotificationRules.parse(
-            raw = raw,
-            expenseCats = CategoryStore.names(this, 0),
-            incomeCats = CategoryStore.names(this, 1),
-            otherCats = CategoryStore.names(this, 2),
-            ignoreKeywords = appPrefs.ignoreKeywords,
-            forceKeywords = appPrefs.forceKeywords,
-        ) ?: run {
-            Log.d(TAG, "未识别为账单：${raw.title} / ${raw.text}")
-            return
-        }
-
-        // 摘要补全与系统逐条回调可能把同一笔各送一次，短窗口内按内容归并
-        val mergeKey = mergeKeyOf(bill)
-        if (isRecentlyMerged(mergeKey)) {
-            Log.d(TAG, "窗口内重复，跳过：$mergeKey")
-            return
-        }
-
-        // 主键交给 Room 自增（传 0L），别用时间戳，否则同毫秒两笔会被 REPLACE 覆盖
-        // 短信通道可能刚把同一笔扣费记过：入库前做跨渠道窗口去重
-        val entry = bill.toEntry(0L)
+        // 解析要读 rule 表（动态规则），只能在协程里做；解析之后的归并、入库、落 seen_key
+        // 本来就已经在协程里，所以整段搬进来不改变原有语义，只是把同步部分缩到最小。
         scope.launch {
+            // 进程被杀后重启、系统补投积压通知，这些场景内存 LRU 是空的，
+            // 只能靠持久化表兜住，否则同一条扣款会入两笔。
+            if (SeenStore.contains(this@LedgerNotificationListener, seenKey)) {
+                Log.d(TAG, "持久化去重命中，跳过：${raw.title}")
+                return@launch
+            }
+
+            val bill = ParsePipeline.parse(
+                raw = raw,
+                expenseCats = CategoryStore.names(this@LedgerNotificationListener, 0),
+                incomeCats = CategoryStore.names(this@LedgerNotificationListener, 1),
+                otherCats = CategoryStore.names(this@LedgerNotificationListener, 2),
+                ignoreKeywords = appPrefs.ignoreKeywords,
+                forceKeywords = appPrefs.forceKeywords,
+                dao = LedgerDatabase.get(this@LedgerNotificationListener).ruleDao(),
+            ) ?: run {
+                Log.d(TAG, "未识别为账单：${raw.title} / ${raw.text}")
+                return@launch
+            }
+
+            // 摘要补全与系统逐条回调可能把同一笔各送一次，短窗口内按内容归并
+            val mergeKey = mergeKeyOf(bill)
+            if (isRecentlyMerged(mergeKey)) {
+                Log.d(TAG, "窗口内重复，跳过：$mergeKey")
+                return@launch
+            }
+
+            // 规则被设成「只识别不记账」：认得出来，但不入库。
+            // 仍然记去重键，否则同一条通知每次回调都会重新走一遍解析与日志。
+            if (!bill.autoRecord) {
+                Log.i(TAG, "规则要求不自动记账：${bill.source} ${bill.amount} ${bill.category}")
+                markSeen(seenKey)
+                markMerged(mergeKey)
+                SeenStore.remember(this@LedgerNotificationListener, seenKey)
+                return@launch
+            }
+
+            // 主键交给 Room 自增（传 0L），别用时间戳，否则同毫秒两笔会被 REPLACE 覆盖
+            // 短信通道可能刚把同一笔扣费记过：入库前做跨渠道窗口去重
+            val entry = bill.toEntry(0L)
             if (runCatching {
                 LedgerRepository.isRecentDuplicate(
                     this@LedgerNotificationListener,
@@ -202,6 +241,9 @@ class LedgerNotificationListener : NotificationListenerService() {
                 prefs().lastNotifyAt = System.currentTimeMillis()
                 markSeen(seenKey)
                 markMerged(mergeKey)
+                // 只在真入库之后才落去重键：解析失败或被窗口挡掉的文本不该占表空间，
+                // 也让 10 分钟 TTL 只覆盖真正记过账的原文。
+                SeenStore.remember(this@LedgerNotificationListener, seenKey)
                 BillNotifier.notifyAdded(this@LedgerNotificationListener, bill)
             }
         }

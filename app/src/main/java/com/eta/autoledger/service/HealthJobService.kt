@@ -14,6 +14,7 @@ import android.content.Intent
 import android.provider.Settings
 import android.util.Log
 import com.eta.autoledger.R
+import com.eta.autoledger.data.LedgerDatabase
 import com.eta.autoledger.util.SystemAccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,11 @@ class HealthJobService : JobService() {
             // 写回失败（没权限）或被 ROM 再次关掉时，退一步做只读复检并提示用户
             runCatching { checkListenerOnce(this@HealthJobService) }
                 .onFailure { Log.w(TAG, "通知使用权复检失败", it) }
+            // 持久化去重表的过期清理。放在心跳里而不是每次写入时清：
+            // 写入路径要尽量短（通知回调有 10 秒预算），删除是低频、可延迟的事。
+            runCatching { LedgerDatabase.pruneSeenKeys(this@HealthJobService) }
+                .onSuccess { if (it > 0) Log.i(TAG, "清理过期去重键 $it 条") }
+                .onFailure { Log.w(TAG, "清理去重键失败", it) }
             params?.let { jobFinished(it, false) }
         }
         // true = 交给后台线程，稍后自己调 jobFinished

@@ -141,6 +141,7 @@ enum class SettingsPage(val title: String, val parent: SettingsPage?) {
     Widget("添加桌面小部件", AppearanceWidget),
     Ai("AI 模型与自动化", Features),
     ParseRules("高级解析设置", Auto),
+    ParseRulesAdvanced("高级解析规则", Auto),
 }
 
 /**
@@ -211,8 +212,10 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
                         prefs = prefs,
                         onImport = { page = SettingsPage.Import },
                         onParseRules = { page = SettingsPage.ParseRules },
+                        onManageRules = { page = SettingsPage.ParseRulesAdvanced },
                     )
                     SettingsPage.ParseRules -> ParseRulesPage(prefs)
+                    SettingsPage.ParseRulesAdvanced -> RuleManagePage()
                     SettingsPage.LedgerSettings -> LedgerSettingsPage(onOpen = { page = it })
                     SettingsPage.Notifications -> NotificationsPage(
                         prefs = prefs,
@@ -466,7 +469,12 @@ private fun AboutPage() {
 }
 
 @Composable
-private fun AutoPage(prefs: AppPrefs, onImport: () -> Unit, onParseRules: () -> Unit) {
+private fun AutoPage(
+    prefs: AppPrefs,
+    onImport: () -> Unit,
+    onParseRules: () -> Unit,
+    onManageRules: () -> Unit,
+) {
     val snackbar = LocalSnackbar.current
     val scope = rememberCoroutineScope()
 
@@ -542,6 +550,13 @@ private fun AutoPage(prefs: AppPrefs, onImport: () -> Unit, onParseRules: () -> 
                 title = "高级解析设置",
                 summary = "自定义拦截词与强制认账词（${prefs.ignoreKeywords.size} 拦 / ${prefs.forceKeywords.size} 认）",
                 onClick = onParseRules,
+            )
+        }
+        SettingsCard {
+            ArrowPreference(
+                title = "高级解析规则",
+                summary = "系统内置与自定义规则，可启停、可测试",
+                onClick = onManageRules,
             )
         }
     }

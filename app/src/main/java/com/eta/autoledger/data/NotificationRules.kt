@@ -42,6 +42,14 @@ data class NotifyBill(
     val externalId: String,
     val channel: NotifyChannel,
     val confidence: Float,
+    /**
+     * 这条是否应当自动入库。
+     *
+     * 内置规则永远为 true；动态规则可以把它设成 false，表示「认得出来但只提示、不记账」——
+     * 典型场景是用户想先观察某家银行的新模板一段时间，确认不会误判之后再打开。
+     * 放在 [NotifyBill] 而不是让调用方再查一次规则，是因为解析结果才是唯一可信的上下文。
+     */
+    val autoRecord: Boolean = true,
 ) {
     fun toEntry(id: Long): LedgerEntry = LedgerEntry(
         id = id,
@@ -166,6 +174,19 @@ object NotificationRules {
     private val REPAY_WORDS = listOf("信用卡还款", "还款成功", "已还款", "自动还款")
     private val WITHDRAW_WORDS = listOf("提现", "提现成功")
     private val RECHARGE_WORDS = listOf("充值", "充值成功")
+
+    /**
+     * 「钱进到您账户」的强指向短语。
+     *
+     * 为什么要单列一张表、且判定顺序排在所有词表之前：
+     * 「XX公司向您支付了…项目服务费19.40元」里同时出现「支付」「服务费」「代扣」三个支出词，
+     * 按词数投票必然判成支出 —— 但「向您支付」的施动者是对方、受益者是您，钱是进来的。
+     * 这类短语的指向性远强于单个动词，命中即定方向，不再参与投票。
+     */
+    private val INWARD_WORDS = listOf(
+        "向您支付", "向您转账", "向您汇款", "给您打款", "给您转账",
+        "汇入您", "您收到", "已汇入", "已转入您",
+    )
 
     private val INCOME_WORDS = listOf(
         "收款", "到账", "收入", "入账", "转入", "已存入", "收到", "工资", "薪资",
@@ -300,6 +321,21 @@ object NotificationRules {
         val subText = normalize(raw.subText)
         return "${raw.pkg}|$title|$text|$bigText|$subText|${raw.postTime / 1000L}"
     }
+
+    /**
+     * 把一条通知/短信的各个文本字段拼成用于解析的正文。
+     *
+     * 只开这一个公开口子给 [ParsePipeline]：动态规则与内置规则必须**吃同一份正文**，
+     * 否则同一条通知在两条路上会拼出不同的字符串（字段顺序、空白压缩、标题合并规则不同），
+     * 出现「动态规则抠不到金额但内置能抠到」这类极难排查的差异。
+     */
+    fun bodyForParsing(raw: NotifyRaw): String = bodyOf(raw)
+
+    /**
+     * 发送方是否值得解析。动态规则里 `app` 为 null 的通用短信规则会匹配任意来源，
+     * 不先过这道闸，106 营销短信会直接命中金额正则。
+     */
+    fun isPlausibleSender(sender: String, body: String): Boolean = plausibleSender(sender, body)
 
     fun parse(
         raw: NotifyRaw,
@@ -441,6 +477,8 @@ object NotificationRules {
     private val FINANCE_HINTS = listOf(
         "银行", "信用卡", "储蓄卡", "借记卡", "尾号", "账户", "账号", "人民币",
         "余额", "消费", "转账", "入账", "扣款", "交易", "取现", "还款",
+        // 「向您支付」本身就是强金融语义，缺了它，106 通道发来的进账通知会被发送方闸门挡掉
+        "向您支付", "向您转账", "给您打款", "服务费",
     )
 
     /**
@@ -498,6 +536,9 @@ object NotificationRules {
         raw.replace(",", "").toDoubleOrNull()?.takeIf { it > 0.0 }
 
     private fun directionOf(body: String): Direction? {
+        // 进账短语必须排在最前面：这类短信同时带「支付」「服务费」「代扣」，
+        // 一旦进入下面的词数投票，支出词必然多过收入词，方向就反了。
+        if (INWARD_WORDS.any { body.contains(it) }) return Direction("income", 0.95f)
         if (REFUND_WORDS.any { body.contains(it) }) {
             return Direction("income", 0.9f)
         }

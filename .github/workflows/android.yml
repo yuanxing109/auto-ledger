@@ -59,8 +59,8 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_FILE="app/build.gradle.kts"
-          DEFAULT_CODE="$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' "$BUILD_FILE" | head -n1)"
-          DEFAULT_NAME="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$BUILD_FILE" | head -n1)"
+          DEFAULT_CODE="$(sed -nE 's/^[[:space:]]*val[[:space:]]+defaultVersionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' "$BUILD_FILE" | head -n1)"
+          DEFAULT_NAME="$(sed -nE 's/^[[:space:]]*val[[:space:]]+defaultVersionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$BUILD_FILE" | head -n1)"
 
           if [[ -z "$DEFAULT_CODE" || -z "$DEFAULT_NAME" ]]; then
             echo "无法从 $BUILD_FILE 读取默认版本号" >&2

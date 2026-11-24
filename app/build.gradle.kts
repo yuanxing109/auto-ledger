@@ -6,6 +6,8 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val defaultVersionCode = 6
+val defaultVersionName = "0.5.0"
 val autoLedgerVersionCode = providers.gradleProperty("autoLedgerVersionCode")
     .orElse(providers.environmentVariable("AUTO_LEDGER_VERSION_CODE"))
     .map { value -> value.toIntOrNull() ?: error("autoLedgerVersionCode 必须是整数") }
@@ -25,8 +27,8 @@ android {
         applicationId = "com.eta.autoledger"
         minSdk = 27
         targetSdk = 37
-        versionCode = autoLedgerVersionCode.orNull ?: 6
-        versionName = autoLedgerVersionName.orNull ?: "0.5.0"
+        versionCode = autoLedgerVersionCode.orNull ?: defaultVersionCode
+        versionName = autoLedgerVersionName.orNull ?: defaultVersionName
     }
 
     signingConfigs {

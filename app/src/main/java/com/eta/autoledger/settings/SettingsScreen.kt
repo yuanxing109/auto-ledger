@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -72,6 +73,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Card
@@ -80,6 +82,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import com.eta.autoledger.ui.components.AppDialog
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -1275,167 +1278,168 @@ private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
 @Composable
 private fun AiPage(prefs: AppPrefs) {
     val snackbar = LocalSnackbar.current
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val dimens = LocalDimens.current
     var baseUrl by remember { mutableStateOf(prefs.aiBaseUrl) }
     var key by remember { mutableStateOf(prefs.aiKey) }
     var prompt by remember { mutableStateOf(prefs.aiPrompt) }
     var model by remember { mutableStateOf(prefs.aiModel) }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
+    var fetchingModels by remember { mutableStateOf(false) }
+    var testingConnection by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
+
+    fun requestModels() {
+        if (fetchingModels) return
+        if (baseUrl.isBlank()) {
+            scope.launch { snackbar.show("请先填写 Base URL") }
+            return
+        }
+        fetchingModels = true
+        scope.launch {
+            val result = try {
+                fetchModels(baseUrl, key)
+            } finally {
+                fetchingModels = false
+            }
+            result.onSuccess { fetched ->
+                models = fetched.distinct()
+                if (models.isEmpty()) {
+                    snackbar.showLong("接口未返回模型，可直接手动输入模型名")
+                } else {
+                    showModels = true
+                }
+            }.onFailure { error ->
+                snackbar.showLong("获取失败：${error.message ?: error.javaClass.simpleName}")
+            }
+        }
+    }
+
+    fun checkConnection() {
+        if (testingConnection) return
+        val normalizedModel = model.trim()
+        if (baseUrl.isBlank() || normalizedModel.isBlank()) {
+            scope.launch { snackbar.show("请先填写 Base URL 和 Model Name") }
+            return
+        }
+        testingConnection = true
+        scope.launch {
+            val result = try {
+                testConnection(baseUrl, key, normalizedModel)
+            } finally {
+                testingConnection = false
+            }
+            result.onSuccess { snackbar.showLong(it) }
+                .onFailure { error ->
+                    snackbar.showLong("连接失败：${error.message ?: error.javaClass.simpleName}")
+                }
+        }
+    }
 
     SettingsPageColumn {
         HintText("您的数据仅发送至您配置的本地/第三方大模型，本 App 不保存截图。")
 
-        // 预设服务商：选一个就把 Base URL 和默认模型名填好，只差一个 Key
         SettingsCard {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("服务商预设", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(10.dp))
-                AiPreset.entries.forEachIndexed { index, preset ->
-                    if (index > 0) Spacer(Modifier.height(8.dp))
-                    val selected = baseUrl.trimEnd('/') == preset.baseUrl.trimEnd('/')
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (selected) LedgerTheme.accent else LedgerTheme.inset)
-                            .clickable {
-                                baseUrl = preset.baseUrl
-                                if (model.isBlank() || AiPreset.entries.any { it.defaultModel == model }) {
-                                    model = preset.defaultModel
-                                }
-                                scope.launch {
-                                    snackbar.show(
-                                        if (preset.needsKey) "已填入 ${preset.label}，请补上 API Key"
-                                        else "已填入 ${preset.label}，本地服务无需 Key",
-                                    )
-                                }
-                            }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = preset.label,
-                                style = MiuixTheme.textStyles.body2.copy(
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (selected) LedgerTheme.onAccent else LedgerTheme.text,
-                                ),
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = preset.hint,
-                                style = MiuixTheme.textStyles.footnote1,
-                                color = if (selected) LedgerTheme.onAccent else LedgerTheme.textSecondary,
-                            )
-                        }
-                        if (selected) {
-                            Text(
-                                text = "已选",
-                                style = MiuixTheme.textStyles.footnote1,
-                                color = LedgerTheme.onAccent,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        SettingsCard {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("API URL / Base URL", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(8.dp))
+            Column(modifier = Modifier.padding(dimens.cardPadding)) {
+                Text(
+                    "API URL / Base URL",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = LedgerTheme.textSecondary,
+                )
+                Spacer(Modifier.height(dimens.gapSmall))
                 SettingsInput(value = baseUrl, placeholder = "https://api.openai.com/v1", onValueChange = { baseUrl = it })
-                Spacer(Modifier.height(16.dp))
-                Text("API Key", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(dimens.gap))
+                Text(
+                    "API Key",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = LedgerTheme.textSecondary,
+                )
+                Spacer(Modifier.height(dimens.gapSmall))
                 SettingsInput(
                     value = key,
                     placeholder = "sk-...",
                     onValueChange = { key = it },
                     visualTransformation = PasswordVisualTransformation(),
                 )
-                Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(AccentBlue)
-                            .clickable {
-                                if (baseUrl.isBlank()) {
-                                    scope.launch { snackbar.show("请填写 Base URL") }
-                                } else {
-                                    loading = true
-                                    scope.launch {
-                                        val result = fetchModels(baseUrl, key)
-                                        loading = false
-                                        if (result.isSuccess) {
-                                            models = result.getOrThrow()
-                                            if (models.isNotEmpty()) {
-                                                model = models.first()
-                                                showModels = true
-                                            }
-                                        } else {
-                                            scope.launch { snackbar.showLong("获取失败：${result.exceptionOrNull()?.message}") }
-                                        }
-                                    }
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(if (loading) "获取中…" else "获取模型列表", style = TextStyle(fontSize = 12.sp, color = LedgerTheme.onAccent))
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(LedgerTheme.inset)
-                            .clickable {
-                                if (baseUrl.isBlank() || model.isBlank()) {
-                                    scope.launch { snackbar.show("请先填写 URL 并选择模型") }
-                                } else {
-                                    loading = true
-                                    scope.launch {
-                                        val result = testConnection(baseUrl, key, model)
-                                        loading = false
-                                        snackbar.showLong(if (result.isSuccess) "连接成功" else "连接失败：${result.exceptionOrNull()?.message}")
-                                    }
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("测试连接", style = TextStyle(fontSize = 12.sp, color = TextPrimary))
-                    }
+                Spacer(Modifier.height(dimens.gap))
+                Text(
+                    "Model Name",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = LedgerTheme.textSecondary,
+                )
+                Spacer(Modifier.height(dimens.gapSmall))
+                SettingsInput(
+                    value = model,
+                    placeholder = "例如 gpt-4o 或 auto/hy4flash-free",
+                    onValueChange = { value ->
+                        model = value
+                        prefs.aiModel = value.trim()
+                    },
+                    trailingContent = {
+                        IconButton(
+                            onClick = { requestModels() },
+                        ) {
+                            if (fetchingModels) {
+                                Text(
+                                    text = "…",
+                                    style = MiuixTheme.textStyles.body2,
+                                    color = LedgerTheme.textTertiary,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = MiuixIcons.Search,
+                                    contentDescription = "获取模型列表",
+                                    tint = LedgerTheme.accent,
+                                )
+                            }
+                        }
+                    },
+                )
+                Spacer(Modifier.height(dimens.gapSmall))
+                Text(
+                    "输入后自动保存。右侧按钮可读取 /models 列表，也允许使用列表中不存在的自定义模型名。",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = LedgerTheme.textSecondary,
+                )
+                Spacer(Modifier.height(dimens.gap))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(LedgerDimens.minTouch)
+                        .clip(RoundedCornerShape(dimens.radiusCard))
+                        .background(LedgerTheme.inset)
+                        .border(1.dp, LedgerTheme.borderSoft, RoundedCornerShape(dimens.radiusCard))
+                        .clickable(enabled = !testingConnection) { checkConnection() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = if (testingConnection) "测试中…" else "测试连接",
+                        style = MiuixTheme.textStyles.body2,
+                        color = if (testingConnection) LedgerTheme.textTertiary else LedgerTheme.text,
+                    )
                 }
             }
         }
 
         SettingsCard {
-            ArrowPreference(title = "Model Name", summary = model.ifEmpty { "尚未选择模型" }, onClick = {
-                if (models.isNotEmpty()) showModels = true
-                else scope.launch { snackbar.show("先获取模型列表") }
-            })
-        }
-
-        SettingsCard {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Prompt 提示词", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
-                Spacer(Modifier.height(8.dp))
+            Column(modifier = Modifier.padding(dimens.cardPadding)) {
+                Text(
+                    "Prompt 提示词",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = LedgerTheme.textSecondary,
+                )
+                Spacer(Modifier.height(dimens.gapSmall))
                 BasicTextField(
                     value = prompt,
                     onValueChange = { prompt = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(150.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .heightIn(min = 150.dp)
+                        .clip(RoundedCornerShape(dimens.radiusCard))
                         .background(LedgerTheme.inset)
-                        .padding(12.dp),
-                    textStyle = TextStyle(fontSize = 12.sp, color = TextPrimary),
+                        .border(1.dp, LedgerTheme.borderSoft, RoundedCornerShape(dimens.radiusCard))
+                        .padding(dimens.gap),
+                    textStyle = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.text),
                     cursorBrush = SolidColor(AccentBlue),
                 )
             }
@@ -1445,12 +1449,12 @@ private fun AiPage(prefs: AppPrefs) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(LedgerDimens.minTouch)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(dimens.radiusCard))
                 .background(AccentBlue)
                 .clickable {
                     prefs.aiBaseUrl = baseUrl
                     prefs.aiKey = key
-                    prefs.aiModel = model
+                    prefs.aiModel = model.trim()
                     prefs.aiPrompt = prompt
                     scope.launch { snackbar.show("AI 配置已保存") }
                 },
@@ -1463,35 +1467,52 @@ private fun AiPage(prefs: AppPrefs) {
     AppDialog(
         show = showModels,
         title = "选择模型",
-        maxWidth = 420.dp,
-        outsideMargin = DpSize(24.dp, 24.dp),
-        panelColor = LedgerTheme.card,
+        summary = "点击模型即可填入输入框，也可以手动输入列表之外的模型名。",
+        maxWidth = 480.dp,
+        outsideMargin = DpSize(dimens.cardPadding, dimens.cardPadding),
         onDismissRequest = { showModels = false },
     ) {
-            Text("选择模型", style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
-            Spacer(Modifier.height(8.dp))
-            Column(modifier = Modifier.height(280.dp).verticalScroll(rememberScrollState())) {
-                models.forEach { name ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                model = name
-                                showModels = false
-                            }
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                    ) {
+        Column(
+            modifier = Modifier
+                .heightIn(max = 360.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(dimens.gapSmall),
+        ) {
+            models.forEach { name ->
+                val selected = name == model.trim()
+                val shape = RoundedCornerShape(dimens.radiusCard)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = LedgerDimens.minTouch)
+                        .clip(shape)
+                        .background(if (selected) LedgerTheme.accent.copy(alpha = 0.12f) else LedgerTheme.inset)
+                        .border(1.dp, if (selected) LedgerTheme.accent else LedgerTheme.borderSoft, shape)
+                        .clickable {
+                            model = name
+                            prefs.aiModel = name
+                            showModels = false
+                        }
+                        .padding(horizontal = dimens.gap, vertical = dimens.gapSmall),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = name,
+                        style = MiuixTheme.textStyles.body2,
+                        color = if (selected) LedgerTheme.accent else LedgerTheme.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (selected) {
                         Text(
-                            text = name,
-                            style = MiuixTheme.textStyles.footnote1.copy(
-                                color = if (name == model) AccentBlue else TextPrimary,
-                            ),
+                            text = "当前",
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = LedgerTheme.accent,
                         )
                     }
                 }
             }
         }
+    }
 }
 
 @Composable
@@ -1500,26 +1521,35 @@ private fun SettingsInput(
     placeholder: String,
     onValueChange: (String) -> Unit,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(LedgerTheme.inset)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        singleLine = true,
-        textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
-        cursorBrush = SolidColor(AccentBlue),
-        visualTransformation = visualTransformation,
-        decorationBox = { inner ->
-            Box {
-                if (value.isEmpty()) Text(placeholder, style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
-                inner()
-            }
-        },
-    )
+            .padding(start = 12.dp, end = if (trailingContent == null) 12.dp else 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .weight(1f)
+                .padding(vertical = 12.dp),
+            singleLine = true,
+            textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+            cursorBrush = SolidColor(AccentBlue),
+            visualTransformation = visualTransformation,
+            decorationBox = { inner ->
+                Box {
+                    if (value.isEmpty()) Text(placeholder, style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
+                    inner()
+                }
+            },
+        )
+        trailingContent?.invoke()
+    }
 }
 
 private suspend fun fetchModels(baseUrl: String, key: String): Result<List<String>> = withContext(Dispatchers.IO) {
@@ -1760,43 +1790,6 @@ private fun BackupPage(prefs: AppPrefs) {
     }
 }
 
-/**
- * 常见 OpenAI 兼容服务商预设。
- *
- * 只填 Base URL 与一个「大概率能跑」的默认模型名——模型名会随服务商更新换代，
- * 所以填完仍然鼓励用户点「获取模型列表」做一次校正。
- * 本地 Ollama 不需要 Key，[needsKey] 为 false，界面据此给出不同提示。
- */
-private enum class AiPreset(
-    val label: String,
-    val hint: String,
-    val baseUrl: String,
-    val defaultModel: String,
-    val needsKey: Boolean,
-) {
-    DEEPSEEK(
-        label = "DeepSeek",
-        hint = "国内直连，价格低，识图需 deepseek-vl 系列",
-        baseUrl = "https://api.deepseek.com/v1",
-        defaultModel = "deepseek-chat",
-        needsKey = true,
-    ),
-    QWEN(
-        label = "通义千问",
-        hint = "阿里云百炼，需在控制台开通并建 Key",
-        baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        defaultModel = "qwen-vl-plus",
-        needsKey = true,
-    ),
-    OLLAMA(
-        label = "本地 Ollama",
-        hint = "电脑/手机本地跑，无需 Key，需填局域网 IP",
-        baseUrl = "http://127.0.0.1:11434/v1",
-        defaultModel = "llava",
-        needsKey = false,
-    ),
-}
-
 /** WebDAV 服务商快捷模板：选中态实心 accent，与分类 Chip 保持同一套视觉。 */
 @Composable
 private fun DavTemplateChip(
@@ -1871,6 +1864,24 @@ private fun hasSmsPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
         PackageManager.PERMISSION_GRANTED
 
-private suspend fun testConnection(baseUrl: String, key: String, model: String): Result<Unit> = withContext(Dispatchers.IO) {
-    runCatching { AiClient.testConnection(baseUrl, key, model) }
-}
+private suspend fun testConnection(baseUrl: String, key: String, model: String): Result<String> =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            val messages = JSONArray().put(
+                JSONObject().apply {
+                    put("role", "user")
+                    put("content", "只回复 OK，不要输出其他内容。")
+                },
+            )
+            AiClient.chat(baseUrl, key, model, messages, maxTokens = 128)
+            "连接成功：模型已响应"
+        }.recoverCatching { error ->
+            if (error.message?.contains("模型返回为空") != true) throw error
+            val available = AiClient.fetchModels(baseUrl, key)
+            if (available.any { it.equals(model, ignoreCase = true) }) {
+                "连接成功：模型已在列表中确认"
+            } else {
+                "连接成功：服务端与鉴权可用"
+            }
+        }
+    }

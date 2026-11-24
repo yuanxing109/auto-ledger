@@ -134,6 +134,29 @@ object RuleEngine {
     }
 
     /**
+     * 用与真实入库完全相同的编译与匹配逻辑预览一条尚未落库的规则。
+     *
+     * 空正文、坏 JSON、被安全闸门拒绝的正则都返回 null，调用方只需展示“未命中”。
+     */
+    suspend fun previewRule(patternJson: String, text: String): RuleHit? {
+        if (text.isBlank()) return null
+        val entity = RuleEntity(
+            id = "preview",
+            app = null,
+            type = RuleType.SMS,
+            name = "预览规则",
+            creator = RuleEntity.CREATOR_USER,
+            patternJson = patternJson,
+            enabled = true,
+            autoRecord = true,
+            updatedAt = 0L,
+        )
+        return runCatching { compile(entity)?.match(text) }
+            .onFailure { Log.w(TAG, "规则预览失败", it) }
+            .getOrNull()
+    }
+
+    /**
      * 把一行 [RuleEntity] 编译成可执行规则。JSON 坏了、正则全被拒 → 返回 null（整条规则跳过）。
      */
     private fun compile(entity: RuleEntity): CompiledRule? {

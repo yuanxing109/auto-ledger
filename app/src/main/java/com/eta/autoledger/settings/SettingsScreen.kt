@@ -1,5 +1,6 @@
 package com.eta.autoledger.settings
 
+import androidx.core.content.edit
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.ui.rememberMotionDuration
@@ -8,18 +9,12 @@ import com.eta.autoledger.ui.theme.LedgerDimens
 import com.eta.autoledger.ui.components.ImportPreviewDialog
 import com.eta.autoledger.notification.IslandNotifier
 import android.Manifest
-import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.widget.Toast
-import android.os.Build
 import androidx.compose.runtime.LaunchedEffect
-import com.eta.autoledger.util.SystemAccess
-import java.util.Date
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,7 +48,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -78,16 +72,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -95,19 +82,17 @@ import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import com.eta.autoledger.ui.components.AppDialog
-import com.eta.autoledger.ui.components.SwitchRow as SwitchPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.ImportDedup
 import com.eta.autoledger.data.CsvImporter
 import com.eta.autoledger.data.XlsxImporter
-import com.eta.autoledger.data.XlsxExporter
-import com.eta.autoledger.data.LedgerRepository
+import com.eta.autoledger.network.AiClient
 import com.eta.autoledger.reminder.ReminderScheduler
 import com.eta.autoledger.service.LedgerNotificationListener
 import com.eta.autoledger.ui.theme.ThemeMode
-import com.eta.autoledger.widget.LedgerWidgetProvider
 
 
 enum class SettingsPage(val title: String, val parent: SettingsPage?) {
@@ -685,20 +670,6 @@ private fun SingleNotifyPage(prefs: AppPrefs) {
 
 private data class ManagedCategory(val name: String, val color: Color, val emoji: String)
 
-private val initialExpense = listOf(
-    "代付", "其他", "宠物", "人情社交", "亲子", "美容", "还债", "借出", "投资",
-    "旅行", "红包", "教育", "医疗", "娱乐", "通讯", "交通", "住房", "购物",
-    "餐饮", "消费", "转账",
-).map { ManagedCategory(it, AccentBlue, "•") }
-
-private val initialIncome = listOf(
-    "其他", "退款", "收债", "借入", "红包", "理财", "薪资", "转账",
-).map { ManagedCategory(it, LedgerTheme.income, "•") }
-
-private val initialOther = listOf(
-    "代付", "提现", "充值", "还款",
-).map { ManagedCategory(it, LedgerTheme.warning, "•") }
-
 private val expenseNames = listOf(
     "代付", "其他", "宠物", "人情社交", "亲子", "美容", "还债", "借出", "投资",
     "旅行", "红包", "教育", "医疗", "娱乐", "通讯", "交通", "住房", "购物",
@@ -877,7 +848,7 @@ private fun saveCategoryList(context: android.content.Context, key: String, list
     val arr = JSONArray()
     list.forEach { arr.put(it.name) }
     context.getSharedPreferences("auto_ledger", android.content.Context.MODE_PRIVATE)
-        .edit().putString(key, arr.toString()).apply()
+        .edit { putString(key, arr.toString()) }
 }
 
 private fun categoryColor(name: String): Color = when (name) {
@@ -1552,27 +1523,7 @@ private fun SettingsInput(
 }
 
 private suspend fun fetchModels(baseUrl: String, key: String): Result<List<String>> = withContext(Dispatchers.IO) {
-    runCatching {
-        val url = endpoint(baseUrl, "/models")
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 15_000
-            readTimeout = 20_000
-            setRequestProperty("Authorization", "Bearer $key")
-            setRequestProperty("Accept", "application/json")
-        }
-        val code = conn.responseCode
-        val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-            ?.bufferedReader()?.readText().orEmpty()
-        if (code !in 200..299) error("HTTP $code ${body.take(120)}")
-        val data = JSONObject(body).optJSONArray("data") ?: error("响应中没有 data")
-        buildList {
-            for (i in 0 until data.length()) {
-                val id = data.optJSONObject(i)?.optString("id").orEmpty()
-                if (id.isNotBlank()) add(id)
-            }
-        }
-    }
+    runCatching { AiClient.fetchModels(baseUrl, key) }
 }
 
 /** 只读信息行：标题在左、值在右，用于展示运行模式与最近采集时间。 */
@@ -1770,8 +1721,6 @@ private fun BackupPage(prefs: AppPrefs) {
                     if (it) com.eta.autoledger.service.BackupJobService.schedule(context)
                 },
             )
-            // 「备份时刻」已隐藏：BackupJobService 固定 6h 周期 + BackupRunner 20h 间隔判定，
-            // 从不读取 davAutoTime，该选项只是假配置。
             RowDivider()
             InfoRow(title = "上次结果", value = lastResult.ifBlank { "尚未备份" })
         }
@@ -1923,34 +1872,5 @@ private fun hasSmsPermission(context: Context): Boolean =
         PackageManager.PERMISSION_GRANTED
 
 private suspend fun testConnection(baseUrl: String, key: String, model: String): Result<Unit> = withContext(Dispatchers.IO) {
-    runCatching {
-        val url = endpoint(baseUrl, "/chat/completions")
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15_000
-            readTimeout = 30_000
-            doOutput = true
-            setRequestProperty("Authorization", "Bearer $key")
-            setRequestProperty("Content-Type", "application/json")
-        }
-        val payload = JSONObject().apply {
-            put("model", model)
-            put("max_tokens", 1)
-            put("messages", org.json.JSONArray().put(JSONObject().apply {
-                put("role", "user")
-                put("content", "ping")
-            }))
-        }
-        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-        val code = conn.responseCode
-        val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-            ?.bufferedReader()?.readText().orEmpty()
-        if (code !in 200..299) error("HTTP $code ${body.take(120)}")
-    }
-}
-
-private fun endpoint(baseUrl: String, path: String): String {
-    var base = baseUrl.trim().trimEnd('/')
-    if (!base.endsWith("/v1")) base += "/v1"
-    return base + path
+    runCatching { AiClient.testConnection(baseUrl, key, model) }
 }

@@ -3,7 +3,6 @@ package com.eta.autoledger.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.Constraints
@@ -14,14 +13,13 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.R
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.RecurringRule
-import java.text.SimpleDateFormat
+import com.eta.autoledger.data.RecurringExternalIds
+import com.eta.autoledger.util.AppDateFormats
 import java.util.Calendar
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
@@ -100,7 +98,6 @@ class RecurringWorker(
         val templates = runCatching { dao.recurringTemplates() }.getOrElse { return Result.success() }
         if (templates.isEmpty()) return Result.success()
 
-        val ymd = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(today.time)
         val generated = mutableListOf<LedgerEntry>()
         for (template in templates) {
             val rule = RecurringRule.parse(template.recurringRule) ?: continue
@@ -111,9 +108,9 @@ class RecurringWorker(
             val entry = template.copy(
                 id = 0L,
                 timeMillis = today.timeInMillis,
-                time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(today.time),
+                time = AppDateFormats.format(today, AppDateFormats.dateTime),
                 source = SOURCE,
-                externalId = "rec_${template.id}_$ymd",
+                externalId = RecurringExternalIds.generate(template.id, today),
                 isRecurring = false,
                 recurringRule = null,
             )
@@ -155,7 +152,6 @@ class RecurringWorker(
     }
 
     private fun ensureChannel(manager: NotificationManager) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (manager.getNotificationChannel(CHANNEL) != null) return
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "周期记账", NotificationManager.IMPORTANCE_DEFAULT).apply {

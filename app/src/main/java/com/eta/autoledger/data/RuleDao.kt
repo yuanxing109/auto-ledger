@@ -34,16 +34,6 @@ interface RuleDao {
     @Query("SELECT * FROM rule WHERE creator = :creator AND enabled = 1 ORDER BY type ASC, name ASC")
     suspend fun getEnabledByCreator(creator: String): List<RuleEntity>
 
-    /** 内核用：某类型 + 某包名（含「任意包名」的 null 规则）下启用的规则。 */
-    @Query(
-        "SELECT * FROM rule WHERE enabled = 1 AND type = :type AND (app IS NULL OR app = :app) " +
-            "ORDER BY creator DESC, name ASC",
-    )
-    suspend fun getEnabledFor(type: String, app: String): List<RuleEntity>
-
-    @Query("SELECT * FROM rule WHERE id = :id LIMIT 1")
-    suspend fun getById(id: String): RuleEntity?
-
     /**
      * 写入或覆盖。
      *
@@ -52,9 +42,6 @@ interface RuleDao {
      */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(rule: RuleEntity)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertAll(rules: List<RuleEntity>)
 
     /**
      * 播种专用：已存在就跳过，绝不覆盖。
@@ -65,17 +52,6 @@ interface RuleDao {
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(rules: List<RuleEntity>): List<Long>
-
-    /**
-     * 内置规则的版本升级：只覆盖 system 规则，且只在这些 id 明确属于 system 时。
-     *
-     * 目前没有调用方，留给「内置规则修正版」随版本下发用。
-     */
-    @Query(
-        "UPDATE rule SET pattern_json = :patternJson, name = :name, updated_at = :updatedAt " +
-            "WHERE id = :id AND creator = 'system'",
-    )
-    suspend fun updateSystemRule(id: String, name: String, patternJson: String, updatedAt: Long): Int
 
     @Query("DELETE FROM rule WHERE id = :id")
     suspend fun delete(id: String)

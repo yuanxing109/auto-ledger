@@ -35,6 +35,7 @@ import com.eta.autoledger.MainActivity
 import com.eta.autoledger.R
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.WidgetTotals
+import com.eta.autoledger.util.AppDateFormats
 import com.eta.autoledger.ui.theme.LedgerColors
 import com.eta.autoledger.ui.theme.LedgerPalette
 import com.eta.autoledger.ui.theme.ThemeMode
@@ -42,7 +43,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import kotlin.math.max
@@ -313,7 +313,7 @@ private fun DrawScope.drawWideContent(
     val top = inset + px(16f)
     val right = size.width - inset - px(14f)
     val split = left + (right - left) * 0.52f
-    val date = SimpleDateFormat("M月d日", Locale.CHINA).format(Calendar.getInstance().time)
+    val date = AppDateFormats.format(Calendar.getInstance(), AppDateFormats.monthDayChinese)
     val canvas = drawContext.canvas.nativeCanvas
 
     canvas.drawText("今日支出", left, top, textPaint(palette.textSecondary, 11f, scaledDensity))
@@ -378,7 +378,7 @@ private fun DrawScope.drawSmallContent(
     val px = { value: Float -> value * density }
     val canvas = drawContext.canvas.nativeCanvas
     val centerX = size.width / 2f
-    val date = SimpleDateFormat("M月d日", Locale.CHINA).format(Calendar.getInstance().time)
+    val date = AppDateFormats.format(Calendar.getInstance(), AppDateFormats.monthDayChinese)
     canvas.drawText(
         "今日支出",
         centerX,

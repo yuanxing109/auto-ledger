@@ -1,4 +1,4 @@
-name: Android Build
+name: Android Build & Release
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: Assemble debug + release
+    name: Test, build and publish APK
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -53,13 +53,47 @@ jobs:
       - name: Gradle info
         run: gradle --version
 
+      - name: Resolve build version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_FILE="app/build.gradle.kts"
+          DEFAULT_CODE="$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' "$BUILD_FILE" | head -n1)"
+          DEFAULT_NAME="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$BUILD_FILE" | head -n1)"
+
+          if [[ -z "$DEFAULT_CODE" || -z "$DEFAULT_NAME" ]]; then
+            echo "无法从 $BUILD_FILE 读取默认版本号" >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+          else
+            VERSION_NAME="${DEFAULT_NAME%.*}.${GITHUB_RUN_NUMBER}"
+          fi
+          VERSION_CODE="$((DEFAULT_CODE + GITHUB_RUN_NUMBER))"
+
+          sed -i -E \
+            -e "s/^version=.*/version=${VERSION_NAME}/" \
+            -e "s/^versionCode=.*/versionCode=${VERSION_CODE}/" \
+            app/src/main/resources/META-INF/xposed/module.prop
+
+          echo "name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "App version: ${VERSION_NAME} (${VERSION_CODE})"
+
       - name: UI consistency gate
         run: bash tools/check-ui-consistency.sh
 
       # 单测门禁：CSV 解析器（动态表头定位、金额防护、编码探测、去重键）
       # 是本项目最容易静默回归的一块，任何改动都必须先过这里。
       - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+        env:
+          AUTO_LEDGER_VERSION_CODE: ${{ steps.version.outputs.code }}
+          AUTO_LEDGER_VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: >-
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Upload test reports
         if: always()
@@ -71,32 +105,55 @@ jobs:
           retention-days: 7
 
       - name: Build debug
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        env:
+          AUTO_LEDGER_VERSION_CODE: ${{ steps.version.outputs.code }}
+          AUTO_LEDGER_VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: >-
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Build release
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+        env:
+          AUTO_LEDGER_VERSION_CODE: ${{ steps.version.outputs.code }}
+          AUTO_LEDGER_VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: >-
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
       - name: List APKs
         if: always()
         run: find app/build/outputs -name '*.apk' -exec ls -lh {} \; || true
 
-      - name: Upload debug APK
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: auto-ledger-debug-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
-          retention-days: 30
+      - name: Stage release APK
+        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/release/*.apk \
+            "dist/AutoLedger-${{ steps.version.outputs.name }}-release.apk"
+          sha256sum dist/*.apk
 
-      - name: Upload release APK
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Prepare GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
+        id: release_meta
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v${{ steps.version.outputs.name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
+        uses: softprops/action-gh-release@v2
         with:
-          name: auto-ledger-release-${{ github.run_number }}
-          path: app/build/outputs/apk/release/*.apk
-          if-no-files-found: warn
-          retention-days: 90
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: AutoLedger ${{ steps.version.outputs.name }}
+          files: dist/*.apk
+          generate_release_notes: true
+          make_latest: true
+          fail_on_unmatched_files: true
 
       - name: Upload build reports on failure
         if: failure()
@@ -108,22 +165,3 @@ jobs:
             **/build/**/outputs/logs/**
           if-no-files-found: ignore
           retention-days: 7
-
-  release:
-    name: Publish release assets
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.apk
-          generate_release_notes: true
-          fail_on_unmatched_files: false

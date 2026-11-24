@@ -43,8 +43,8 @@ object RuleSeed {
             app = "com.tencent.mm",
             name = "微信支付通知",
             amount = listOf(
-                """微信支付\s*[¥￥]?\s*(\d+(?:\.\d{1,2})?)""",
-                """[¥￥]\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)""",
+                """微信支付\s*${MoneyPatterns.WITH_CURRENCY}""",
+                MoneyPatterns.WITH_SYMBOL,
             ),
             expenseWords = listOf("支付成功", "付款成功", "已支付", "转账给", "二维码收款", "已付款"),
             incomeWords = listOf("收款到账", "收款成功", "已入账", "退款到账"),
@@ -60,8 +60,8 @@ object RuleSeed {
             app = "com.eg.android.AlipayGphone",
             name = "支付宝通知",
             amount = listOf(
-                """(?:付款|支付|消费|收款)金额\s*[¥￥]?\s*(\d+(?:\.\d{1,2})?)""",
-                """[¥￥]\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)""",
+                """(?:付款|支付|消费|收款)金额\s*${MoneyPatterns.WITH_CURRENCY}""",
+                MoneyPatterns.WITH_SYMBOL,
             ),
             expenseWords = listOf("支付成功", "付款成功", "已付款", "交易成功", "扫码付款"),
             incomeWords = listOf("收款到账", "收款成功", "退款到账", "已入账"),
@@ -77,8 +77,8 @@ object RuleSeed {
             app = null,
             name = "银行短信通用",
             amount = listOf(
-                """(?:消费|支付|付款|支出|扣款|扣费|转账|转出|转入|收入|存入|入账|取现|还款|退款|缴费|缴纳|购买|充值|提现|收款|收到|交易)[^\d¥￥]{0,12}(?:[¥￥]\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)""",
-                """(?:[¥￥]\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\s*(?:元|圆)""",
+                MoneyPatterns.NEAR_VERB,
+                MoneyPatterns.WITH_YUAN,
             ),
             expenseWords = listOf("支付成功", "付款成功", "已付款", "消费", "支出", "扣款", "已扣", "交易成功", "缴费", "缴纳", "代扣", "购买", "取现", "还款"),
             incomeWords = listOf("收款", "到账", "收入", "入账", "转入", "已存入", "收到", "工资", "薪资", "薪酬", "返现", "补贴", "报销", "分红", "利息"),
@@ -99,8 +99,8 @@ object RuleSeed {
             // 「项目服务费19.40元」这类句式里，金额前面跟的是款项名而不是动词，
             // 通用银行规则那两条正则靠「支付…金额」的距离窗口抠不出来，这里单列一条。
             amount = listOf(
-                """服务费\s*[¥￥]?\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)""",
-                """(?:[¥￥]\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\s*(?:元|圆)""",
+                """服务费\s*${MoneyPatterns.WITH_CURRENCY}""",
+                MoneyPatterns.WITH_YUAN,
             ),
             expenseWords = listOf("支付", "服务费", "代扣", "申报"),
             incomeWords = listOf("向您支付", "向您转账", "向您汇款", "给您打款", "给您转账", "您收到"),

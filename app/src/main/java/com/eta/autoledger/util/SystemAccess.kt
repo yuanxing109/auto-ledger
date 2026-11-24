@@ -1,5 +1,6 @@
 package com.eta.autoledger.util
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.app.AlarmManager
 import android.app.NotificationManager
@@ -13,6 +14,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.eta.autoledger.screenshot.ScreenshotAccessibilityService
 import com.eta.autoledger.screenshot.VisionHelper
 import com.eta.autoledger.service.BillNotifier
@@ -102,6 +104,7 @@ object SystemAccess {
     fun openAccessibility(context: Context) = start(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
 
     /** 电池优化白名单页；ROM 不认直达 Intent 时退到电池优化列表。 */
+    @SuppressLint("BatteryLife")
     fun openBattery(context: Context) {
         val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, packageUri(context))
         if (!start(context, direct)) {
@@ -254,7 +257,7 @@ object SystemAccess {
         return raw.split(':').map { it.trim() }.filter { it.isNotEmpty() }
     }
 
-    private fun packageUri(context: Context): Uri = Uri.parse("package:${context.packageName}")
+    private fun packageUri(context: Context): Uri = "package:${context.packageName}".toUri()
 
     private fun start(context: Context, intent: Intent): Boolean = runCatching {
         context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

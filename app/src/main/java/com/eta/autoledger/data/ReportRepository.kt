@@ -1,11 +1,10 @@
 package com.eta.autoledger.data
 
 import android.content.Context
+import com.eta.autoledger.util.AppDateFormats
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Locale
 
 data class SubCategoryShare(
     val name: String?,
@@ -137,21 +136,21 @@ object ReportRepository {
 
         val periodLabel = when (tab) {
             0 -> {
-                val fmt = SimpleDateFormat("yyyy.MM.dd", Locale.CHINA)
                 val end = (periodEnd.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
-                "${fmt.format(periodStart.time)}～${SimpleDateFormat("MM.dd", Locale.CHINA).format(end.time)}"
+                "${AppDateFormats.format(periodStart, AppDateFormats.dotDate)}～" +
+                    AppDateFormats.format(end, AppDateFormats.dotMonthDay)
             }
             1 -> {
-                val fmt = SimpleDateFormat("yyyy.MM.dd", Locale.CHINA)
                 val end = (periodEnd.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
                 if (startDay == 1) {
-                    SimpleDateFormat("yyyy年M月", Locale.CHINA).format(periodStart.time)
+                    AppDateFormats.format(periodStart, AppDateFormats.yearMonthChinese)
                 } else {
                     // 起始日非 1：必须写出真实区间，否则用户会以为这是自然月数据
-                    "${fmt.format(periodStart.time)}～${SimpleDateFormat("MM.dd", Locale.CHINA).format(end.time)}"
+                    "${AppDateFormats.format(periodStart, AppDateFormats.dotDate)}～" +
+                        AppDateFormats.format(end, AppDateFormats.dotMonthDay)
                 }
             }
-            else -> SimpleDateFormat("yyyy年", Locale.CHINA).format(periodStart.time)
+            else -> AppDateFormats.format(periodStart, AppDateFormats.yearChinese)
         }
         val periodName = when (tab) { 0 -> "本周"; 1 -> "本月"; else -> "本年" }
         val compareLabel = when (tab) { 0 -> "比上周"; 1 -> "比上月"; else -> "比去年" }
@@ -172,7 +171,7 @@ object ReportRepository {
         val incomeFlag = if (income) 1 else 0
         val d = LedgerRepository.dao(context)
 
-        // 4 条 observeTotal → 1 条 observeTotals：一次索引扫描取回本期/上期/支出/收入。
+        // 四个统计值合并为一次 observeTotals 查询：一次索引扫描取回本期/上期/支出/收入。
         // 原来 4 个独立 Flow 各自订阅表变更，一次写库触发 4 次重查；现在只触发 1 次。
         // outer 边界 = 两个区间的并集，让 SQLite 能用一次索引范围扫描覆盖两段
         val cs = periodStart.timeInMillis

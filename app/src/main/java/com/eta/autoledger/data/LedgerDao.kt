@@ -92,17 +92,10 @@ interface LedgerDao {
     )
     fun observeIncome(start: Long, end: Long): Flow<Double>
 
-    @Query(
-        "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
-            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
-    )
-    fun observeTotal(start: Long, end: Long, income: Int): Flow<Double>
-
     /**
      * 报表顶部 4 个数一次取回：本期、上期、本期支出、本期收入。
      *
-     * 原来这 4 个值走 4 条独立 observeTotal，每条是独立 SQL + 独立 Room invalidation，
+     * 4 个值走同一条 SQL，避免多次独立 Room invalidation，
      * 任意一次写库都会让 4 个 Flow 各重跑一次。这里压成 1 条：
      * 外层 WHERE 用 MIN/MAX 框住两个区间的并集，让 SQLite 能走 (is_recurring, timestamp) 索引，
      * 再在 SELECT 里用 CASE WHEN 分流到 4 个桶 —— 一次索引扫描出全部结果。
@@ -264,26 +257,6 @@ interface LedgerDao {
         since: Long,
         until: Long,
     ): List<LedgerEntry>
-
-    /**
-     * 自动记账跨渠道去重：同一笔实际扣费常以短信 + 通知两条通道各送一次，
-     * 两者文本不同、时间戳差几秒，externalId 与时间指纹都对不上。
-     * 时间窗内「同金额 + 同收支 + 不同来源 + 已带外部单号」的账单才视为同一笔，
-     * 同来源的同额账单不合并（真实两笔同额消费都在同一通道时不会被误杀）。
-     */
-    @Query(
-        "SELECT COUNT(*) FROM Bill WHERE amount = :amount AND type = :type " +
-            "AND is_recurring = 0 AND source != :source " +
-            "AND timestamp >= :since AND timestamp <= :until " +
-            "AND external_id IS NOT NULL AND external_id != ''",
-    )
-    suspend fun countRecentImportedOtherSource(
-        amount: Double,
-        type: String,
-        source: String,
-        since: Long,
-        until: Long,
-    ): Int
 
     /** 自动记账强指纹的候选集：精确金额、方向、发生时间 ±5 分钟。 */
     @Query(

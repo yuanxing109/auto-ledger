@@ -1,7 +1,10 @@
 package com.eta.autoledger
 
+import androidx.core.content.edit
 import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
@@ -25,12 +28,12 @@ class AppPrefs private constructor(context: Context) {
         if (secure == null) return prefs.getString(key, "") ?: ""
         if (!secure.contains(key) && prefs.contains(key)) {
             val legacy = prefs.getString(key, "") ?: ""
-            secure.edit().putString(key, legacy).apply()
-            prefs.edit().remove(key).apply()
+            secure.edit { putString(key, legacy) }
+            prefs.edit { remove(key) }
             return legacy
         }
         // 迁移中途被杀（密文已写、明文没删）时，这里补一刀，别让明文长期残留
-        if (secure.contains(key) && prefs.contains(key)) prefs.edit().remove(key).apply()
+        if (secure.contains(key) && prefs.contains(key)) prefs.edit { remove(key) }
         return secure.getString(key, "") ?: ""
     }
 
@@ -38,107 +41,101 @@ class AppPrefs private constructor(context: Context) {
     private fun writeSecret(key: String, value: String) {
         val secure = securePrefs
         if (secure == null) {
-            prefs.edit().putString(key, value).apply()
+            prefs.edit { putString(key, value) }
             return
         }
-        secure.edit().putString(key, value).apply()
+        secure.edit { putString(key, value) }
         // 明文键若还留着（迁移中断、降级期间写入过），这里顺手清掉
-        if (prefs.contains(key)) prefs.edit().remove(key).apply()
+        if (prefs.contains(key)) prefs.edit { remove(key) }
     }
 
     private var smsState by mutableStateOf(prefs.getBoolean("sms_enabled", true))
     var smsEnabled: Boolean
         get() = smsState
-        set(value) { smsState = value; prefs.edit().putBoolean("sms_enabled", value).apply() }
+        set(value) { smsState = value; prefs.edit { putBoolean("sms_enabled", value) } }
 
     private var alipayState by mutableStateOf(prefs.getBoolean("alipay_enabled", true))
     var alipayEnabled: Boolean
         get() = alipayState
-        set(value) { alipayState = value; prefs.edit().putBoolean("alipay_enabled", value).apply() }
+        set(value) { alipayState = value; prefs.edit { putBoolean("alipay_enabled", value) } }
 
     private var wechatState by mutableStateOf(prefs.getBoolean("wechat_enabled", true))
     var wechatEnabled: Boolean
         get() = wechatState
-        set(value) { wechatState = value; prefs.edit().putBoolean("wechat_enabled", value).apply() }
+        set(value) { wechatState = value; prefs.edit { putBoolean("wechat_enabled", value) } }
 
     private var otherState by mutableStateOf(prefs.getBoolean("other_enabled", true))
     var otherEnabled: Boolean
         get() = otherState
-        set(value) { otherState = value; prefs.edit().putBoolean("other_enabled", value).apply() }
+        set(value) { otherState = value; prefs.edit { putBoolean("other_enabled", value) } }
 
     private var screenshotState by mutableStateOf(prefs.getBoolean("screenshot_enabled", false))
     var screenshotEnabled: Boolean
         get() = screenshotState
-        set(value) { screenshotState = value; prefs.edit().putBoolean("screenshot_enabled", value).apply() }
+        set(value) { screenshotState = value; prefs.edit { putBoolean("screenshot_enabled", value) } }
 
-    private var notifyAtState by mutableStateOf(prefs.getLong("last_notify_at", 0L))
+    private var notifyAtState by mutableLongStateOf(prefs.getLong("last_notify_at", 0L))
     /** 通知通道最近一次成功入库的时间，0 表示从未采集到。 */
     var lastNotifyAt: Long
         get() = notifyAtState
-        set(value) { notifyAtState = value; prefs.edit().putLong("last_notify_at", value).apply() }
+        set(value) { notifyAtState = value; prefs.edit { putLong("last_notify_at", value) } }
 
-    private var smsAtState by mutableStateOf(prefs.getLong("last_sms_at", 0L))
+    private var smsAtState by mutableLongStateOf(prefs.getLong("last_sms_at", 0L))
     /** 短信通道最近一次成功入库的时间，0 表示从未采集到。 */
     var lastSmsAt: Long
         get() = smsAtState
-        set(value) { smsAtState = value; prefs.edit().putLong("last_sms_at", value).apply() }
+        set(value) { smsAtState = value; prefs.edit { putLong("last_sms_at", value) } }
 
     private var dailyReminderState by mutableStateOf(prefs.getBoolean("daily_reminder", false))
     var dailyReminder: Boolean
         get() = dailyReminderState
-        set(value) { dailyReminderState = value; prefs.edit().putBoolean("daily_reminder", value).apply() }
+        set(value) { dailyReminderState = value; prefs.edit { putBoolean("daily_reminder", value) } }
 
     private var weeklyState by mutableStateOf(prefs.getBoolean("weekly_report", false))
     var weeklyReport: Boolean
         get() = weeklyState
-        set(value) { weeklyState = value; prefs.edit().putBoolean("weekly_report", value).apply() }
+        set(value) { weeklyState = value; prefs.edit { putBoolean("weekly_report", value) } }
 
     private var monthlyState by mutableStateOf(prefs.getBoolean("monthly_report", false))
     var monthlyReport: Boolean
         get() = monthlyState
-        set(value) { monthlyState = value; prefs.edit().putBoolean("monthly_report", value).apply() }
+        set(value) { monthlyState = value; prefs.edit { putBoolean("monthly_report", value) } }
 
     private var reminderTimeState by mutableStateOf(prefs.getString("reminder_time", "20:00") ?: "20:00")
     var reminderTime: String
         get() = reminderTimeState
-        set(value) { reminderTimeState = value; prefs.edit().putString("reminder_time", value).apply() }
+        set(value) { reminderTimeState = value; prefs.edit { putString("reminder_time", value) } }
 
     private var islandDailyState by mutableStateOf(prefs.getBoolean("island_daily", true))
     var islandDaily: Boolean
         get() = islandDailyState
-        set(value) { islandDailyState = value; prefs.edit().putBoolean("island_daily", value).apply() }
+        set(value) { islandDailyState = value; prefs.edit { putBoolean("island_daily", value) } }
 
     private var islandSingleState by mutableStateOf(prefs.getBoolean("island_single", true))
     var islandSingle: Boolean
         get() = islandSingleState
-        set(value) { islandSingleState = value; prefs.edit().putBoolean("island_single", value).apply() }
+        set(value) { islandSingleState = value; prefs.edit { putBoolean("island_single", value) } }
 
     private var persistentSingleState by mutableStateOf(prefs.getBoolean("persistent_single", false))
     var persistentSingle: Boolean
         get() = persistentSingleState
-        set(value) { persistentSingleState = value; prefs.edit().putBoolean("persistent_single", value).apply() }
+        set(value) { persistentSingleState = value; prefs.edit { putBoolean("persistent_single", value) } }
 
     private var singleMutedState by mutableStateOf(prefs.getBoolean("single_muted", false))
     var singleMuted: Boolean
         get() = singleMutedState
-        set(value) { singleMutedState = value; prefs.edit().putBoolean("single_muted", value).apply() }
+        set(value) { singleMutedState = value; prefs.edit { putBoolean("single_muted", value) } }
 
     /** Android 16+ 实况通知（Live Updates）总开关。 */
     private var islandLiveUpdatesState by mutableStateOf(prefs.getBoolean("island_live_updates", true))
     var islandLiveUpdates: Boolean
         get() = islandLiveUpdatesState
-        set(value) { islandLiveUpdatesState = value; prefs.edit().putBoolean("island_live_updates", value).apply() }
-
-    /** 小米超级岛/焦点通知业务ID（需在小米开发者平台开通后获得，留空则不上小米岛）。 */
-    private var miuiBusinessIdState by mutableStateOf(prefs.getString("miui_business_id", "") ?: "")
-    var miuiBusinessId: String
-        get() = miuiBusinessIdState
-        set(value) { miuiBusinessIdState = value; prefs.edit().putString("miui_business_id", value).apply() }
+        set(value) { islandLiveUpdatesState = value; prefs.edit { putBoolean("island_live_updates", value) } }
 
     private var budgetAmountState by mutableStateOf(prefs.getString("budget_amount", "0.00") ?: "0.00")
     var budgetAmount: String
         get() = budgetAmountState
-        set(value) { budgetAmountState = value; prefs.edit().putString("budget_amount", value).apply() }
+        set(value) { budgetAmountState = value; prefs.edit { putString("budget_amount", value) } }
 
     /**
      * 预算周期的起始日（1..28）。
@@ -146,24 +143,24 @@ class AppPrefs private constructor(context: Context) {
      * 发薪日往往不是 1 号：设成 25 表示「本月预算周期 = 25 号 ~ 次月 24 号」。
      * 上限 28 是刻意的——29/30/31 在 2 月不存在，会让周期边界漂移甚至跳过整月。
      */
-    private var budgetStartDayState by mutableStateOf(prefs.getInt("budget_start_day", 1))
+    private var budgetStartDayState by mutableIntStateOf(prefs.getInt("budget_start_day", 1))
     var budgetStartDay: Int
         get() = budgetStartDayState
         set(value) {
             val clamped = value.coerceIn(1, 28)
             budgetStartDayState = clamped
-            prefs.edit().putInt("budget_start_day", clamped).apply()
+            prefs.edit { putInt("budget_start_day", clamped) }
         }
 
     private var homeBudgetState by mutableStateOf(prefs.getBoolean("home_budget_card", false))
     var homeBudgetCard: Boolean
         get() = homeBudgetState
-        set(value) { homeBudgetState = value; prefs.edit().putBoolean("home_budget_card", value).apply() }
+        set(value) { homeBudgetState = value; prefs.edit { putBoolean("home_budget_card", value) } }
 
     private var aiBaseUrlState by mutableStateOf(prefs.getString("ai_base_url", "") ?: "")
     var aiBaseUrl: String
         get() = aiBaseUrlState
-        set(value) { aiBaseUrlState = value; prefs.edit().putString("ai_base_url", value).apply() }
+        set(value) { aiBaseUrlState = value; prefs.edit { putString("ai_base_url", value) } }
 
     private var aiKeyState by mutableStateOf(readSecret("ai_key"))
     /** AI 服务商的 API Key。存加密存储（见 [SecurePrefs]），不再明文落盘。 */
@@ -174,18 +171,18 @@ class AppPrefs private constructor(context: Context) {
     private var aiModelState by mutableStateOf(prefs.getString("ai_model", "") ?: "")
     var aiModel: String
         get() = aiModelState
-        set(value) { aiModelState = value; prefs.edit().putString("ai_model", value).apply() }
+        set(value) { aiModelState = value; prefs.edit { putString("ai_model", value) } }
 
     private var aiPromptState by mutableStateOf(prefs.getString("ai_prompt", DEFAULT_PROMPT) ?: DEFAULT_PROMPT)
     var aiPrompt: String
         get() = aiPromptState
-        set(value) { aiPromptState = value; prefs.edit().putString("ai_prompt", value).apply() }
+        set(value) { aiPromptState = value; prefs.edit { putString("ai_prompt", value) } }
 
     /** 主题：system / light / dark。默认跟随系统。 */
     private var themeState by mutableStateOf(prefs.getString("theme_mode", "system") ?: "system")
     var themeMode: String
         get() = themeState
-        set(value) { themeState = value; prefs.edit().putString("theme_mode", value).apply() }
+        set(value) { themeState = value; prefs.edit { putString("theme_mode", value) } }
 
     // ---- WebDAV 备份（坚果云 / 群晖 / Nextcloud 通用） ----
 
@@ -193,7 +190,7 @@ class AppPrefs private constructor(context: Context) {
     /** 目录地址，例如 https://dav.jianguoyun.com/dav/auto-ledger。 */
     var davUrl: String
         get() = davUrlState
-        set(value) { davUrlState = value; prefs.edit().putString("dav_url", value).apply() }
+        set(value) { davUrlState = value; prefs.edit { putString("dav_url", value) } }
 
     private var davUserState by mutableStateOf(readSecret("dav_user"))
     var davUser: String
@@ -207,26 +204,20 @@ class AppPrefs private constructor(context: Context) {
         set(value) { davPassState = value; writeSecret("dav_pass", value) }
 
     private var davAutoState by mutableStateOf(prefs.getBoolean("dav_auto", false))
-    private var davAutoTimeState by mutableStateOf(prefs.getString("dav_auto_time", "03:00") ?: "03:00")
     /** 是否每天定时备份。 */
     var davAuto: Boolean
         get() = davAutoState
-        set(value) { davAutoState = value; prefs.edit().putBoolean("dav_auto", value).apply() }
+        set(value) { davAutoState = value; prefs.edit { putBoolean("dav_auto", value) } }
 
-    /** 定时备份的时刻，HH:mm。 */
-    var davAutoTime: String
-        get() = davAutoTimeState
-        set(value) { davAutoTimeState = value; prefs.edit().putString("dav_auto_time", value).apply() }
-
-    private var davLastAtState by mutableStateOf(prefs.getLong("dav_last_at", 0L))
+    private var davLastAtState by mutableLongStateOf(prefs.getLong("dav_last_at", 0L))
     private var davLastResultState by mutableStateOf(prefs.getString("dav_last_result", "") ?: "")
     var davLastAt: Long
         get() = davLastAtState
-        set(value) { davLastAtState = value; prefs.edit().putLong("dav_last_at", value).apply() }
+        set(value) { davLastAtState = value; prefs.edit { putLong("dav_last_at", value) } }
 
     var davLastResult: String
         get() = davLastResultState
-        set(value) { davLastResultState = value; prefs.edit().putString("dav_last_result", value).apply() }
+        set(value) { davLastResultState = value; prefs.edit { putString("dav_last_result", value) } }
 
     fun davConfigured(): Boolean = davUrl.isNotBlank() && davUser.isNotBlank() && davPass.isNotBlank()
 
@@ -243,7 +234,7 @@ class AppPrefs private constructor(context: Context) {
         get() = ignoreKeywordsState
         set(value) {
             ignoreKeywordsState = value
-            prefs.edit().putStringSet(KEY_IGNORE_KEYWORDS, value).apply()
+            prefs.edit { putStringSet(KEY_IGNORE_KEYWORDS, value) }
         }
 
     private var forceKeywordsState by mutableStateOf(
@@ -255,7 +246,7 @@ class AppPrefs private constructor(context: Context) {
         get() = forceKeywordsState
         set(value) {
             forceKeywordsState = value
-            prefs.edit().putStringSet(KEY_FORCE_KEYWORDS, value).apply()
+            prefs.edit { putStringSet(KEY_FORCE_KEYWORDS, value) }
         }
 
     companion object {

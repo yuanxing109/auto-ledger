@@ -1,8 +1,10 @@
 package com.eta.autoledger.viewmodel
 
 import android.app.Application
+import android.annotation.SuppressLint
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.FlowPreview
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.Summary
@@ -42,8 +44,10 @@ data class BillsUiState(
     val totalCount: Int = 0,
 )
 
+@OptIn(FlowPreview::class)
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
+    @SuppressLint("StaticFieldLeak") // applicationContext 不持有 Activity/View 生命周期
     private val context = application.applicationContext
 
     /** 每页固定 20 条。旧实现是 LIMIT = pageSize * pages + OFFSET 0，第 10 页要扫 500 行只显示最后 20 行。 */
@@ -230,9 +234,4 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun clearAll() {
-        extraPages.value = emptyList()
-        exhausted.value = false
-        viewModelScope.launch(Dispatchers.IO) { LedgerRepository.clear(context) }
-    }
 }

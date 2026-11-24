@@ -1,7 +1,8 @@
 package com.eta.autoledger.screenshot
 
 import com.eta.autoledger.AppPrefs
-import java.text.SimpleDateFormat
+import com.eta.autoledger.network.AiClient
+import com.eta.autoledger.util.AppDateFormats
 import java.util.Calendar
 import java.util.Locale
 
@@ -36,7 +37,7 @@ object AiQuickEntryHelper {
     ): AiQuickEntry? {
         if (text.isBlank()) return null
         val prompt = buildPrompt(text, expenseCategories, incomeCategories)
-        val response = runCatching { VisionHelper.callTextModel(prefs, prompt, maxTokens = 160) }
+        val response = runCatching { AiClient.textCompletion(prefs, prompt, maxTokens = 160) }
             .getOrNull()
             ?: return null
         return parseResponse(response, text, expenseCategories, incomeCategories, nowMillis)
@@ -90,7 +91,7 @@ object AiQuickEntryHelper {
         incomeCategories: List<String>,
         nowMillis: Long,
     ): AiQuickEntry? = runCatching {
-        val obj = VisionHelper.parseJsonObject(raw) ?: return@runCatching null
+        val obj = AiClient.parseJsonObject(raw) ?: return@runCatching null
         val amount = (obj.opt("amount") as? Number)?.toDouble()
             ?.takeIf { it.isFinite() && it > 0.0 }
             ?: return@runCatching null
@@ -116,7 +117,7 @@ object AiQuickEntryHelper {
             category = category,
             note = note,
             dateOffset = dateOffset,
-            time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(calendar.time),
+            time = AppDateFormats.format(calendar, AppDateFormats.dateTime),
             timeMillis = calendar.timeInMillis,
         )
     }.getOrNull()

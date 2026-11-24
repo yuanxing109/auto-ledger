@@ -6,6 +6,12 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val autoLedgerVersionCode = providers.gradleProperty("autoLedgerVersionCode")
+    .orElse(providers.environmentVariable("AUTO_LEDGER_VERSION_CODE"))
+    .map { value -> value.toIntOrNull() ?: error("autoLedgerVersionCode 必须是整数") }
+val autoLedgerVersionName = providers.gradleProperty("autoLedgerVersionName")
+    .orElse(providers.environmentVariable("AUTO_LEDGER_VERSION_NAME"))
+
 android {
     namespace = "com.eta.autoledger"
 
@@ -19,8 +25,8 @@ android {
         applicationId = "com.eta.autoledger"
         minSdk = 27
         targetSdk = 37
-        versionCode = 5
-        versionName = "0.4.0"
+        versionCode = autoLedgerVersionCode.orNull ?: 6
+        versionName = autoLedgerVersionName.orNull ?: "0.5.0"
     }
 
     signingConfigs {
@@ -86,16 +92,16 @@ android {
 }
 
 dependencies {
-    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.5-beta01")
-    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.5-beta01")
-    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.5-beta01")
+    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.5-beta03")
+    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.5-beta03")
+    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.5-beta03")
     // 纯 Compose 图表库（无 AndroidView 互操作），替换报表页三套自绘 Canvas
     implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.1")
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.room:room-ktx:2.8.5")
-    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
     // 敏感凭据（AI Key / WebDAV 密码）加密落盘。见 SecurePrefs.kt
     implementation("androidx.security:security-crypto:1.1.0")
 
@@ -109,11 +115,11 @@ dependencies {
     // Room 迁移测试：真 SQLite（内存库）跑一遍 MIGRATION_3_4 的 DDL。
     // 不用 room-testing + Robolectric —— 那要拖进整套 Android 运行时，
     // 而迁移里真正会写错的只有 DDL 本身，纯 SQL 就能验。
-    testImplementation("org.xerial:sqlite-jdbc:3.41.2.2")
+    testImplementation("org.xerial:sqlite-jdbc:3.54.1.0")
     // 单测里的 org.json 是 android.jar 的桩实现（isReturnDefaultValues 下方法返回
     // null/0），JSONObject().toString() 会返回 null。补一份真实现，让规则 JSON 的
     // 拼装与解析在 JVM 上真的跑起来。只在测试配置里，不进 APK。
-    testImplementation("org.json:json:20231013")
+    testImplementation("org.json:json:20260814")
 
     compileOnly("io.github.libxposed:api:102.0.0")
 }

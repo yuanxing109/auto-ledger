@@ -194,7 +194,7 @@ class LedgerMigrationV4Test {
                     "('notice/com.tencent.mm/关掉的','com.tencent.mm','notice','关掉的','system','{}',0,1,0)",
             )
         }
-        // 与 RuleDao.getEnabledFor 同一条 SQL：包名精确匹配 + NULL（任意包名）都要命中
+        // 迁移数据校验：包名精确匹配 + NULL（任意包名）都要命中
         val ids = mutableListOf<String>()
         db.createStatement().use { st ->
             st.executeQuery(

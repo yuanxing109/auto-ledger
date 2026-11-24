@@ -3,6 +3,7 @@ package com.eta.autoledger.ui.screen
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.util.AppDateFormats
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -22,7 +23,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -50,7 +51,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,13 +58,8 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.InputField
-import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.TabRow
-import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -84,11 +79,7 @@ import com.eta.autoledger.ui.window.LocalSnackbar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Calendar
-import java.util.Locale
 import kotlin.math.abs
 
 /**
@@ -111,12 +102,12 @@ fun SearchScreen(onClose: () -> Unit) {
 
     var keyword by rememberSaveable { mutableStateOf("") }
     var debouncedKeyword by remember { mutableStateOf("") }
-    var range by rememberSaveable { mutableStateOf(0) }
+    var range by rememberSaveable { mutableIntStateOf(0) }
     var type by rememberSaveable { mutableStateOf("") }
     var categories by remember { mutableStateOf(emptyList<String>()) }
     var minAmount by rememberSaveable { mutableStateOf("") }
     var maxAmount by rememberSaveable { mutableStateOf("") }
-    var sort by rememberSaveable { mutableStateOf(0) }
+    var sort by rememberSaveable { mutableIntStateOf(0) }
     var showFilter by remember { mutableStateOf(false) }
     // 点开的结果项：与首页共用同一个编辑弹窗（EntryEditDialog）
     var editingEntry by remember { mutableStateOf<LedgerEntry?>(null) }
@@ -533,24 +524,10 @@ private fun dayStartOf(entry: LedgerEntry): Long {
 
 private val WEEKDAYS = arrayOf("星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六")
 
-/**
- * 日期/时间格式化器提到文件级，并改用 java.time.DateTimeFormatter。
- *
- * 原先 dayTitle 每渲染一个日期分组就 new 一次 SimpleDateFormat，ResultRow 每行也 new 一次
- * （哪怕包在 remember 里，lambda 内仍是新建）。SimpleDateFormat 构造要建 DateFormatSymbols
- * 并加载 locale 数据，是明确的重量级操作，滚动时按行数累加。
- * DateTimeFormatter 不可变、线程安全，提到文件级后全进程只有两份实例。
- */
-private val dayLabelFmt: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("M月d日", Locale.CHINA).withZone(ZoneId.systemDefault())
-
-private val clockFmt: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA).withZone(ZoneId.systemDefault())
-
 private fun dayTitle(dayMillis: Long): String {
     if (dayMillis <= 0L) return "未知日期"
     val cal = Calendar.getInstance().apply { timeInMillis = dayMillis }
-    val label = dayLabelFmt.format(Instant.ofEpochMilli(dayMillis))
+    val label = AppDateFormats.format(dayMillis, AppDateFormats.monthDayChinese)
     return "$label ${WEEKDAYS[cal.get(Calendar.DAY_OF_WEEK) - 1]}"
 }
 
@@ -644,7 +621,7 @@ private fun ResultRow(
     val other = entry.type == "other"
     val stamp = remember(entry.timeMillis) {
         val millis = if (entry.timeMillis > 0) entry.timeMillis else 0L
-        if (millis > 0) clockFmt.format(Instant.ofEpochMilli(millis)) else entry.time
+        if (millis > 0) AppDateFormats.format(millis, AppDateFormats.timeMinute) else entry.time
     }
     // 圆角只建一次：原来 clip 和 border 各 new 一个 RoundedCornerShape(16.dp)。
     val rowShape = remember { RoundedCornerShape(16.dp) }
@@ -748,7 +725,7 @@ private fun FilterSheet(
         heightFraction = 0.9f,
         outsideMargin = DpSize(0.dp, 0.dp),
         contentPadding = PaddingValues(0.dp),
-        panelModifier = Modifier.navigationBarsPadding(),
+        modifier = Modifier.navigationBarsPadding(),
         onDismissRequest = onDismiss,
     ) {
         // ---- 固定头部：拖拽条 + 标题 ----

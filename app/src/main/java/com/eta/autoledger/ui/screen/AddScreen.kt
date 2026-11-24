@@ -41,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -54,10 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Locale
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.Switch
@@ -73,8 +69,10 @@ import com.eta.autoledger.ui.theme.amountDisplayStyle
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.RecurringRule
+import com.eta.autoledger.data.RecurringExternalIds
 import com.eta.autoledger.screenshot.AiQuickEntry
 import com.eta.autoledger.service.RecurringWorker
+import com.eta.autoledger.util.AppDateFormats
 import com.eta.autoledger.ui.theme.LedgerDimens
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -89,50 +87,6 @@ private data class Category(
     val name: String,
     val emoji: String,
     val color: Color,
-)
-
-private val expenseCategories = listOf(
-    Category("其他", "⚪", LedgerTheme.textSecondary),
-    Category("餐饮", "🍜", LedgerTheme.chart3),
-    Category("购物", "🛍️", LedgerTheme.chart4),
-    Category("转账", "💸", LedgerTheme.accent),
-    Category("交通", "🚌", LedgerTheme.chart5),
-    Category("消费", "💳", LedgerTheme.chart3),
-    Category("人情社交", "👥", LedgerTheme.accent),
-    Category("娱乐", "🎮", LedgerTheme.chart3),
-    Category("教育", "📚", LedgerTheme.chart4),
-    Category("通讯", "📱", LedgerTheme.chart5),
-    Category("美容", "💄", LedgerTheme.chart6),
-    Category("医疗", "🏥", LedgerTheme.danger),
-    Category("红包", "🧧", LedgerTheme.chart6),
-    Category("旅行", "✈️", LedgerTheme.chart5),
-    Category("宠物", "🐾", LedgerTheme.chart3),
-    Category("住房", "🏠", LedgerTheme.chart2),
-    Category("代付", "🤝", LedgerTheme.chart3),
-    Category("投资", "📈", LedgerTheme.chart4),
-    Category("借出", "📤", LedgerTheme.accent),
-    Category("还债", "💰", LedgerTheme.chart3),
-    Category("亲子", "👨‍👩‍👧", LedgerTheme.chart6),
-    Category("添加", "＋", LedgerTheme.accent),
-)
-
-private val incomeCategories = listOf(
-    Category("转账", "💳", LedgerTheme.accent),
-    Category("红包", "🧧", LedgerTheme.chart6),
-    Category("退款", "↩️", LedgerTheme.chart2),
-    Category("其他", "⚪", LedgerTheme.textSecondary),
-    Category("薪资", "💼", LedgerTheme.income),
-    Category("理财", "📈", LedgerTheme.chart4),
-    Category("借入", "📥", LedgerTheme.chart3),
-    Category("收债", "📤", LedgerTheme.chart5),
-    Category("添加", "＋", LedgerTheme.accent),
-)
-
-private val otherCategories = listOf(
-    Category("提现", "💵", LedgerTheme.chart3),
-    Category("还款", "💳", LedgerTheme.accent),
-    Category("充值", "⚡", LedgerTheme.chart3),
-    Category("代付", "🤝", LedgerTheme.chart6),
 )
 
 private fun categoriesFor(context: android.content.Context, type: Int): List<Category> =
@@ -157,7 +111,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     var timeMillis by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
     val calendar = remember { Calendar.getInstance().apply { timeInMillis = timeMillis } }
     var timeText by rememberSaveable {
-        mutableStateOf(SimpleDateFormat("今天 HH:mm", Locale.CHINA).format(calendar.time))
+        mutableStateOf(AppDateFormats.format(calendar, AppDateFormats.todayTime))
     }
     var showPicker by remember { mutableStateOf(false) }
     // 周期账单：开启后这条记录变成模板（同时也会作为本期实账入库）
@@ -216,10 +170,10 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
         val sameDay = now.get(Calendar.YEAR) == calendar.get(Calendar.YEAR) &&
             now.get(Calendar.MONTH) == calendar.get(Calendar.MONTH) &&
             now.get(Calendar.DAY_OF_MONTH) == calendar.get(Calendar.DAY_OF_MONTH)
-        timeText = SimpleDateFormat(
-            if (sameDay) "今天 HH:mm" else "MM月dd日 HH:mm",
-            Locale.CHINA,
-        ).format(calendar.time)
+        timeText = AppDateFormats.format(
+            calendar,
+            if (sameDay) AppDateFormats.todayTime else AppDateFormats.monthDayTime,
+        )
     }
 
     fun applyDateTime(year: Int, month: Int, day: Int, hour: Int, minute: Int) {
@@ -256,7 +210,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             2 -> "other"
             else -> "expense"
         }
-        val timeTextNow = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(calendar.time)
+        val timeTextNow = AppDateFormats.format(calendar, AppDateFormats.dateTime)
         val normalizedSubCategory = subCategory.trim().ifBlank { null }
         scope.launch {
             runCatching {
@@ -292,7 +246,6 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                             recurringRule = rule.raw,
                         ),
                     )
-                    val ymd = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(calendar.time)
                     LedgerRepository.add(
                         context,
                         LedgerEntry(
@@ -304,7 +257,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                             time = timeTextNow,
                             note = note,
                             source = "手动记账",
-                            externalId = "rec_${templateId}_$ymd",
+                            externalId = RecurringExternalIds.generate(templateId, calendar),
                             isRecurring = false,
                         ),
                     )

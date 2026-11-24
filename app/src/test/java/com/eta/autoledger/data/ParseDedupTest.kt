@@ -8,6 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.util.Locale
 
 /**
  * 去重粒度与文本归一化的纯函数断言。
@@ -45,6 +46,26 @@ class ParseDedupTest {
             ParseDedup.fingerprint(46.9, "美团", 1_700_000_000_000),
             ParseDedup.fingerprint(46.90, "美团", 1_700_000_000_000),
         )
+    }
+
+    @Test
+    fun 指纹金额以分编码且不含本地化小数() {
+        val fingerprint = ParseDedup.fingerprint(19.40, "便利店", 1_700_000_000_000)
+        assertEquals("1940|便利店|1700000000", fingerprint)
+    }
+
+    @Test
+    fun `指纹不随设备 Locale 改变`() {
+        val old = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.GERMANY)
+            val german = ParseDedup.fingerprint(19.40, "便利店", 1_700_000_000_000)
+            Locale.setDefault(Locale.US)
+            val us = ParseDedup.fingerprint(19.40, "便利店", 1_700_000_000_000)
+            assertEquals(german, us)
+        } finally {
+            Locale.setDefault(old)
+        }
     }
 
     @Test
@@ -183,4 +204,5 @@ class ParseDedupTest {
         assertEquals(1000.00, bill?.amount ?: 0.0, 0.001)
         assertEquals("expense", bill?.type)
     }
+
 }

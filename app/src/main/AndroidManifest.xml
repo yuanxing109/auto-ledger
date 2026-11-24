@@ -13,6 +13,9 @@
     <!-- 引导用户把本应用加入电池优化白名单（ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 要求声明） -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
     <!--
         自愈能力（模式 C）：adbd / Shizuku 用 `pm grant` 授权后，App 就能自己把
         「通知使用权」「无障碍」写回，ROM 关掉开关也能被心跳任务救回来。
@@ -24,6 +27,8 @@
 
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:hardwareAccelerated="true"
         android:largeHeap="false"
         android:extractNativeLibs="false"

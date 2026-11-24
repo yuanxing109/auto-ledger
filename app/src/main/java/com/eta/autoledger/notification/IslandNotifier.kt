@@ -1,5 +1,6 @@
 package com.eta.autoledger.notification
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -13,14 +14,12 @@ import android.util.Log
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.MainActivity
 import com.eta.autoledger.R
-import org.json.JSONObject
 
 /**
  * 跨厂商「超级岛 / 灵动岛 / 实况窗」通知出口。
  *
  * 各家机制不同，这里做统一封装，且任何一步失败都自动降级为标准通知，绝不丢提醒：
- *  - 小米 HyperOS 2/3：标准 Notification + extras["miui.focus.param"](param_v2 JSON)，
- *    超级岛与「焦点通知」同一套数据接口（需在小米开发者平台开通并配置业务ID）。
+ *  - 小米 HyperOS：使用 Android 16 Live Updates 标准能力，已移除无写入入口的私有参数分支。
  *  - vivo OriginOS：extras 里的 notification.superx.* Bundle（原子岛/原子通知，需申请权限）。
  *  - Android 16+：Notification.ProgressStyle + FLAG_PROMOTED_ONGOING（Live Updates 实况通知），
  *    这是通用标准通道，越来越多国产系统（含 HyperOS3 / ColorOS15 / OriginOS6）直接消费。
@@ -114,7 +113,7 @@ object IslandNotifier {
 
         // ② 厂商私有扩展
         if (spec.enableVendorIsland) {
-            applyVendorExtras(context, builder, spec.title, spec.text, content, prefs)
+            applyVendorExtras(builder, spec.title, spec.text, content)
         }
 
         // 常驻实况通知必须 ongoing，否则 HyperOS 上只会一闪而过；给一个「知道了」用于手动清除
@@ -150,7 +149,6 @@ object IslandNotifier {
     }
 
     private fun ensureChannel(manager: NotificationManager, spec: Spec) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (manager.getNotificationChannel(spec.channelId) == null) {
             manager.createNotificationChannel(
                 NotificationChannel(spec.channelId, spec.channelName, NotificationManager.IMPORTANCE_HIGH),
@@ -160,6 +158,7 @@ object IslandNotifier {
 
     // ---------------- Android 16 Live Updates ----------------
 
+    @SuppressLint("NewApi")
     private fun applyLiveUpdate(builder: Notification.Builder, title: String, critical: String) {
         val short = critical.ifBlank { title }.take(16)
         try {
@@ -176,60 +175,6 @@ object IslandNotifier {
             builder.addExtras(extras)
         } catch (t: Throwable) {
             Log.w(TAG, "Live Updates 设置失败，忽略", t)
-        }
-    }
-
-    // ---------------- 小米 HyperOS 超级岛 / 焦点通知 ----------------
-
-    private fun applyXiaomi(context: Context, builder: Notification.Builder, title: String, text: String, prefs: AppPrefs) {
-        // 业务ID需在小米开发者平台开通「超级岛/焦点通知」后获得；未配置则不发送私有参数，
-        // 避免非法 param_v2 导致通知被系统丢弃。
-        val business = prefs.miuiBusinessId.trim()
-        if (business.isEmpty()) return
-        try {
-            val textInfo = JSONObject().apply {
-                put("frontTitle", title)
-                put("title", title)
-                put("content", text)
-            }
-            val bigArea = JSONObject().apply {
-                put("imageTextInfoLeft", JSONObject().apply {
-                    put("type", 1)
-                    put("textInfo", textInfo)
-                })
-                put("picInfo", PIC_KEY)
-            }
-            val smallArea = JSONObject().apply { put("picInfo", PIC_KEY) }
-            val paramIsland = JSONObject().apply {
-                put("islandProperty", 2) // 2=常驻
-                put("bigIslandArea", bigArea)
-                put("smallIslandArea", smallArea)
-                put("shareData", JSONObject().apply { put("title", text.take(24)) })
-            }
-            val baseInfo = JSONObject().apply {
-                put("title", title)
-                put("content", text)
-                put("type", 1)
-            }
-            val paramV2 = JSONObject().apply {
-                put("business", business)
-                put("ticker", title)
-                put("aodTitle", title)
-                put("param_island", paramIsland)
-                put("baseInfo", baseInfo)
-            }
-            val root = JSONObject().apply { put("param_v2", paramV2) }
-
-            val extras = Bundle().apply {
-                putString("miui.focus.param", root.toString())
-                val pics = Bundle().apply {
-                    putParcelable(PIC_KEY, Icon.createWithResource(context, R.drawable.ic_launcher_foreground))
-                }
-                putBundle("miui.focus.pics", pics)
-            }
-            builder.addExtras(extras)
-        } catch (t: Throwable) {
-            Log.w(TAG, "小米超级岛参数构建失败，降级", t)
         }
     }
 
@@ -271,21 +216,18 @@ object IslandNotifier {
         if (!enableVendorIsland) return
         val prefs = AppPrefs.get(context)
         if (prefs.islandLiveUpdates && supportsLiveUpdates()) applyLiveUpdate(builder, title, critical)
-        applyVendorExtras(context, builder, title, text, click, prefs)
+        applyVendorExtras(builder, title, text, click)
     }
 
     private fun applyVendorExtras(
-        context: Context,
         builder: Notification.Builder,
         title: String,
         text: String,
         click: PendingIntent,
-        prefs: AppPrefs,
     ) {
         when (vendor()) {
-            Vendor.XIAOMI -> applyXiaomi(context, builder, title, text, prefs)
             Vendor.VIVO -> applyVivo(builder, title, text, click)
-            else -> Unit // OPPO/HONOR 需官方 SDK，退回标准通知
+            else -> Unit // 小米/OPPO/荣耀私有通道需可配置的应用资质，当前均退回标准通知
         }
     }
 
@@ -300,5 +242,4 @@ object IslandNotifier {
             .setOngoing(spec.ongoing)
             .build()
 
-    private const val PIC_KEY = "miui.focus.pic"
 }

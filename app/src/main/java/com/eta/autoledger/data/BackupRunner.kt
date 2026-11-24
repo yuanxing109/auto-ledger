@@ -2,11 +2,9 @@ package com.eta.autoledger.data
 
 import android.content.Context
 import com.eta.autoledger.AppPrefs
+import com.eta.autoledger.util.AppDateFormats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * 备份/恢复的统一入口：手动按钮、定时任务、命令行调试都走这里。
@@ -21,7 +19,6 @@ object BackupRunner {
     const val FILE_LATEST = "autoledger-backup.json"
     private const val KEEP_DAILY = 7
     private const val AUTO_INTERVAL_MS = 20L * 60 * 60 * 1000
-    private const val DAY_FMT = "yyyyMMdd"
 
     data class Result(val ok: Boolean, val message: String)
 
@@ -32,7 +29,7 @@ object BackupRunner {
             val entries = LedgerRepository.load(context, includeTemplates = true)
             if (entries.isEmpty()) return@withContext Result(false, "本地没有账目，未上传")
             val bytes = BackupCodec.encode(entries)
-            val day = SimpleDateFormat(DAY_FMT, Locale.US).format(Date())
+            val day = AppDateFormats.format(System.currentTimeMillis(), AppDateFormats.basicDate)
             WebDavClient.ensureDir(target)
             WebDavClient.upload(target, FILE_LATEST, bytes)
             WebDavClient.upload(target, "autoledger-backup-$day.json", bytes)

@@ -1,7 +1,5 @@
 package com.eta.autoledger.data
 
-import java.math.BigDecimal
-import java.math.RoundingMode
 import java.security.MessageDigest
 
 /**
@@ -43,11 +41,7 @@ object ParseDedup {
     private val bursts = LinkedHashMap<String, Long>()
 
     /** 金额统一换算为“分”，消除 Double 尾差对强指纹的影响。 */
-    fun amountFen(amount: Double): Long =
-        BigDecimal.valueOf(amount)
-            .setScale(2, RoundingMode.HALF_UP)
-            .movePointRight(2)
-            .longValueExact()
+    fun amountFen(amount: Double): Long = FingerprintCodec.amountFen(amount)
 
     /**
      * 从短信/通知正文中提取卡号后四位。
@@ -88,7 +82,7 @@ object ParseDedup {
         }
         return MessageDigest.getInstance("SHA-1")
             .digest(material.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+            .let(FingerprintCodec::hex)
     }
 
     /** 合并来源标签，使用“ + ”追加并对空白项和重复项去重。 */
@@ -110,7 +104,7 @@ object ParseDedup {
     fun fingerprint(amount: Double, merchant: String, timeMillis: Long): String {
         val second = timeMillis / 1_000L
         val normalizedMerchant = merchant.trim().replace(Regex("\\s+"), " ")
-        return "%.2f|%s|%d".format(amount, normalizedMerchant, second)
+        return FingerprintCodec.amountFenToken(amount) + "|" + normalizedMerchant + "|" + second.toString()
     }
 
     /** 指纹去掉时间桶后的部分，即「金额|商户」。 */

@@ -60,7 +60,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * - [widthFraction] / [heightFraction]：按比例占位，用于半屏面板；
  *   不传则宽度受 [maxWidth] 约束、高度随内容。
  * - [panelColor]：面板底色，默认 surface。
- * - [panelModifier]：追加到面板最外层的 Modifier（如 navigationBarsPadding）。
+ * - [modifier]：追加到面板最外层的 Modifier（如 navigationBarsPadding）。
  *
  * ## 进出场动画
  *
@@ -87,20 +87,20 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 @Composable
 fun AppDialog(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
     show: Boolean = true,
     title: String? = null,
     maxWidth: Dp = 560.dp,
     summary: String? = null,
     outsideMargin: DpSize = DpSize(20.dp, 20.dp),
     insideMargin: DpSize = DpSize(20.dp, 20.dp),
-    onDismissRequest: () -> Unit,
     contentPadding: PaddingValues = PaddingValues(insideMargin.width, insideMargin.height),
     align: Alignment = Alignment.Center,
     shape: Shape? = null,
     widthFraction: Float? = null,
     heightFraction: Float? = null,
     panelColor: Color? = null,
-    panelModifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val enterMillis = rememberMotionDuration(150)
@@ -175,7 +175,7 @@ fun AppDialog(
                         // 吃掉落在面板上的点击，别让它穿透到下面的遮罩把弹窗关掉。
                         // 用 pointerInput 而不是 clickable：不需要语义、涟漪和无障碍角色。
                         .pointerInput(Unit) { detectTapGestures { } }
-                        .then(panelModifier)
+                        .then(modifier)
                         .padding(contentPadding),
                 ) {
                     if (title != null) {

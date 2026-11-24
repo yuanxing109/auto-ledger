@@ -5,13 +5,10 @@ import androidx.compose.ui.graphics.Color
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.util.AppDateFormats
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Calendar
-import java.util.Locale
 
 /**
  * 账单分组的纯数据层。
@@ -20,26 +17,11 @@ import java.util.Locale
  * 而是随分页增量维护。这里只依赖 [LedgerTheme]（它是普通 object + getter，
  * 不是 CompositionLocal），所以离开 @Composable 上下文依然可用。
  *
- * 日期格式化器提到文件级，并且用 java.time.DateTimeFormatter 而不是 SimpleDateFormat：
- * - 构造成本：SimpleDateFormat 每次 new 要建 DateFormatSymbols 并加载 locale 数据，是重操作。
- *   原实现每条账目 new 两次（分组一次、toUi 一次），2525 条就是 5000+ 次构造。
- * - 线程安全：SimpleDateFormat 内部有可变 Calendar，跨线程用会算出错乱的日期。
- *   本文件的 mergeIntoTail 现在跑在 Dispatchers.Default 上（HomeViewModel），
- *   首屏 groupEntries 也在 ViewModel 协程里，必须换成不可变的 DateTimeFormatter。
+ * 日期格式化复用 [AppDateFormats] 的不可变 formatter，避免每条账目重复构造。
  */
-private val dayKeyFmt: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("yyyy.MM.dd", Locale.CHINA).withZone(ZoneId.systemDefault())
+private fun dayKeyOf(millis: Long): String = AppDateFormats.format(millis, AppDateFormats.dotDate)
 
-private val clockFmt: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA).withZone(ZoneId.systemDefault())
-
-/**
- * DateTimeFormatter 只认 TemporalAccessor，java.util.Date 不是，所以统一走 Instant。
- * 两个小函数把「毫秒 → 字符串」收在一处，调用点不必再碰 Calendar。
- */
-private fun dayKeyOf(millis: Long): String = dayKeyFmt.format(Instant.ofEpochMilli(millis))
-
-private fun clockOf(millis: Long): String = clockFmt.format(Instant.ofEpochMilli(millis))
+private fun clockOf(millis: Long): String = AppDateFormats.format(millis, AppDateFormats.timeMinute)
 
 /**
  * 标记为 @Immutable：所有字段都是 val 且类型不可变（String/Double/Color/ImmutableList），

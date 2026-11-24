@@ -1,5 +1,6 @@
 package com.eta.autoledger.data
 
+import androidx.core.content.edit
 import android.content.Context
 import androidx.compose.ui.graphics.Color
 import org.json.JSONArray
@@ -45,7 +46,7 @@ object CategoryStore {
         val arr = JSONArray()
         names.forEach { arr.put(it) }
         context.getSharedPreferences("auto_ledger", Context.MODE_PRIVATE)
-            .edit().putString(key(type), arr.toString()).apply()
+            .edit { putString(key(type), arr.toString()) }
     }
 
     fun style(name: String): CategoryStyle = CategoryStyle(name, emoji(name), color(name))

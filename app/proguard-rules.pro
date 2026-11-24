@@ -20,7 +20,11 @@
 -keep class com.eta.autoledger.widget.** { *; }
 -keep class com.eta.autoledger.service.** { *; }
 -keep class com.eta.autoledger.reminder.** { *; }
--keep class com.eta.autoledger.screenshot.** { *; }
+# 截图模块仅保留 Manifest 直接实例化的入口，其余类允许 R8 按引用裁剪
+-keep class com.eta.autoledger.screenshot.ScreenshotRequestActivity { *; }
+-keep class com.eta.autoledger.screenshot.ScreenshotCaptureService { *; }
+-keep class com.eta.autoledger.screenshot.ScreenshotAccessibilityService { *; }
+-keep class com.eta.autoledger.screenshot.ConfirmEntryReceiver { *; }
 -keep class com.eta.autoledger.tile.** { *; }
 
 # libxposed（compileOnly，运行时由框架注入）

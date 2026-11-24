@@ -10,17 +10,16 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.scale
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.MainActivity
+import com.eta.autoledger.network.AiClient
+import com.eta.autoledger.util.AppDateFormats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
@@ -59,8 +58,14 @@ object VisionHelper {
             put("role", "user")
             put("content", content)
         })
-        val contentText = postChat(prefs, messages, 400)
-        val obj = parseJsonObject(contentText)
+        val contentText = AiClient.chat(
+            baseUrl = prefs.aiBaseUrl,
+            key = prefs.aiKey,
+            model = prefs.aiModel,
+            messages = messages,
+            maxTokens = 400,
+        )
+        val obj = AiClient.parseJsonObject(contentText)
             ?: error("模型没有返回 JSON：" + contentText.take(120))
         val amount = obj.optDouble("amount", 0.0)
         if (!amount.isFinite() || amount <= 0.0) {
@@ -114,138 +119,17 @@ object VisionHelper {
         return if (base.contains(suffix)) base else base.trim() + "\n" + suffix
     }
 
-    /** 纯文本补全：导入去重的 YES/NO 判定复用同一端点与鉴权，避免第二套 HTTP 代码。 */
-    fun callTextModel(prefs: AppPrefs, prompt: String, maxTokens: Int = 8): String {
-        val messages = JSONArray().put(JSONObject().apply {
-            put("role", "user")
-            put("content", prompt)
-        })
-        return postChat(prefs, messages, maxTokens)
-    }
-
-    private fun postChat(prefs: AppPrefs, messages: JSONArray, maxTokens: Int): String {
-        val url = endpoint(prefs.aiBaseUrl, "/chat/completions")
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15_000
-            readTimeout = 60_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json")
-            if (prefs.aiKey.isNotBlank()) {
-                setRequestProperty("Authorization", "Bearer " + prefs.aiKey)
-            }
-        }
-        val payload = JSONObject().apply {
-            put("model", prefs.aiModel)
-            put("temperature", 0.1)
-            put("max_tokens", maxTokens)
-            put("messages", messages)
-        }
-        val code: Int
-        val body: String
-        try {
-            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-            code = conn.responseCode
-            body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                ?.bufferedReader()?.readText().orEmpty()
-        } finally {
-            conn.disconnect()
-        }
-        if (code !in 200..299) error("HTTP " + code + " " + body.take(160))
-        val root = runCatching { JSONObject(body) }.getOrElse {
-            error("响应不是 JSON（HTTP " + code + "）：" + body.take(120))
-        }
-        val choice = root.optJSONArray("choices")?.optJSONObject(0)
-        val message = choice?.optJSONObject("message")
-        // 必须用 opt + JSONObject.NULL 判空：字段是 JSON null 时，
-        // optString 会返回字面量 "null"，于是下游把 "null" 当成模型正文去解析 JSON，
-        // 报出来就是「模型没有返回 JSON：null」——这正是识图失败最常见的一种。
-        val contentText = sequenceOf(
-            stringOrNull(message, "content"),
-            stringOrNull(message, "reasoning_content"),
-            stringOrNull(choice, "text"),
-            stringOrNull(root, "content"),
-        ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
-        if (contentText.isBlank()) {
-            error("模型返回为空（HTTP " + code + "），请确认该模型支持当前输入")
-        }
-        return contentText
-    }
-
-    /** 取字符串字段；字段缺失或为 JSON null 时返回 null，而不是字面量 "null"。 */
-    private fun stringOrNull(obj: JSONObject?, key: String): String? {
-        if (obj == null) return null
-        val value = obj.opt(key) ?: return null
-        if (value === JSONObject.NULL) return null
-        val text = value.toString().trim()
-        if (text.isEmpty()) return null
-        return if (text.equals("null", ignoreCase = true)) null else text
-    }
-
-    /**
-     * 从模型输出里取第一个完整的 JSON 对象：按括号深度扫描，并跳过字符串里的括号。
-     * 比贪婪正则 "\\{[\\s\\S]*\\}" 稳——模型后面多解释几句、正文里带花括号也不会截错。
-     */
-    internal fun parseJsonObject(raw: String): JSONObject? {
-        // 三种常见跑偏：整段被 ```json 包住、外面套一层数组、直接回字面量 null。
-        val text = raw
-            .replace("\u0060\u0060\u0060json", " ")
-            .replace("\u0060\u0060\u0060JSON", " ")
-            .replace("\u0060\u0060\u0060", " ")
-            .replace("\u0060", " ")
-            .trim()
-        if (text.isEmpty()) return null
-        if (text.equals("null", ignoreCase = true)) return null
-        if (text.startsWith("[")) {
-            val arrEnd = text.lastIndexOf(']')
-            if (arrEnd > 0) {
-                runCatching { JSONArray(text.substring(0, arrEnd + 1)) }.getOrNull()
-                    ?.takeIf { it.length() > 0 }
-                    ?.optJSONObject(0)
-                    ?.let { return it }
-            }
-        }
-        val start = text.indexOf('{')
-        if (start < 0) return null
-        var depth = 0
-        var inString = false
-        var escaped = false
-        for (i in start until text.length) {
-            val c = text[i]
-            if (inString) {
-                when {
-                    escaped -> escaped = false
-                    c == '\\' -> escaped = true
-                    c == '"' -> inString = false
-                }
-                continue
-            }
-            when (c) {
-                '"' -> inString = true
-                '{' -> depth++
-                '}' -> {
-                    depth--
-                    if (depth == 0) {
-                        return runCatching { JSONObject(text.substring(start, i + 1)) }.getOrNull()
-                    }
-                }
-            }
-        }
-        return null
-    }
-
     /**
      * 模型偶尔会编出离谱日期（当前 11 月却返回「2026-02-12 07:22」），
      * 与当前时间相差超过 3 天就丢弃，改用现在。
      */
     private fun saneTime(raw: String): String {
         val now = System.currentTimeMillis()
-        val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
-        val parsed = runCatching { fmt.parse(raw.trim())?.time }.getOrNull()
+        val parsed = AppDateFormats.parse(raw)?.timeInMillis
         return if (parsed != null && abs(parsed - now) <= THREE_DAYS_MS) {
-            fmt.format(Date(parsed))
+            AppDateFormats.format(parsed, AppDateFormats.dateTime)
         } else {
-            fmt.format(Date(now))
+            AppDateFormats.format(now, AppDateFormats.dateTime)
         }
     }
 
@@ -264,8 +148,7 @@ object VisionHelper {
         val width = decoded.width
         val height = decoded.height
         val scale = if (max(width, height) > maxDim) maxDim.toFloat() / max(width, height) else 1f
-        val scaled = Bitmap.createScaledBitmap(
-            decoded,
+        val scaled = decoded.scale(
             (width * scale).toInt().coerceAtLeast(1),
             (height * scale).toInt().coerceAtLeast(1),
             true,
@@ -352,12 +235,6 @@ object VisionHelper {
     private const val CHANNEL = "screenshot_result"
 
     private const val THREE_DAYS_MS = 3L * 24 * 60 * 60 * 1000
-
-    private fun endpoint(baseUrl: String, path: String): String {
-        var base = baseUrl.trim().trimEnd('/')
-        if (!base.endsWith("/v1")) base += "/v1"
-        return base + path
-    }
 
     private fun max(a: Int, b: Int) = if (a > b) a else b
 }

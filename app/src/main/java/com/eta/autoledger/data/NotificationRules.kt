@@ -1,10 +1,7 @@
 package com.eta.autoledger.data
 
-import java.security.MessageDigest
 import java.text.Normalizer
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.eta.autoledger.util.AppDateFormats
 
 /** 通知来源渠道，决定用哪个开关过滤。 */
 enum class NotifyChannel(val label: String) {
@@ -219,16 +216,16 @@ object NotificationRules {
     )
 
     private val AMOUNT_YUAN = Regex(
-        """(?:[¥￥]\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\s*(?:元|圆)""",
+        MoneyPatterns.WITH_YUAN,
     )
     private val AMOUNT_SIGN = Regex(
-        """[¥￥]\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)""",
+        MoneyPatterns.WITH_SYMBOL,
     )
     private val AMOUNT_BARE = Regex("""^\s*(\d+(?:\.\d{1,2})?)\s*$""")
 
     /** 动词后 12 个字内的金额，避开「余额 1,234.56 元」「可用额度 20,000.00 元」这类尾随数字。 */
     private val AMOUNT_NEAR_VERB = Regex(
-        """(?:消费|支付|付款|支出|扣款|扣费|转账|转出|转入|收入|存入|入账|取现|还款|退款|缴费|缴纳|购买|充值|提现|收款|收到|交易)[^\d¥￥]{0,12}(?:[¥￥]\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)""",
+        MoneyPatterns.NEAR_VERB,
     )
 
     private val EXPENSE_KEYWORDS: List<Pair<String, List<String>>> = listOf(
@@ -632,17 +629,15 @@ object NotificationRules {
     }
 
     private fun formatTime(millis: Long): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(millis))
+        AppDateFormats.format(millis, AppDateFormats.dateTime)
 
     private fun dedupeId(raw: NotifyRaw, amount: Double, type: String, prefix: String): String {
-        val seed = "${dedupeKey(raw)}|$amount|$type"
+        val seed = "${dedupeKey(raw)}|${FingerprintCodec.amountFenToken(amount)}|$type"
         return prefix + md5(seed).take(20)
     }
 
     private fun md5(seed: String): String = try {
-        MessageDigest.getInstance("MD5")
-            .digest(seed.toByteArray(Charsets.UTF_8))
-            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+        FingerprintCodec.md5Hex(seed)
     } catch (t: Throwable) {
         seed.hashCode().toString()
     }

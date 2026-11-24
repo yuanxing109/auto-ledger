@@ -1,10 +1,7 @@
 package com.eta.autoledger.data
 
 import android.util.Log
-import java.security.MessageDigest
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.eta.autoledger.util.AppDateFormats
 
 /**
  * 解析总入口：**动态规则优先，内置规则兜底**。
@@ -243,10 +240,8 @@ object ParsePipeline {
      * 改规则后重放同一批通知本来就该按新规则重新判一次。同一规则对同一输入始终产出同一个值。
      */
     private fun externalId(hit: RuleHit, raw: NotifyRaw, channel: NotifyChannel): String {
-        val seed = "${hit.ruleId}|${NotificationRules.dedupeKey(raw)}|${hit.amount}|${hit.type}"
-        val digest = MessageDigest.getInstance("MD5")
-            .digest(seed.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+        val seed = "${hit.ruleId}|${NotificationRules.dedupeKey(raw)}|${FingerprintCodec.amountFenToken(hit.amount)}|${hit.type}"
+        val digest = FingerprintCodec.md5Hex(seed)
         return PREFIX_RULE + (if (channel == NotifyChannel.SMS) "s" else "n") + digest.take(20)
     }
 
@@ -255,7 +250,7 @@ object ParsePipeline {
         if (body.length <= 60) body else body.take(60) + "…"
 
     private fun formatTime(millis: Long): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(millis))
+        AppDateFormats.format(millis, AppDateFormats.dateTime)
 
     private const val FALLBACK = "其他"
 }

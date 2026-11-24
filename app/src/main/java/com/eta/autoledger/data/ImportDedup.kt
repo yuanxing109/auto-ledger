@@ -2,7 +2,7 @@ package com.eta.autoledger.data
 
 import android.content.Context
 import com.eta.autoledger.AppPrefs
-import com.eta.autoledger.screenshot.VisionHelper
+import com.eta.autoledger.network.AiClient
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -86,7 +86,7 @@ object ImportDedup {
         for (raw in incoming) {
             val entry = stamp(raw)
             val bucket = (entry.timeMillis / 60_000L).toString()
-            val fingerprint = entry.type + "|" + entry.amount + "|" + bucket
+            val fingerprint = entry.type + "|" + FingerprintCodec.amountFenToken(entry.amount) + "|" + bucket
             // 老数据：外部单号已经在库里，直接跳过（重复导入同一份 CSV 就靠这条兜住）
             val ext = entry.externalId
             if (!ext.isNullOrBlank() && existingIds.contains(ext)) {
@@ -164,7 +164,7 @@ object ImportDedup {
             "B：" + suspect.incoming.time + " · " + suspect.incoming.note + " · " +
             suspect.incoming.category + " · " + suspect.incoming.amount + " 元（" +
             suspect.incoming.source + "）"
-        val answer = runCatching { VisionHelper.callTextModel(prefs, prompt, 8) }.getOrNull() ?: return null
+        val answer = runCatching { AiClient.textCompletion(prefs, prompt, 8) }.getOrNull() ?: return null
         val text = answer.uppercase()
         val verdict = when {
             text.contains("YES") -> true

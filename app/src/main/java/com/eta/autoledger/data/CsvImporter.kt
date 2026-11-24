@@ -1,6 +1,7 @@
 package com.eta.autoledger.data
 
 import android.content.Context
+import com.eta.autoledger.util.AppDateFormats
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
@@ -408,7 +409,7 @@ object CsvImporter {
             }
             // 必须用 Long：46345 天 * 86400 秒会超过 Int 上限
             base.timeInMillis += (serial * 86_400_000.0).toLong()
-            return java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.CHINA).format(base.time)
+            return AppDateFormats.format(base, AppDateFormats.dateTimeSeconds)
         }
         return value
     }

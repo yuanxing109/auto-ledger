@@ -1,5 +1,6 @@
 package com.eta.autoledger.service
 
+import androidx.core.content.edit
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -122,7 +123,7 @@ class HealthJobService : JobService() {
             val sp = context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             if (granted) {
                 if (!sp.getBoolean(KEY_EVER_GRANTED, false)) {
-                    sp.edit().putBoolean(KEY_EVER_GRANTED, true).apply()
+                    sp.edit { putBoolean(KEY_EVER_GRANTED, true) }
                 }
                 // 恢复了就把残留提示撤掉，别让用户点进一个已经不需要修的页面
                 context.getSystemService(NotificationManager::class.java)
@@ -133,7 +134,7 @@ class HealthJobService : JobService() {
 
             val now = System.currentTimeMillis()
             if (now - sp.getLong(KEY_LAST_ALERT, 0L) < ALERT_INTERVAL_MS) return
-            sp.edit().putLong(KEY_LAST_ALERT, now).apply()
+            sp.edit { putLong(KEY_LAST_ALERT, now) }
             Log.w(TAG, "通知使用权已被关闭，发送修复提示")
             postAlert(context)
         }

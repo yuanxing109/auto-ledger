@@ -4,7 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
@@ -22,8 +21,8 @@ import android.util.Base64
 import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.createBitmap
 import com.eta.autoledger.AppPrefs
-import com.eta.autoledger.MainActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,11 +30,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -159,7 +154,7 @@ class ScreenshotCaptureService : Service() {
             try {
                 val plane = image.planes[0]
                 val rowPadding = plane.rowStride - plane.pixelStride * metrics.widthPixels
-                val raw = Bitmap.createBitmap(
+                val raw = createBitmap(
                     metrics.widthPixels + rowPadding / plane.pixelStride,
                     metrics.heightPixels,
                     Bitmap.Config.ARGB_8888,

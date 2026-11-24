@@ -2,6 +2,7 @@ package com.eta.autoledger.ui.screen
 
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.util.AppDateFormats
 import com.eta.autoledger.ui.rememberMotionDuration
 import com.eta.autoledger.ui.components.AppDialog
 import androidx.compose.animation.AnimatedVisibility
@@ -45,7 +46,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +56,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -68,10 +67,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -86,14 +84,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Calendar
-import java.util.Locale
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import com.eta.autoledger.data.Bucket
 import com.eta.autoledger.data.CategoryAgg
 import com.eta.autoledger.data.CategoryBreakdown
 import com.eta.autoledger.data.ReportAggregate
@@ -102,18 +92,13 @@ import com.eta.autoledger.data.ReportRepository
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.SubCategoryShare
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
@@ -1458,7 +1443,9 @@ private fun CategoryDetailDialog(
             limit = 300,
         ).collect { value = it }
     }
-    val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.5f).dp
+    val maxListHeight = with(LocalDensity.current) {
+        LocalWindowInfo.current.containerSize.height.toDp() * 0.5f
+    }
     AppDialog(
         show = show,
         title = "${slice.emoji} ${slice.name} 明细",
@@ -1538,13 +1525,6 @@ private fun DetailEntryRow(entry: LedgerEntry) {
     }
 }
 
-/**
- * 明细弹窗每一行的时间。提到文件级 + 换 DateTimeFormatter：
- * 原先是逐行 new SimpleDateFormat，明细最多 300 行，等于每次打开弹窗 300 次重量级构造。
- */
-private val detailTimeFmt: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.CHINA).withZone(ZoneId.systemDefault())
-
 private fun detailTimeLabel(entry: LedgerEntry): String =
-    if (entry.timeMillis > 0) detailTimeFmt.format(Instant.ofEpochMilli(entry.timeMillis))
+    if (entry.timeMillis > 0) AppDateFormats.format(entry.timeMillis, AppDateFormats.dashMonthDayTime)
     else entry.time

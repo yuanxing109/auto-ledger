@@ -1,8 +1,5 @@
 package com.eta.autoledger.ui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.unit.Dp
 import com.eta.autoledger.ui.theme.LedgerDimens
 
 /**
@@ -16,13 +13,3 @@ import com.eta.autoledger.ui.theme.LedgerDimens
  * 只要换 CompositionLocal 的提供方，不用改任何页面代码。
  */
 val LocalDimens = androidx.compose.runtime.staticCompositionLocalOf { LedgerDimens.default }
-
-@Composable
-fun rememberDimens(): LedgerDimens {
-    val d = LocalDimens.current
-    return remember(d) { d }
-}
-
-/** 便捷取用：标准间距。 */
-@Composable
-fun gap(): Dp = LocalDimens.current.gap

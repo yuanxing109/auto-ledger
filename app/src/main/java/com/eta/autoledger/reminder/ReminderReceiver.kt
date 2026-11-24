@@ -1,14 +1,9 @@
 package com.eta.autoledger.reminder
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.app.NotificationCompat
 import com.eta.autoledger.AppPrefs
-import com.eta.autoledger.MainActivity
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.notification.IslandNotifier
 import kotlinx.coroutines.CoroutineScope

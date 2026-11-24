@@ -149,6 +149,52 @@ class RuleEngineTest {
     }
 
     @Test
+    fun 规则预览复用真实匹配语义() = runBlocking {
+        val patternJson = """
+            {"v":2,"type":"sms","app":null,
+             "necessaryFields":["amount","direction"],
+             "amount":["(\\d+(?:\\.\\d{1,2})?)"],
+             "expense":[],"income":[],
+             "block":[],"cats":{"其他":[]},"direction":"income"}
+        """.trimIndent()
+
+        val hit = RuleEngine.previewRule(patternJson, "服务费19.40")
+        assertEquals("preview should match", 19.40, hit?.amount ?: 0.0, 0.001)
+        assertEquals("income", hit?.type)
+        assertNull(hit?.category)
+    }
+
+    @Test
+    fun 规则预览遵守安全闸门与拦截词() = runBlocking {
+        val unsafe = """
+            {"v":2,"type":"sms","app":null,
+             "necessaryFields":["amount","direction"],
+             "amount":["(a+)+"],"expense":["支付"],"income":[],"block":[],"cats":{}}
+        """.trimIndent()
+        assertNull(RuleEngine.previewRule(unsafe, "支付 12.34"))
+
+        val safe = """
+            {"v":2,"type":"sms","app":null,
+             "necessaryFields":["amount","direction"],
+             "amount":["支付\\s*(${MoneyPatterns.NUMBER})"],
+             "expense":["支付"],"income":[],"block":["验证码"],"cats":{}}
+        """.trimIndent()
+        assertNull(RuleEngine.previewRule(safe, "支付 12.34 验证码"))
+    }
+
+    @Test
+    fun 向您支付种子规则可直接预览为收入() = runBlocking {
+        val rule = RuleSeed.systemRules().first { it.name == "向您支付进账" }
+        val hit = RuleEngine.previewRule(
+            rule.patternJson,
+            "【天津新元】向您支付了项目服务费19.40元",
+        )
+
+        assertEquals(19.40, hit?.amount ?: 0.0, 0.001)
+        assertEquals("income", hit?.type)
+    }
+
+    @Test
     fun 旧JSON缺少necessaryFields时按默认契约兼容() = runBlocking {
         val oldRule = noticeRule("user", "旧规则", "com.tencent.mm")
         assertTrue(!JSONObject(oldRule.patternJson).has("necessaryFields"))
@@ -322,24 +368,10 @@ class RuleEngineTest {
             return rules.filter { it.creator == creator && it.enabled }
         }
 
-        override suspend fun getEnabledFor(type: String, app: String): List<RuleEntity> =
-            rules.filter { it.enabled && it.type == type && (it.app == null || it.app == app) }
-
-        override suspend fun getById(id: String): RuleEntity? = rules.firstOrNull { it.id == id }
-
         override suspend fun upsert(rule: RuleEntity) = Unit
-
-        override suspend fun upsertAll(rules: List<RuleEntity>) = Unit
 
         override suspend fun insertIgnore(rules: List<RuleEntity>): List<Long> =
             rules.map { -1L }
-
-        override suspend fun updateSystemRule(
-            id: String,
-            name: String,
-            patternJson: String,
-            updatedAt: Long,
-        ): Int = 0
 
         override suspend fun delete(id: String) = Unit
 

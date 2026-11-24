@@ -1,8 +1,12 @@
 package com.eta.autoledger.ui
 
 import android.animation.ValueAnimator
+import android.content.Context
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * 过渡动画时长的统一来源。
@@ -21,6 +25,21 @@ import androidx.compose.runtime.remember
  */
 @Composable
 fun rememberMotionDuration(baseMillis: Int = 200): Int {
-    val scale = remember { ValueAnimator.getDurationScale() }
+    val context = LocalContext.current.applicationContext
+    val scale = remember(context) { animatorDurationScale(context) }
     return if (scale == 0f) 0 else baseMillis
+}
+
+/** Android 13 起才公开 [ValueAnimator.getDurationScale]；旧系统从系统设置安全读取。 */
+internal fun animatorDurationScale(context: Context): Float {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        return runCatching { ValueAnimator.getDurationScale() }.getOrDefault(1f)
+    }
+    return runCatching {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        )
+    }.getOrDefault(1f)
 }

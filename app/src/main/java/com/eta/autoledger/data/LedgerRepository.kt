@@ -2,13 +2,12 @@ package com.eta.autoledger.data
 
 import android.content.Context
 import com.eta.autoledger.widget.LedgerWidgetProvider
+import com.eta.autoledger.util.AppDateFormats
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Locale
 
 /** 小部件汇总与近 7 日趋势，全部走区间聚合，不把全表读进内存。 */
 data class WidgetTotals(
@@ -28,9 +27,6 @@ data class RangeTotals(
 )
 
 object LedgerRepository {
-
-    /** 自动记账跨渠道去重窗口：短信与通知常差几秒各送一次同一笔扣费。 */
-    private const val AUTO_IMPORT_WINDOW_MS = 2 * 60_000L
 
     /** 强指纹候选查询窗口，围绕入账单的发生时间双向放宽 5 分钟。 */
     private const val STRONG_MERGE_WINDOW_MS = 5 * 60_000L
@@ -170,25 +166,6 @@ object LedgerRepository {
         return ids
     }
 
-    /**
-     * 自动记账跨渠道去重：短信与通知监听常把同一笔实际扣费各送一次，
-     * 两者文本不同、时间戳差几秒，externalId 与时间指纹都对不上。
-     * 只有窗口内存在「同金额 + 同收支 + 不同来源」的自动账单时才判重；
-     * 同来源（同一通道）的同额账单不合并，避免误杀真实的两笔同额消费。
-     */
-    suspend fun isRecentDuplicate(
-        context: Context,
-        amount: Double,
-        type: String,
-        source: String,
-        timeMillis: Long,
-        windowMs: Long = AUTO_IMPORT_WINDOW_MS,
-    ): Boolean {
-        val now = System.currentTimeMillis()
-        val since = (timeMillis - windowMs).coerceAtLeast(0L)
-        return dao(context).countRecentImportedOtherSource(amount, type, source, since, now) > 0
-    }
-
     /** 导入去重：优先交易单号，其次「毫秒时间 + 金额 + 收支」指纹；返回实际新增数。 */
     suspend fun addImported(context: Context, entries: List<LedgerEntry>): Int {
         if (entries.isEmpty()) return 0
@@ -201,7 +178,7 @@ object LedgerRepository {
         val normalized = entries.map { it.normalized() }
         val toInsert = normalized
             .filter { entry -> keys.add(entry.importKey()) }
-            .distinctBy { it.importKey() }
+            .distinctBy { entry -> entry.importKey() }
         if (toInsert.isEmpty()) return 0
         val rowIds = dao.insertAll(toInsert)
         LedgerWidgetProvider.requestUpdate(context)
@@ -221,7 +198,10 @@ object LedgerRepository {
      * 查询 ±5 分钟候选，强指纹命中时只合并来源，不再新增第二笔。
      * 只用于短信 / 通知通道；手动记账、CSV 导入、云恢复走 [addImported] / [add]，行为不变。
      */
-    suspend fun addAutoParsed(context: Context, entries: List<LedgerEntry>): Int = autoParsedMutex.withLock {
+    suspend fun addAutoParsed(
+        context: Context,
+        entries: List<LedgerEntry>,
+    ): Int = autoParsedMutex.withLock {
         if (entries.isEmpty()) return@withLock 0
         val now = System.currentTimeMillis()
         val dao = dao(context)
@@ -283,9 +263,9 @@ object LedgerRepository {
             ) == incomingStrongFingerprint
     }
 
-    /** 指纹用毫秒时间：分钟级会把「同分钟同额同类型」的两笔真实账单误判成一笔。 */
+    /** 指纹用毫秒时间与金额分：避免 Locale 和 Double 文本改变身份键。 */
     private fun fingerprint(timeMillis: Long, amount: Double, type: String): String =
-        "$timeMillis|${"%.2f".format(amount)}|$type"
+        "$timeMillis|${FingerprintCodec.amountFenToken(amount)}|$type"
 
     private fun LedgerEntry.importKey(): String =
         externalId?.takeIf { it.isNotBlank() } ?: fingerprint(timeMillis, amount, type)
@@ -312,10 +292,9 @@ object LedgerRepository {
         val d = dao(context)
         val dayRows = d.sumExpenseByDayOnce(trendStart.timeInMillis, tomorrow.timeInMillis)
             .associate { it.day to it.total }
-        val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val sevenDayExpenses = List(7) { index ->
             val day = (trendStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, index) }
-            dayRows[dayFormat.format(day.time)] ?: 0.0
+            dayRows[AppDateFormats.format(day, AppDateFormats.date)] ?: 0.0
         }
         return WidgetTotals(
             todayExpense = d.sumExpenseOnce(todayStart.timeInMillis, tomorrow.timeInMillis),
@@ -371,30 +350,10 @@ object LedgerRepository {
         LedgerWidgetProvider.requestUpdate(context)
     }
 
-    fun parseTime(raw: String): Calendar? {
-        if (raw.isBlank()) return null
-        val patterns = listOf(
-            "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd HH:mm",
-            "yyyy-MM-dd",
-            "yyyy/M/d H:mm",
-            "yyyy/M/d",
-            "MM月dd日 HH:mm",
-        )
-        for (pattern in patterns) {
-            val parsed = runCatching {
-                SimpleDateFormat(pattern, Locale.CHINA).parse(raw)
-            }.getOrNull()
-            if (parsed != null) return Calendar.getInstance().apply { time = parsed }
-        }
-        return null
-    }
+    fun parseTime(raw: String): Calendar? = AppDateFormats.parse(raw)
 
     fun formatTime(cal: Calendar = Calendar.getInstance()): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(cal.time)
-
-    fun dayLabel(cal: Calendar): String =
-        SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(cal.time) + " " + weekday(cal)
+        AppDateFormats.format(cal, AppDateFormats.dateTime)
 
     fun weekday(cal: Calendar): String = when (cal.get(Calendar.DAY_OF_WEEK)) {
         Calendar.MONDAY -> "星期一"

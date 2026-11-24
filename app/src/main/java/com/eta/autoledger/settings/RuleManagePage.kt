@@ -47,6 +47,7 @@ import com.eta.autoledger.data.RuleEngine
 import com.eta.autoledger.data.RuleSafety
 import com.eta.autoledger.data.RuleSeed
 import com.eta.autoledger.data.RuleType
+import com.eta.autoledger.data.MoneyPatterns
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.ui.theme.LedgerDimens
@@ -66,7 +67,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import java.util.Locale
 
 /**
  * 高级解析规则管理页（设置 → 自动记账 → 高级解析规则）。
@@ -80,7 +80,7 @@ import java.util.Locale
 
 /** 新建规则时预填的金额正则：优先带千分位的写法，其次普通小数，末尾必须带「元」。 */
 private const val DEFAULT_AMOUNT_REGEX =
-    "(?:[¥￥]\\s*)?([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)\\s*元"
+    MoneyPatterns.EDITOR_DEFAULT
 
 @Composable
 fun RuleManagePage() {
@@ -94,7 +94,7 @@ fun RuleManagePage() {
     var rules by remember { mutableStateOf<List<RuleEntity>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableIntStateOf(0) }
-    var tab by remember { mutableStateOf(0) }
+    var tab by remember { mutableIntStateOf(0) }
 
     var editorShow by remember { mutableStateOf(false) }
     var editorSeed by remember { mutableStateOf<RuleEntity?>(null) }
@@ -553,6 +553,7 @@ private fun RuleEditorDialog(
     onSave: (RuleEntity) -> Unit,
     onDelete: (RuleEntity) -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     val initial = remember(show, seed) { readRuleFields(seed) }
 
     var name by remember(show, seed) { mutableStateOf(seed?.name ?: "") }
@@ -704,15 +705,32 @@ private fun RuleEditorDialog(
                 text = "测试匹配",
                 primary = false,
                 onClick = {
-                    testResult = runRuleTest(
-                        amountPatterns = lines(amountText),
-                        expenseWords = tokens(expenseText),
-                        incomeWords = tokens(incomeText),
-                        blockWords = tokens(blockText),
+                    val patternJson = buildRulePatternJson(
+                        type = type,
+                        app = app.trim().ifBlank { null },
+                        amount = lines(amountText),
+                        expense = tokens(expenseText),
+                        income = tokens(incomeText),
+                        block = tokens(blockText),
                         categories = parseCategories(catsText),
-                        forcedDirection = direction.ifBlank { null },
-                        body = testBody,
+                        direction = direction.ifBlank { null },
                     )
+                    scope.launch {
+                        val hit = withContext(Dispatchers.IO) {
+                            RuleEngine.previewRule(patternJson, testBody)
+                        }
+                        testResult = if (hit == null) {
+                            "未命中：拦截词、方向证据或金额至少有一项不满足"
+                        } else {
+                            val directionText = when (hit.type) {
+                                "income" -> "收入"
+                                "expense" -> "支出"
+                                else -> "其他"
+                            }
+                            "命中：金额 ${String.format(java.util.Locale.ROOT, "%.2f", hit.amount)} 元 · " +
+                                "方向 $directionText · 分类 ${hit.category ?: "未指定"}"
+                        }
+                    }
                 },
             )
             testResult?.let {
@@ -918,7 +936,7 @@ private fun JSONObject.stringMap(name: String): Map<String, List<String>> {
 }
 
 /** 与 RuleSeed 的播种 JSON 同构；direction 为空时不写该键。 */
-private fun buildPatternJson(
+internal fun buildRulePatternJson(
     type: String,
     app: String?,
     amount: List<String>,
@@ -981,7 +999,7 @@ private fun buildUserRule(
         type = type,
         name = trimmed,
         creator = RuleEntity.CREATOR_USER,
-        patternJson = buildPatternJson(type, cleanApp, amount, expense, income, block, categories, direction),
+        patternJson = buildRulePatternJson(type, cleanApp, amount, expense, income, block, categories, direction),
         enabled = seed?.enabled ?: true,
         autoRecord = autoRecord,
         updatedAt = System.currentTimeMillis(),
@@ -1011,68 +1029,3 @@ private fun parseCategories(raw: String): Map<String, List<String>> {
 
 private fun formatCategories(map: Map<String, List<String>>): String =
     map.entries.joinToString("\n") { entry -> "${entry.key}: ${entry.value.joinToString("，")}" }
-
-/**
- * 在 UI 侧复现 RuleEngine 的匹配语义（拦截词 → 方向 → 金额 → 分类），用于「测试此规则」。
- *
- * 不落库、不进引擎缓存：测试是纯预览，改完规则应该立刻看到结果，而不是先存一遍。
- */
-private fun runRuleTest(
-    amountPatterns: List<String>,
-    expenseWords: List<String>,
-    incomeWords: List<String>,
-    blockWords: List<String>,
-    categories: Map<String, List<String>>,
-    forcedDirection: String?,
-    body: String,
-): String {
-    if (body.isBlank()) return "先粘贴一条短信或通知原文"
-    val blocked = blockWords.firstOrNull { body.contains(it) }
-    if (blocked != null) return "被拦截词「$blocked」拦下，不会入账"
-
-    val expenseHits = expenseWords.count { body.contains(it) }
-    val incomeHits = incomeWords.count { body.contains(it) }
-    if (forcedDirection == null && expenseHits == 0 && incomeHits == 0) {
-        return "缺少方向证据：请指定方向，或让原文命中至少一个支出词/收入词"
-    }
-
-    val direction = forcedDirection ?: when {
-        incomeHits > expenseHits -> "income"
-        expenseHits > incomeHits -> "expense"
-        else -> "expense"
-    }
-    val amount = extractTestAmount(body, amountPatterns) ?: return "金额正则没能从原文里抠出金额"
-    val category = pickTestCategory(body, categories)
-    val directionText = when (direction) {
-        "income" -> "收入"
-        "expense" -> "支出"
-        else -> "其他"
-    }
-    val amountText = String.format(Locale.CHINA, "%.2f", amount)
-    return "命中：金额 $amountText 元 · 方向 $directionText · 分类 ${category ?: "未指定"}"
-}
-
-private fun extractTestAmount(body: String, patterns: List<String>): Double? {
-    for (raw in patterns) {
-        val pattern = RuleSafety.compile(raw) ?: continue
-        val match = pattern.find(body) ?: continue
-        val text = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } ?: match.value
-        val value = text.replace(",", "").toDoubleOrNull() ?: continue
-        if (value > 0.0 && value <= 1_000_000.0) return value
-    }
-    return null
-}
-
-private fun pickTestCategory(body: String, categories: Map<String, List<String>>): String? {
-    if (categories.isEmpty()) return null
-    var best: String? = null
-    var bestScore = 0
-    for (entry in categories) {
-        val score = entry.value.count { body.contains(it) }
-        if (score > bestScore || (score == bestScore && score > 0 && entry.key.length < (best?.length ?: Int.MAX_VALUE))) {
-            best = entry.key
-            bestScore = score
-        }
-    }
-    return best
-}

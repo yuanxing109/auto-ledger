@@ -1,5 +1,6 @@
 package com.eta.autoledger.service
 
+import android.annotation.SuppressLint
 import android.app.job.JobInfo
 import android.app.job.JobParameters
 import android.app.job.JobScheduler
@@ -17,11 +18,12 @@ import kotlinx.coroutines.launch
 /**
  * 定时云备份。
  *
- * 用 JobScheduler 而不是 WorkManager：项目没有引入 WorkManager 依赖，
- * 而且这里只需要「周期跑一次、失败就算了」的语义，JobService 足够。
+ * 使用 JobScheduler 而不是 WorkManager：这里只需要「周期跑一次、失败就算了」的语义，
+ * 固定 Job id 4302，与 WorkManager 使用的 ID 段分离。
  * 周期设 6 小时，真正是否上传由 [BackupRunner.autoBackupIfDue] 判断（≥20 小时才传），
  * 这样系统把任务提前叫醒也不会把云端写满。
  */
+@SuppressLint("SpecifyJobSchedulerIdRange") // 固定 4302，避开 WorkManager 默认 JobScheduler ID 段
 class BackupJobService : JobService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

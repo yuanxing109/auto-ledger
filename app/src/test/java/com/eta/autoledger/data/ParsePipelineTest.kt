@@ -432,18 +432,8 @@ class ParsePipelineTest {
         override suspend fun getAll(): List<RuleEntity> = rules
         override suspend fun getEnabledByCreator(creator: String): List<RuleEntity> =
             rules.filter { it.creator == creator && it.enabled }
-        override suspend fun getEnabledFor(type: String, app: String): List<RuleEntity> =
-            rules.filter { it.enabled && it.type == type && (it.app == null || it.app == app) }
-        override suspend fun getById(id: String): RuleEntity? = rules.firstOrNull { it.id == id }
         override suspend fun upsert(rule: RuleEntity) = Unit
-        override suspend fun upsertAll(rules: List<RuleEntity>) = Unit
         override suspend fun insertIgnore(rules: List<RuleEntity>): List<Long> = rules.map { -1L }
-        override suspend fun updateSystemRule(
-            id: String,
-            name: String,
-            patternJson: String,
-            updatedAt: Long,
-        ): Int = 0
         override suspend fun delete(id: String) = Unit
         override suspend fun deleteUserRule(id: String): Int = 0
         override suspend fun count(): Int = rules.size
@@ -453,19 +443,9 @@ class ParsePipelineTest {
         override suspend fun getAll(): List<RuleEntity> = throw IllegalStateException("表损坏")
         override suspend fun getEnabledByCreator(creator: String): List<RuleEntity> =
             throw IllegalStateException("表损坏")
-        override suspend fun getEnabledFor(type: String, app: String): List<RuleEntity> =
-            throw IllegalStateException("表损坏")
-        override suspend fun getById(id: String): RuleEntity? = throw IllegalStateException("表损坏")
         override suspend fun upsert(rule: RuleEntity) = throw IllegalStateException("表损坏")
-        override suspend fun upsertAll(rules: List<RuleEntity>) = throw IllegalStateException("表损坏")
         override suspend fun insertIgnore(rules: List<RuleEntity>): List<Long> =
             throw IllegalStateException("表损坏")
-        override suspend fun updateSystemRule(
-            id: String,
-            name: String,
-            patternJson: String,
-            updatedAt: Long,
-        ): Int = throw IllegalStateException("表损坏")
         override suspend fun delete(id: String) = throw IllegalStateException("表损坏")
         override suspend fun deleteUserRule(id: String): Int = throw IllegalStateException("表损坏")
         override suspend fun count(): Int = throw IllegalStateException("表损坏")

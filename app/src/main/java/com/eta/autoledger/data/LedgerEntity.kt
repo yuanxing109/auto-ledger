@@ -44,4 +44,13 @@ data class LedgerEntry(
      */
     @ColumnInfo(name = "recurring_rule")
     val recurringRule: String? = null,
+
+    /**
+     * 子分类。主分类继续由 [category] 保存。
+     *
+     * 历史账单没有这层信息，迁移后保持 NULL。报表在无子分类数据时展示明确空态，
+     * 不从商户名或备注自动推导，避免产生不可审计的分类结果。
+     */
+    @ColumnInfo(name = "sub_category")
+    val subCategory: String? = null,
 )

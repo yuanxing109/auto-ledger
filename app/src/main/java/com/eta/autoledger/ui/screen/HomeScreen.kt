@@ -3,6 +3,7 @@ package com.eta.autoledger.ui.screen
 import com.eta.autoledger.ui.model.DayGroupUi
 import com.eta.autoledger.ui.model.EntryUi
 import com.eta.autoledger.ui.model.entryCalendar
+import com.eta.autoledger.ui.model.formatCategoryLabel
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.window.LocalSnackbar
 import androidx.compose.runtime.rememberCoroutineScope
@@ -467,7 +468,7 @@ private fun EntryRow(entry: EntryUi, onClick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = entry.category,
+                    text = formatCategoryLabel(entry.category, entry.ledger.subCategory),
                     style = MiuixTheme.textStyles.title3,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

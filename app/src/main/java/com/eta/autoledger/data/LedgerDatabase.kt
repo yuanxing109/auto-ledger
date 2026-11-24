@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [LedgerEntry::class, SeenKeyEntity::class, RuleEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class LedgerDatabase : RoomDatabase() {
@@ -35,7 +35,7 @@ abstract class LedgerDatabase : RoomDatabase() {
                         LedgerDatabase::class.java,
                         "auto_ledger.db",
                     )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                         .addCallback(SeedCallback)
                         .build()
                     if (isNew) migrateLegacy(context, db)
@@ -92,6 +92,18 @@ abstract class LedgerDatabase : RoomDatabase() {
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 LedgerSchema.V4_CREATE_STATEMENTS.forEach { db.execSQL(it) }
+            }
+        }
+
+        /**
+         * v4 → v5：给 Bill 追加可空子分类。
+         *
+         * 保留既有 category 作为主分类。历史账单的 sub_category 由 SQLite 自动置为 NULL，
+         * 不从商户名、备注或规则结果推断回填，符合“旧数据留空”的既定决策。
+         */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(LedgerSchema.V5_ADD_SUB_CATEGORY)
             }
         }
 

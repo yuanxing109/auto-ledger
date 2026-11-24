@@ -1,10 +1,10 @@
 package com.eta.autoledger.data
 
 /**
- * v3 → v4 的建表语句，集中在一处。
+ * Room 增量迁移使用的纯 SQL，集中在一处。
  *
- * 为什么单独抽成对象而不是直接写在 `MIGRATION_3_4` 里：
- * `MIGRATION_3_4` 的 `migrate` 参数是 `SupportSQLiteDatabase`，这是 Android 类型，
+ * 为什么单独抽成对象而不是直接写在 Migration 里：
+ * `Migration.migrate` 的参数是 `SupportSQLiteDatabase`，这是 Android 类型，
  * 纯 JVM 单测里拿不到。把 DDL 抽成纯字符串列表后，单测可以直接用 sqlite-jdbc
  * 在内存库里跑同一份语句，验证「建表 SQL 合法 + 不碰 Bill 表 + 老数据仍可读」。
  * 迁移代码本身仍只在这一份语句上执行，不存在「测试跑的和线上跑的不是同一份」的问题。
@@ -20,6 +20,9 @@ internal object LedgerSchema {
 
     /** 去重键的存活时长：10 分钟。见 [LedgerDatabase.pruneSeenKeys]。 */
     const val SEEN_KEY_TTL_MS = 10 * 60 * 1000L
+
+    /** v4 → v5：追加可空子分类列。历史行保持 NULL，不做推断回填。 */
+    const val V5_ADD_SUB_CATEGORY = "ALTER TABLE Bill ADD COLUMN sub_category TEXT"
 
     /**
      * v4 新增的两张表。

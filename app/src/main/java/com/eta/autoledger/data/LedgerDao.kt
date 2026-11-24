@@ -10,7 +10,22 @@ import kotlinx.coroutines.flow.Flow
 
 data class Bucket(val bucket: String, val total: Double)
 
-data class CategoryAgg(val name: String, val total: Double, val count: Int)
+data class CategoryAgg(
+    val name: String,
+    val total: Double,
+    val count: Int,
+    @ColumnInfo(name = "subCategory") val subCategory: String? = null,
+)
+
+/** DAO 与纯 JVM SQLite 测试共用的查询语句，避免测试复制一份不同 SQL。 */
+internal object LedgerDaoSql {
+    const val DUAL_CATEGORY_AGGREGATION =
+        "SELECT category AS name, sub_category AS subCategory, " +
+            "COALESCE(SUM(amount), 0.0) AS total, COUNT(*) AS count FROM Bill " +
+            "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
+            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end " +
+            "GROUP BY category, sub_category ORDER BY category ASC, total DESC"
+}
 
 /**
  * [LedgerDao.observeTotals] 的投影：报表顶部 4 个数，一条 SQL 出全。
@@ -119,11 +134,7 @@ interface LedgerDao {
     )
     fun observeBuckets(format: String, start: Long, end: Long, income: Int): Flow<List<Bucket>>
 
-    @Query(
-        "SELECT category AS name, COALESCE(SUM(amount), 0.0) AS total, COUNT(*) AS count FROM Bill " +
-            "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
-            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end GROUP BY category ORDER BY total DESC",
-    )
+    @Query(LedgerDaoSql.DUAL_CATEGORY_AGGREGATION)
     fun observeCategories(start: Long, end: Long, income: Int): Flow<List<CategoryAgg>>
 
     // ---- 一次性聚合：给桌面小部件与提醒用，避免把全表读进内存再 filter/sum ----

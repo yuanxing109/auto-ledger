@@ -4,7 +4,9 @@ import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.ui.rememberMotionDuration
 import com.eta.autoledger.ui.components.AppDialog
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,9 +31,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +44,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -49,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -65,6 +72,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -83,11 +94,14 @@ import java.util.Locale
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.eta.autoledger.data.Bucket
+import com.eta.autoledger.data.CategoryAgg
+import com.eta.autoledger.data.CategoryBreakdown
 import com.eta.autoledger.data.ReportAggregate
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.ReportRepository
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.LedgerEntry
+import com.eta.autoledger.data.SubCategoryShare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -126,6 +140,7 @@ private data class ReportFrame(
     val tab: Int,
     val offset: Int,
     val income: Boolean,
+    val subCategory: Boolean,
     val data: ReportData,
 )
 
@@ -156,11 +171,21 @@ private val DonutPalette: List<Color> get() = LedgerTheme.chartSeries
 
 private data class CategorySlice(
     val name: String,
+    val displayName: String = name,
     val emoji: String,
     val color: Color,
     val amount: Double,
     val count: Int,
     val percent: Float,
+    val subCategories: List<SubCategoryShare> = emptyList(),
+) {
+    val hasSubCategories: Boolean
+        get() = subCategories.any { !it.name.isNullOrBlank() }
+}
+
+private data class CategorySource(
+    val aggregate: CategoryAgg,
+    val subCategories: List<SubCategoryShare>,
 )
 
 private data class ReportData(
@@ -216,13 +241,14 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
     // 交叉淡入等于什么都没发生，还白搭一次全量重组（4 张 Canvas + 分类列表）。
     // 这里把「周期 + 口径 + 算好的数据」整体打包成快照交给 AnimatedContent，
     // 正在淡出的那一帧天然持有旧快照，不用手动留存上一份。
-    val frame = remember(loaded) {
+    val frame = remember(loaded, subCategory) {
         loaded?.let {
             ReportFrame(
                 tab = it.tab,
                 offset = it.offset,
                 income = it.income,
-                data = toReportData(it.aggregate, it.tab, it.income),
+                subCategory = subCategory,
+                data = toReportData(it.aggregate, it.tab, it.income, subCategory),
             )
         }
     }
@@ -236,7 +262,7 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
             transitionSpec = { fadeIn(tween(motion)) togetherWith fadeOut(tween(motion)) },
             // contentKey 只认「周期 + 口径」：同一周期内数据被刷新（别处记了一笔、
             // 周期账单补跑）时原地重组即可，不该整块淡一次 —— 那会让报表无端闪。
-            contentKey = { it?.let { f -> Triple(f.tab, f.offset, f.income) } },
+            contentKey = { it?.let { f -> listOf(f.tab, f.offset, f.income, f.subCategory) } },
             label = "report-period",
         ) { snapshot ->
             // 首帧还没有数据：给一句轻提示，而不是先画一屏 0 元、空折线、空环图。
@@ -808,6 +834,12 @@ private fun DonutCard(
     onSubCategory: (Boolean) -> Unit,
     onOpenSlice: (CategorySlice) -> Unit,
 ) {
+    val dimens = LocalDimens.current
+    val expandMillis = rememberMotionDuration(160)
+    var expandedCategory by rememberSaveable(
+        subCategory,
+        data.categories.map { it.displayName },
+    ) { mutableStateOf<String?>(null) }
     ReportCard {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -821,16 +853,38 @@ private fun DonutCard(
                 SubCategoryPill(subCategory = subCategory, onSelect = onSubCategory)
             }
             Spacer(Modifier.height(4.dp))
-            DonutChart(slices = data.categories, income = income)
-            Spacer(Modifier.height(8.dp))
-            // 排序移进 remember：原来直接写在组合体里，DonutCard 每次重组（切 Tab、
-            // 点切片、父级任意状态变化）都要重排一遍。categories 引用不变就不重排。
-            val sortedSlices = remember(data.categories) {
-                data.categories.sortedByDescending { it.amount }
-            }
-            sortedSlices.forEachIndexed { index, slice ->
-                CategoryRow(rank = index + 1, slice = slice, onOpen = { onOpenSlice(slice) })
-                if (index != sortedSlices.lastIndex) Spacer(Modifier.height(12.dp))
+            if (subCategory && data.categories.isEmpty()) {
+                Text(
+                    text = "暂无子分类数据",
+                    style = MiuixTheme.textStyles.body2,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = dimens.gapLarge * 2),
+                )
+            } else {
+                DonutChart(slices = data.categories, income = income)
+                Spacer(Modifier.height(8.dp))
+                // 排序移进 remember：原来直接写在组合体里，DonutCard 每次重组（切 Tab、
+                // 点切片、父级任意状态变化）都要重排一遍。categories 引用不变就不重排。
+                val sortedSlices = remember(data.categories) {
+                    data.categories.sortedByDescending { it.amount }
+                }
+                sortedSlices.forEachIndexed { index, slice ->
+                    CategoryRow(
+                        rank = index + 1,
+                        slice = slice,
+                        expanded = expandedCategory == slice.name,
+                        motionMillis = expandMillis,
+                        detailEnabled = !subCategory,
+                        onToggle = {
+                            expandedCategory = if (expandedCategory == slice.name) null else slice.name
+                        },
+                        onOpen = { onOpenSlice(slice) },
+                    )
+                    if (index != sortedSlices.lastIndex) Spacer(Modifier.height(12.dp))
+                }
             }
         }
     }
@@ -974,7 +1028,7 @@ private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
                 drawLine(lineColor, kink, end, strokeWidth = 1.dp.toPx())
 
                 val percent = sweeps[i] / 3.6f
-                val label = "${slices[i].name} %.2f%%".format(percent)
+                val label = "${slices[i].displayName} %.2f%%".format(percent)
                 val layout = textMeasurer.measure(label, labelStyle)
                 val textLeft = if (sign > 0) end.x + 3.dp.toPx()
                 else end.x - layout.size.width - 3.dp.toPx()
@@ -988,72 +1042,187 @@ private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
 }
 
 @Composable
-private fun CategoryRow(rank: Int, slice: CategorySlice,
+private fun CategoryRow(
+    rank: Int,
+    slice: CategorySlice,
+    expanded: Boolean,
+    motionMillis: Int,
+    detailEnabled: Boolean,
     onOpen: () -> Unit,
+    onToggle: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onOpen() }
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "$rank",
-            style = TextStyle(fontSize = 12.sp, color = TextSecondary),
-            modifier = Modifier.width(20.dp),
-        )
-        Box(
+    val dimens = LocalDimens.current
+    val rowShape = RoundedCornerShape(dimens.radiusSmall)
+    val interactionSource = remember { MutableInteractionSource() }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (slice.hasSubCategories && expanded) 90f else 0f,
+        animationSpec = tween(motionMillis),
+        label = "report-category-chevron",
+    )
+    val actionLabel = when {
+        slice.hasSubCategories && expanded -> "收起${slice.name}子分类"
+        slice.hasSubCategories -> "展开${slice.name}子分类"
+        else -> "查看${slice.name}分类明细"
+    }
+    val sortedSubCategories = remember(slice.subCategories) {
+        slice.subCategories.sortedByDescending { it.total }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
             modifier = Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(slice.color.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clip(rowShape)
+                .clickable(
+                    enabled = detailEnabled,
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                    onClickLabel = actionLabel.takeIf { detailEnabled },
+                ) {
+                    if (slice.hasSubCategories) onToggle() else onOpen()
+                }
+                .semantics {
+                    if (detailEnabled) {
+                        role = Role.Button
+                        if (slice.hasSubCategories) {
+                            stateDescription = if (expanded) "已展开" else "已折叠"
+                        }
+                    }
+                }
+                .padding(vertical = dimens.gapSmall / 2),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = slice.emoji, fontSize = 17.sp)
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = slice.name, style = MiuixTheme.textStyles.body2.copy(color = TextPrimary))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "${slice.count}笔",
-                    style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "%.2f%% · ¥ %,.2f".format(slice.percent, slice.amount),
-                    style = TextStyle(fontSize = 12.sp, color = TextPrimary),
-                )
-                Icon(
-                    imageVector = MiuixIcons.ChevronForward,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "$rank",
+                style = TextStyle(fontSize = 12.sp, color = TextSecondary),
+                modifier = Modifier.width(20.dp),
+            )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(TrackGray),
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(slice.color.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
             ) {
+                Text(text = slice.emoji, fontSize = 17.sp)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = slice.displayName,
+                        style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "${slice.count}笔",
+                        style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "%.2f%% · ¥ %,.2f".format(slice.percent, slice.amount),
+                        style = TextStyle(fontSize = 12.sp, color = TextPrimary),
+                    )
+                    if (detailEnabled) {
+                        Icon(
+                            imageVector = MiuixIcons.ChevronForward,
+                            contentDescription = null,
+                            tint = TextSecondary,
+                            modifier = Modifier
+                                .size(14.dp)
+                                .rotate(arrowRotation),
+                        )
+                    } else {
+                        Spacer(Modifier.width(14.dp))
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth((slice.percent / 100f).coerceIn(0.02f, 1f))
-                        .fillMaxHeight()
-                        .background(slice.color),
-                )
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(TrackGray),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth((slice.percent / 100f).coerceIn(0.02f, 1f))
+                            .fillMaxHeight()
+                            .background(slice.color),
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = expanded && slice.hasSubCategories,
+            enter = expandVertically(tween(motionMillis), expandFrom = Alignment.Top) +
+                fadeIn(tween(motionMillis)),
+            exit = shrinkVertically(tween(motionMillis), shrinkTowards = Alignment.Top) +
+                fadeOut(tween(motionMillis)),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = dimens.cardPadding, top = dimens.gapSmall),
+            ) {
+                sortedSubCategories.forEach { child ->
+                    SubCategoryRow(child)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = LocalIndication.current,
+                            onClickLabel = "查看${slice.name}分类明细",
+                        ) { onOpen() }
+                        .padding(vertical = dimens.gap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "查看分类明细",
+                        style = MiuixTheme.textStyles.footnote1.copy(color = AccentBlue),
+                    )
+                }
             }
         }
     }
 }
 
-private fun toReportData(aggregate: ReportAggregate, tab: Int, income: Boolean): ReportData {
+@Composable
+private fun SubCategoryRow(share: SubCategoryShare) {
+    val dimens = LocalDimens.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = dimens.gapSmall),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = share.name?.takeIf { it.isNotBlank() } ?: "未分类",
+            style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "%.2f%% · ¥ %,.2f · %d笔".format(share.percent, share.total, share.count),
+            style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
+        )
+    }
+}
+
+private fun toReportData(
+    aggregate: ReportAggregate,
+    tab: Int,
+    income: Boolean,
+    subCategory: Boolean,
+): ReportData {
     val trend = when (tab) {
         0 -> aggregate.trend.map { TrendPoint(it.bucket.takeLast(5).replace("-", "."), it.total) }
         1 -> {
@@ -1079,41 +1248,10 @@ private fun toReportData(aggregate: ReportAggregate, tab: Int, income: Boolean):
         }
         TrendPoint(label, bucket.total)
     }
-    val sum = aggregate.categories.sumOf { it.total }.coerceAtLeast(0.0001)
-    val usedColors = mutableListOf<Color>()
-    // Top6 之外的分类并入「其他」，让环形图合计与图例百分比的分母都等于全量支出，
-    // 否则环图只按 Top6 归一化到 360°，而列表百分比按全量，出现同一分类两个百分比。
-    val slicesSource = run {
-        val head = aggregate.categories.take(6)
-        val tail = aggregate.categories.drop(6)
-        if (tail.isEmpty()) head else {
-            val tailAmount = tail.sumOf { it.total }
-            val tailCount = tail.sumOf { it.count }
-            val idx = head.indexOfFirst { it.name == "其他" }
-            if (idx >= 0) head.toMutableList().also {
-                val e = it[idx]
-                it[idx] = e.copy(total = e.total + tailAmount, count = e.count + tailCount)
-            } else {
-                head + tail.first().copy(name = "其他", total = tailAmount, count = tailCount)
-            }
-        }
-    }
-    val categories = slicesSource.map { c ->
-        val base = categoryColor(c.name)
-        val color = if (base in usedColors) {
-            val alt = DonutPalette.firstOrNull { it !in usedColors } ?: base
-            alt.also { usedColors.add(it) }
-        } else {
-            base.also { usedColors.add(it) }
-        }
-        CategorySlice(
-            name = c.name.ifBlank { "其他" },
-            emoji = categoryEmoji(c.name),
-            color = color,
-            amount = c.total,
-            count = c.count,
-            percent = (c.total / sum * 100f).toFloat(),
-        )
+    val categories = if (subCategory) {
+        toSubCategorySlices(aggregate)
+    } else {
+        toMainCategorySlices(aggregate)
     }
     return ReportData(
         periodLabel = aggregate.periodLabel,
@@ -1127,6 +1265,126 @@ private fun toReportData(aggregate: ReportAggregate, tab: Int, income: Boolean):
         bars = bars,
         categories = categories,
     )
+}
+
+/** 主分类模式保留 Top6 + 其他逻辑，同时把子分类挂到对应主分类。 */
+private fun toMainCategorySlices(aggregate: ReportAggregate): List<CategorySlice> {
+    val total = aggregate.categories.sumOf { it.total }.coerceAtLeast(0.0001)
+    val breakdowns = aggregate.categoryBreakdowns.associateBy { it.name }
+    val sources = aggregate.categories.take(6)
+        .map { category -> categorySource(category, breakdowns) }
+        .toMutableList()
+    val tail = aggregate.categories.drop(6)
+    if (tail.isNotEmpty()) {
+        val tailSources = tail.map { category -> categorySource(category, breakdowns) }
+        val tailAmount = tail.sumOf { it.total }
+        val tailCount = tail.sumOf { it.count }
+        val otherIndex = sources.indexOfFirst { it.aggregate.name == "其他" }
+        if (otherIndex >= 0) {
+            val existing = sources[otherIndex]
+            val mergedTotal = existing.aggregate.total + tailAmount
+            sources[otherIndex] = CategorySource(
+                aggregate = existing.aggregate.copy(
+                    total = mergedTotal,
+                    count = existing.aggregate.count + tailCount,
+                ),
+                subCategories = mergeSubCategories(
+                    existing.subCategories + tailSources.flatMap { it.subCategories },
+                    mergedTotal,
+                ),
+            )
+        } else {
+            sources += CategorySource(
+                aggregate = tail.first().copy(
+                    name = "其他",
+                    total = tailAmount,
+                    count = tailCount,
+                ),
+                subCategories = mergeSubCategories(
+                    tailSources.flatMap { it.subCategories },
+                    tailAmount,
+                ),
+            )
+        }
+    }
+
+    val usedColors = mutableListOf<Color>()
+    return sources.map { source ->
+        val category = source.aggregate
+        CategorySlice(
+            name = category.name.ifBlank { "其他" },
+            emoji = categoryEmoji(category.name),
+            color = allocateCategoryColor(category.name, usedColors),
+            amount = category.total,
+            count = category.count,
+            percent = (category.total / total * 100f).toFloat(),
+            subCategories = source.subCategories,
+        )
+    }
+}
+
+/** 子分类模式把所有真实非空子分类展平，并用全量分类总额重算占比。 */
+private fun toSubCategorySlices(aggregate: ReportAggregate): List<CategorySlice> {
+    if (aggregate.categoryBreakdowns.none { it.hasSubCategories }) return emptyList()
+    val rows = aggregate.categoryBreakdowns.flatMap { breakdown ->
+        breakdown.subCategories.map { child -> breakdown to child }
+    }
+    val total = rows.sumOf { it.second.total }.coerceAtLeast(0.0001)
+    val usedColors = mutableListOf<Color>()
+    return rows.map { (breakdown, child) ->
+        val childName = child.name?.takeIf { it.isNotBlank() } ?: "未分类"
+        CategorySlice(
+            name = breakdown.name.ifBlank { "其他" },
+            displayName = "${breakdown.name.ifBlank { "其他" }} · $childName",
+            emoji = categoryEmoji(breakdown.name),
+            color = allocateCategoryColor(breakdown.name, usedColors),
+            amount = child.total,
+            count = child.count,
+            percent = (child.total / total * 100f).toFloat(),
+        )
+    }.sortedByDescending { it.amount }
+}
+
+private fun categorySource(
+    category: CategoryAgg,
+    breakdowns: Map<String, CategoryBreakdown>,
+): CategorySource {
+    val children = breakdowns[category.name]?.subCategories.orEmpty().ifEmpty {
+        if (category.total > 0.0) {
+            listOf(SubCategoryShare(null, category.total, category.count, 100f))
+        } else {
+            emptyList()
+        }
+    }
+    return CategorySource(category, children)
+}
+
+private fun mergeSubCategories(
+    shares: List<SubCategoryShare>,
+    total: Double,
+): List<SubCategoryShare> =
+    shares.groupBy { it.name?.takeIf { name -> name.isNotBlank() } }
+        .map { (name, group) ->
+            val amount = group.sumOf { it.total }
+            val count = group.sumOf { it.count }
+            SubCategoryShare(
+                name = name,
+                total = amount,
+                count = count,
+                percent = if (total > 0.0) (amount / total * 100.0).toFloat() else 0f,
+            )
+        }
+        .sortedWith(compareByDescending<SubCategoryShare> { it.total }.thenBy { it.name.orEmpty() })
+
+private fun allocateCategoryColor(name: String, usedColors: MutableList<Color>): Color {
+    val base = categoryColor(name)
+    val color = if (base in usedColors) {
+        DonutPalette.firstOrNull { it !in usedColors } ?: base
+    } else {
+        base
+    }
+    usedColors += color
+    return color
 }
 
 private fun categoryEmoji(category: String): String = when (category) {

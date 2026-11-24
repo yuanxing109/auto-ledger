@@ -7,6 +7,24 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
+data class SubCategoryShare(
+    val name: String?,
+    val total: Double,
+    val count: Int,
+    val percent: Float,
+)
+
+/** 一个主分类及其子分类分布。historical null 子分类也会作为一条原始分布保留。 */
+data class CategoryBreakdown(
+    val name: String,
+    val total: Double,
+    val count: Int,
+    val subCategories: List<SubCategoryShare>,
+) {
+    val hasSubCategories: Boolean
+        get() = subCategories.any { !it.name.isNullOrBlank() }
+}
+
 data class ReportAggregate(
     val periodLabel: String = "",
     val periodName: String = "本月",
@@ -18,6 +36,7 @@ data class ReportAggregate(
     val trend: List<Bucket> = emptyList(),
     val bars: List<Bucket> = emptyList(),
     val categories: List<CategoryAgg> = emptyList(),
+    val categoryBreakdowns: List<CategoryBreakdown> = emptyList(),
     val dayCount: Int = 30,
 )
 
@@ -173,6 +192,7 @@ object ReportRepository {
         ) { trend, bars, categories -> Triple(trend, bars, categories) }
 
         return combine(totals, charts) { t, c ->
+            val breakdowns = buildCategoryBreakdowns(c.third)
             ReportAggregate(
                 periodLabel = periodLabel,
                 periodName = periodName,
@@ -183,9 +203,35 @@ object ReportRepository {
                 income = t.income,
                 trend = c.first,
                 bars = c.second,
-                categories = c.third,
+                // 现有 UI 继续消费主分类汇总，避免 Step2 在未改 UI 前出现重复分类行。
+                categories = breakdowns.map { CategoryAgg(it.name, it.total, it.count) },
+                categoryBreakdowns = breakdowns,
                 dayCount = dayCount,
             )
         }
     }
 }
+
+/** 把「主分类 + 子分类」原始聚合折叠为主分类总额与子分类占比。 */
+internal fun buildCategoryBreakdowns(rows: List<CategoryAgg>): List<CategoryBreakdown> =
+    rows.groupBy { it.name }
+        .map { (name, children) ->
+            val total = children.sumOf { it.total }
+            val count = children.sumOf { it.count }
+            CategoryBreakdown(
+                name = name,
+                total = total,
+                count = count,
+                subCategories = children
+                    .sortedWith(compareByDescending<CategoryAgg> { it.total }.thenBy { it.subCategory.orEmpty() })
+                    .map { child ->
+                        SubCategoryShare(
+                            name = child.subCategory,
+                            total = child.total,
+                            count = child.count,
+                            percent = if (total > 0.0) (child.total / total * 100.0).toFloat() else 0f,
+                        )
+                    },
+            )
+        }
+        .sortedByDescending { it.total }

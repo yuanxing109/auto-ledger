@@ -79,6 +79,7 @@ import com.eta.autoledger.ui.components.drawRowSurface
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.ui.model.formatCategoryLabel
 import com.eta.autoledger.ui.window.LocalSnackbar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -670,7 +671,7 @@ private fun ResultRow(
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                text = "${entry.category} · $stamp · ${entry.source}",
+                text = "${formatCategoryLabel(entry.category, entry.subCategory)} · $stamp · ${entry.source}",
                 style = MiuixTheme.textStyles.footnote1,
                 color = LedgerTheme.textSecondary,
                 maxLines = 1,

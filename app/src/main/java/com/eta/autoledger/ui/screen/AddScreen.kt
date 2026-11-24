@@ -133,6 +133,7 @@ private fun categoriesFor(context: android.content.Context, type: Int): List<Cat
 @Composable
 fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     val context = LocalContext.current
+    val dimens = LocalDimens.current
     val scope = rememberCoroutineScope()
     val snackbar = LocalSnackbar.current
     var type by rememberSaveable { mutableIntStateOf(0) }
@@ -140,6 +141,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     var negative by rememberSaveable { mutableStateOf(false) }
     var note by rememberSaveable { mutableStateOf("") }
     var selectedCategory by rememberSaveable { mutableStateOf(CategoryStore.expense.first()) }
+    var subCategory by rememberSaveable { mutableStateOf("") }
     // 记账时间用 saveable 的 epoch 毫秒保存：旋转/进程重建后不会悄悄退回「现在」，
     // 否则显示时间与保存时间会不一致（原来 calendar 用 remember，重建即丢失）。
     var timeMillis by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
@@ -224,6 +226,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             else -> "expense"
         }
         val timeTextNow = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(calendar.time)
+        val normalizedSubCategory = subCategory.trim().ifBlank { null }
         scope.launch {
             runCatching {
                 if (recurring) {
@@ -249,6 +252,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                             amount = raw,
                             type = typeValue,
                             category = selectedCategory,
+                            subCategory = normalizedSubCategory,
                             time = timeTextNow,
                             note = note,
                             source = RecurringWorker.SOURCE_TEMPLATE,
@@ -265,6 +269,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                             amount = raw,
                             type = typeValue,
                             category = selectedCategory,
+                            subCategory = normalizedSubCategory,
                             time = timeTextNow,
                             note = note,
                             source = "手动记账",
@@ -280,6 +285,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                             amount = raw,
                             type = typeValue,
                             category = selectedCategory,
+                            subCategory = normalizedSubCategory,
                             time = timeTextNow,
                             note = note,
                             source = "手动记账",
@@ -294,6 +300,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
         amountInput = ""
         negative = false
         note = ""
+        subCategory = ""
         if (!reset) onDone()
     }
 
@@ -309,6 +316,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                 onType = {
                     type = it
                     selectedCategory = categoriesFor(context, it).first().name
+                    subCategory = ""
                 },
                 timeText = timeText,
                 onTime = { openPicker() },
@@ -325,9 +333,17 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             CategoryCard(
                 categories = currentCategories,
                 selected = selectedCategory,
-                onSelect = { selectedCategory = it },
+                onSelect = {
+                    if (it != selectedCategory) subCategory = ""
+                    selectedCategory = it
+                },
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(dimens.gap))
+            SubCategoryField(
+                value = subCategory,
+                onValueChange = { subCategory = it },
+            )
+            Spacer(Modifier.height(dimens.gap))
             RecurringCard(
                 enabled = recurring,
                 onEnabled = { recurring = it },
@@ -364,6 +380,49 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
         onDismiss = { showPicker = false },
         onConfirm = { y, m, d, h, mi -> applyDateTime(y, m, d, h, mi) },
     )
+}
+
+@Composable
+private fun SubCategoryField(
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    val dimens = LocalDimens.current
+    val shape = RoundedCornerShape(dimens.radiusCard)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(LedgerTheme.surface)
+            .border(1.dp, LedgerTheme.borderSoft, shape)
+            .padding(horizontal = dimens.cardPadding, vertical = dimens.gap),
+    ) {
+        Text(
+            text = "子分类（可选）",
+            style = MiuixTheme.textStyles.footnote1,
+            color = TextSecondary,
+        )
+        Spacer(Modifier.height(dimens.gapSmall))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+            cursorBrush = SolidColor(AccentBlue),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isEmpty()) {
+                        Text(
+                            text = "如：外卖 / 堂食",
+                            style = MiuixTheme.textStyles.body2.copy(color = TextSecondary),
+                        )
+                    }
+                    inner()
+                }
+            },
+        )
+    }
 }
 
 /**

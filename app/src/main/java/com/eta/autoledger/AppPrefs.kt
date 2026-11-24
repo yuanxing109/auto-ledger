@@ -173,10 +173,13 @@ class AppPrefs private constructor(context: Context) {
         get() = aiModelState
         set(value) { aiModelState = value; prefs.edit { putString("ai_model", value) } }
 
-    private var aiPromptState by mutableStateOf(prefs.getString("ai_prompt", DEFAULT_PROMPT) ?: DEFAULT_PROMPT)
+    private var aiPromptState by mutableStateOf(normalizeAiPrompt(prefs.getString("ai_prompt", DEFAULT_PROMPT)))
     var aiPrompt: String
         get() = aiPromptState
         set(value) { aiPromptState = value; prefs.edit { putString("ai_prompt", value) } }
+
+    private fun normalizeAiPrompt(value: String?): String =
+        if (value.isNullOrBlank() || "\"confidence\"" in value) DEFAULT_PROMPT else value
 
     /** 主题：system / light / dark。默认跟随系统。 */
     private var themeState by mutableStateOf(prefs.getString("theme_mode", "system") ?: "system")
@@ -283,8 +286,6 @@ class AppPrefs private constructor(context: Context) {
         )
 
         const val DEFAULT_PROMPT =
-            "你是记账助手。请从图片或文本中提取收支信息，只输出严格 JSON：" +
-                "{\"amount\":0.00,\"type\":\"expense|income|other\",\"category\":\"餐饮\"," +
-                "\"time\":\"yyyy-MM-dd HH:mm\",\"note\":\"\",\"confidence\":0.0}。不要输出多余文字。"
+            "从账单截图中提取实际发生的一笔交易。优先使用清晰可见的商户、金额、时间和交易方向。"
     }
 }

@@ -199,7 +199,7 @@ class ScreenshotCaptureService : Service() {
         val parsed = runCatching {
             VisionHelper.callVisionModel(prefs, base64, VisionHelper.MIME_PNG)
         }.getOrElse {
-            finishWithResult(null, "AI 解析失败：${it.message ?: it.javaClass.simpleName}")
+            finishWithResult(null, VisionHelper.userFacingError(it))
             return
         }
         finishWithResult(parsed, null)

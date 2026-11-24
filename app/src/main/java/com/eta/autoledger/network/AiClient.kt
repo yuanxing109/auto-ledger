@@ -1,5 +1,6 @@
 package com.eta.autoledger.network
 
+import android.util.Log
 import com.eta.autoledger.AppPrefs
 import org.json.JSONArray
 import org.json.JSONObject
@@ -8,6 +9,8 @@ import java.net.URL
 
 /** OpenAI 兼容接口的统一 HTTP 客户端，负责鉴权、超时、请求和 JSON 清理。 */
 object AiClient {
+
+    const val FORMAT_ERROR_MESSAGE = "解析失败：AI 返回格式不标准"
 
     fun textCompletion(
         prefs: AppPrefs,
@@ -66,7 +69,7 @@ object AiClient {
         chat(baseUrl, key, model, messages, maxTokens = 1)
     }
 
-    /** 从模型输出里取第一个完整 JSON 对象，并清理 Markdown 代码块和包裹数组。 */
+    /** 从模型输出里提取最大的 JSON 对象，容错 Markdown 代码块与解释文字。 */
     fun parseJsonObject(raw: String): JSONObject? {
         val text = raw
             .replace("```json", " ")
@@ -75,16 +78,44 @@ object AiClient {
             .replace("`", " ")
             .trim()
         if (text.isEmpty() || text.equals("null", ignoreCase = true)) return null
-        if (text.startsWith("[")) {
-            val end = text.lastIndexOf(']')
-            if (end > 0) {
-                runCatching { JSONArray(text.substring(0, end + 1)) }.getOrNull()
-                    ?.takeIf { it.length() > 0 }
-                    ?.optJSONObject(0)
-                    ?.let { return it }
-            }
+
+        JSON_OBJECT_PATTERN.find(text)?.value?.let { candidate ->
+            runCatching { JSONObject(candidate) }.getOrNull()?.let { return it }
         }
-        val start = text.indexOf('{').takeIf { it >= 0 } ?: return null
+
+        return largestBalancedJsonObject(text)
+    }
+
+    /** 记录模型原始响应并抛出统一格式异常，避免把思考过程带到 UI。 */
+    fun invalidResponse(rawText: String): Nothing {
+        Log.e(AI_ERROR_TAG, rawText)
+        throw AiResponseFormatException(rawText)
+    }
+
+    private fun largestBalancedJsonObject(text: String): JSONObject? {
+        var validObject: JSONObject? = null
+        var validLength = 0
+        var searchFrom = 0
+        while (true) {
+            val start = text.indexOf('{', searchFrom)
+            if (start < 0) break
+            val end = balancedObjectEnd(text, start)
+            if (end == null) {
+                searchFrom = start + 1
+                continue
+            }
+            val candidate = text.substring(start, end + 1)
+            val parsed = runCatching { JSONObject(candidate) }.getOrNull()
+            if (parsed != null && candidate.length > validLength) {
+                validObject = parsed
+                validLength = candidate.length
+            }
+            searchFrom = start + 1
+        }
+        return validObject
+    }
+
+    private fun balancedObjectEnd(text: String, start: Int): Int? {
         var depth = 0
         var inString = false
         var escaped = false
@@ -103,11 +134,7 @@ object AiClient {
                 '{' -> depth++
                 '}' -> {
                     depth--
-                    if (depth == 0) {
-                        return runCatching {
-                            JSONObject(text.substring(start, i + 1))
-                        }.getOrNull()
-                    }
+                    if (depth == 0) return i
                 }
             }
         }
@@ -142,18 +169,20 @@ object AiClient {
         return body
     }
 
-    private fun extractMessageContent(body: String): String {
+    internal fun extractMessageContent(body: String): String {
         val root = runCatching { JSONObject(body) }
             .getOrElse { error("响应不是 JSON：${body.take(120)}") }
         val choice = root.optJSONArray("choices")?.optJSONObject(0)
         val message = choice?.optJSONObject("message")
         val content = sequenceOf(
             stringOrNull(message, "content"),
-            stringOrNull(message, "reasoning_content"),
             stringOrNull(choice, "text"),
             stringOrNull(root, "content"),
         ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
-        if (content.isBlank()) error("模型返回为空，请确认该模型支持当前输入")
+        if (content.isBlank()) {
+            stringOrNull(message, "reasoning_content")?.let { Log.e(AI_ERROR_TAG, it) }
+            error("模型返回为空，请确认该模型支持当前输入")
+        }
         return content
     }
 
@@ -174,4 +203,10 @@ object AiClient {
 
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 60_000
+    private const val AI_ERROR_TAG = "AI_ERROR"
+    private val JSON_OBJECT_PATTERN = Regex("""\{[\s\S]*\}""")
 }
+
+class AiResponseFormatException(
+    val rawText: String,
+) : IllegalArgumentException(AiClient.FORMAT_ERROR_MESSAGE)

@@ -138,7 +138,7 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
                 }
                 result.onSuccess { entry -> VisionHelper.postResult(context, entry, null) }
                     .onFailure { t ->
-                        VisionHelper.postResult(context, null, "识别失败：${t.message ?: t.javaClass.simpleName}")
+                        VisionHelper.postResult(context, null, VisionHelper.userFacingError(t))
                     }
             }
         }

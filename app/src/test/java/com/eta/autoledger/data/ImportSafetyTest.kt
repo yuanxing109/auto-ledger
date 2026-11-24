@@ -1,6 +1,8 @@
 package com.eta.autoledger.data
 
 import com.eta.autoledger.screenshot.VisionHelper
+import com.eta.autoledger.network.AiClient
+import com.eta.autoledger.network.AiResponseFormatException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -47,9 +49,11 @@ class ImportSafetyTest {
     @Test
     fun 严格提示词追加禁止代码块的约束() {
         val out = VisionHelper.strictPrompt("只输出 JSON")
-        assertTrue(out.startsWith("只输出 JSON"))
-        assertTrue(out.contains("不要 Markdown 代码块标记"))
+        assertTrue(out.contains("你是一个无情的 JSON 提取机器"))
+        assertTrue(out.contains("绝对不要输出任何 Markdown 代码块"))
         assertTrue(out.contains("amount"))
+        assertTrue(out.contains("只输出 JSON"))
+        assertFalse(out.contains("confidence"))
     }
 
     @Test
@@ -57,6 +61,14 @@ class ImportSafetyTest {
         val once = VisionHelper.strictPrompt("只输出 JSON")
         val twice = VisionHelper.strictPrompt(once)
         assertEquals(once, twice)
+    }
+
+    @Test
+    fun 格式异常只向用户展示统一提示() {
+        val raw = "我需要先思考。{\"amount\":19.4,\"confidence\":0.5}"
+        val message = VisionHelper.userFacingError(AiResponseFormatException(raw))
+        assertEquals(AiClient.FORMAT_ERROR_MESSAGE, message)
+        assertFalse(message.contains(raw))
     }
 
     // ── ImportDedup.nameScore ─────────────────────────────────────────

@@ -14,7 +14,9 @@ import androidx.core.graphics.scale
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.MainActivity
 import com.eta.autoledger.network.AiClient
-import com.eta.autoledger.util.AppDateFormats
+import com.eta.autoledger.network.AiPrompt
+import com.eta.autoledger.network.AiResponseFormatException
+import com.eta.autoledger.util.AiDateTimeResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -66,20 +68,22 @@ object VisionHelper {
             maxTokens = 400,
         )
         val obj = AiClient.parseJsonObject(contentText)
-            ?: error("模型没有返回 JSON：" + contentText.take(120))
+            ?: AiClient.invalidResponse(contentText)
         val amount = obj.optDouble("amount", 0.0)
         if (!amount.isFinite() || amount <= 0.0) {
-            error("模型返回的金额无效：" + contentText.take(120))
+            AiClient.invalidResponse(contentText)
         }
         val rawType = cleanField(obj, "type").lowercase(Locale.ROOT)
-        val type = if (rawType == "income" || rawType == "other") rawType else "expense"
+        val type = if (rawType == "income") "income" else "expense"
         val category = cleanField(obj, "category").ifBlank { "其他" }.take(12)
+        val note = cleanField(obj, "note").take(120)
+        if (note.isBlank()) AiClient.invalidResponse(contentText)
         return ParsedEntry(
             amount = amount,
             type = type,
             category = category,
             time = saneTime(cleanField(obj, "time")),
-            note = cleanField(obj, "note").take(120),
+            note = note,
         )
     }
 
@@ -109,15 +113,8 @@ object VisionHelper {
         return body.filterNot { it == '\n' || it == '\r' || it == ' ' || it == '\t' }
     }
 
-    /**
-     * 在用户提示词后追加硬约束。用户自定义提示词通常只写「只输出 JSON」，
-     * 模型仍会包一层 ```json 或补一段「好的，我来分析…」。
-     */
-    internal fun strictPrompt(base: String): String {
-        val suffix = "只输出一个 JSON 对象，不要 Markdown 代码块标记，不要任何解释文字。" +
-            "字段固定为 amount(数字)、type(expense/income/other)、category、time(yyyy-MM-dd HH:mm)、note。"
-        return if (base.contains(suffix)) base else base.trim() + "\n" + suffix
-    }
+    /** 用户 Prompt 只作为辅助场景说明，字段契约始终由统一骨架控制。 */
+    internal fun strictPrompt(base: String): String = AiPrompt.forVision(base)
 
     /**
      * 模型偶尔会编出离谱日期（当前 11 月却返回「2026-02-12 07:22」），
@@ -125,11 +122,24 @@ object VisionHelper {
      */
     private fun saneTime(raw: String): String {
         val now = System.currentTimeMillis()
-        val parsed = AppDateFormats.parse(raw)?.timeInMillis
-        return if (parsed != null && abs(parsed - now) <= THREE_DAYS_MS) {
-            AppDateFormats.format(parsed, AppDateFormats.dateTime)
+        val resolved = AiDateTimeResolver.resolve(raw, "", now)
+        return if (abs(resolved.timeMillis - now) <= THREE_DAYS_MS) {
+            resolved.display
         } else {
-            AppDateFormats.format(now, AppDateFormats.dateTime)
+            AiDateTimeResolver.resolve("", "", now).display
+        }
+    }
+
+    /** 模型原文只进入 Logcat，通知与页面只呈现稳定、可理解的错误文案。 */
+    fun userFacingError(error: Throwable): String {
+        val hasFormatError = generateSequence(error) { it.cause }
+            .any { it is AiResponseFormatException }
+        if (hasFormatError) return AiClient.FORMAT_ERROR_MESSAGE
+        val message = error.message.orEmpty()
+        return if (message.contains("配置 AI")) {
+            "识别失败：$message"
+        } else {
+            "识别失败，请检查 AI 配置或网络"
         }
     }
 

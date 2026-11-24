@@ -1,8 +1,9 @@
 package com.eta.autoledger.screenshot
 
+import com.eta.autoledger.network.AiResponseFormatException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
@@ -27,7 +28,7 @@ class AiQuickEntryHelperTest {
             nowMillis = nowMillis,
         ) { prompt ->
             promptSeen = prompt
-            """{"amount":18.5,"type":"expense","category":"交通","note":"打车","date_offset":-1}"""
+            """{"amount":18.5,"type":"expense","category":"交通","time":"昨天 18:05","note":"打车"}"""
         }
 
         assertNotNull(result)
@@ -38,8 +39,12 @@ class AiQuickEntryHelperTest {
         assertEquals(-1, result.dateOffset)
         assertEquals(-1L, calendarDayDistance(result.timeMillis, nowMillis))
         assertTrue(promptSeen.contains("昨天打车18.5"))
-        assertTrue(promptSeen.contains("只输出一个 JSON 对象"))
-        assertTrue(promptSeen.contains("\"date_offset\":-1"))
+        assertTrue(promptSeen.contains("只输出一个合法的 JSON 对象"))
+        assertTrue(promptSeen.contains("\"time\": \"昨天\""))
+        assertTrue(promptSeen.contains("向您支付"))
+        assertTrue(promptSeen.contains("向我支付"))
+        assertTrue(!promptSeen.contains("date_offset"))
+        assertTrue(!promptSeen.contains("confidence"))
     }
 
     @Test
@@ -52,7 +57,7 @@ class AiQuickEntryHelperTest {
         ) {
             """
                 ```json
-                {"amount":12,"type":"expense","category":"餐饮","note":"早餐","date_offset":0}
+                {"amount":12,"type":"expense","category":"餐饮","time":"今天","note":"早餐"}
                 ```
             """.trimIndent()
         }
@@ -65,31 +70,31 @@ class AiQuickEntryHelperTest {
     }
 
     @Test
-    fun `非法金额返回 null`() {
-        val result = AiQuickEntryHelper.resolveWithModelCall(
-            text = "买东西",
-            expenseCategories = expenseCategories,
-            incomeCategories = incomeCategories,
-            nowMillis = nowMillis,
-        ) {
-            """{"amount":0,"type":"expense","category":"其他","note":"买东西","date_offset":0}"""
+    fun `非法金额抛出统一格式异常`() {
+        assertThrows(AiResponseFormatException::class.java) {
+            AiQuickEntryHelper.resolveWithModelCall(
+                text = "买东西",
+                expenseCategories = expenseCategories,
+                incomeCategories = incomeCategories,
+                nowMillis = nowMillis,
+            ) {
+                """{"amount":0,"type":"expense","category":"其他","time":"今天","note":"买东西"}"""
+            }
         }
-
-        assertNull(result)
     }
 
     @Test
-    fun `非法类型返回 null`() {
-        val result = AiQuickEntryHelper.resolveWithModelCall(
-            text = "转账一百",
-            expenseCategories = expenseCategories,
-            incomeCategories = incomeCategories,
-            nowMillis = nowMillis,
-        ) {
-            """{"amount":100,"type":"transfer","category":"其他","note":"转账","date_offset":0}"""
+    fun `非法类型抛出统一格式异常`() {
+        assertThrows(AiResponseFormatException::class.java) {
+            AiQuickEntryHelper.resolveWithModelCall(
+                text = "转账一百",
+                expenseCategories = expenseCategories,
+                incomeCategories = incomeCategories,
+                nowMillis = nowMillis,
+            ) {
+                """{"amount":100,"type":"transfer","category":"其他","time":"今天","note":"转账"}"""
+            }
         }
-
-        assertNull(result)
     }
 
     @Test
@@ -100,12 +105,31 @@ class AiQuickEntryHelperTest {
             incomeCategories = incomeCategories,
             nowMillis = nowMillis,
         ) {
-            """{"amount":20,"type":"income","category":"餐饮","note":"退款","date_offset":0}"""
+            """{"amount":20,"type":"income","category":"餐饮","time":"今天","note":"退款"}"""
         }
 
         assertNotNull(result)
         assertEquals("income", result!!.type)
         assertEquals("其他", result.category)
+    }
+
+    @Test
+    fun `向您支付文本解析为收入并保留昨天时间`() {
+        val result = AiQuickEntryHelper.resolveWithModelCall(
+            text = "昨天14:26 天津新元信息技术有限公司向我支付了项目服务费19.40元",
+            expenseCategories = expenseCategories,
+            incomeCategories = incomeCategories,
+            nowMillis = nowMillis,
+        ) {
+            """好的，已完成。{"amount":19.40,"type":"income","category":"其他","time":"昨天 14:26","note":"天津新元"}以上。"""
+        }
+
+        assertNotNull(result)
+        assertEquals(19.40, result!!.amount, 0.001)
+        assertEquals("income", result.type)
+        assertEquals("其他", result.category)
+        assertEquals(-1, result.dateOffset)
+        assertTrue(result.time.endsWith("14:26"))
     }
 
     private fun calendarDayDistance(fromMillis: Long, toMillis: Long): Long {

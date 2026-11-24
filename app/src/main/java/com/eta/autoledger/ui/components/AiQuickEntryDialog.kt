@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.CategoryStore
+import com.eta.autoledger.network.AiClient
 import com.eta.autoledger.screenshot.AiQuickEntry
 import com.eta.autoledger.screenshot.AiQuickEntryHelper
 import com.eta.autoledger.ui.LedgerTheme
@@ -168,7 +169,7 @@ fun AiQuickEntryDialog(
                                 }
                                 loading = false
                                 if (parsed == null) {
-                                    inlineError = "AI 没听懂，请换个说法或检查 API 配置"
+                                    inlineError = AiClient.FORMAT_ERROR_MESSAGE
                                 } else {
                                     text = ""
                                     onParsed(parsed)

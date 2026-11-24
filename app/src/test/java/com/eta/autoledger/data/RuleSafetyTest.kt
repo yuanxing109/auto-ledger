@@ -98,6 +98,13 @@ class RuleSafetyTest {
     }
 
     @Test
+    fun compile统一启用DOTALL支持跨行匹配() {
+        val regex = RuleSafety.compile("""消费.*?金额\s*(\d+\.\d{2})""")
+        assertNotNull(regex)
+        assertTrue(regex!!.containsMatchIn("消费成功\n金额 19.40"))
+    }
+
+    @Test
     fun compile对语法错误的正则返回null() {
         // 用户手写正则写错括号：只丢这一条，不能让解析热路径崩
         assertNull(RuleSafety.compile("([0-9"))

@@ -11,7 +11,6 @@ import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
@@ -109,11 +108,6 @@ import com.eta.autoledger.reminder.ReminderScheduler
 import com.eta.autoledger.service.LedgerNotificationListener
 import com.eta.autoledger.ui.theme.ThemeMode
 import com.eta.autoledger.widget.LedgerWidgetProvider
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.ImeAction
 
 
 enum class SettingsPage(val title: String, val parent: SettingsPage?) {
@@ -131,7 +125,7 @@ enum class SettingsPage(val title: String, val parent: SettingsPage?) {
 
     // ── 二级：挂在上面 8 个之下 ──────────────────────────────────
     DailyReminder("每日记账提醒", Notifications),
-    SingleNotify("单笔自动记账通知", Notifications),
+    SingleNotify("单笔记账通知", Notifications),
     Categories("记账分类管理", LedgerSettings),
     Budget("预算管理", LedgerSettings),
     Import("导入数据", DataBackup),
@@ -140,7 +134,6 @@ enum class SettingsPage(val title: String, val parent: SettingsPage?) {
     Appearance("外观", AppearanceWidget),
     Widget("添加桌面小部件", AppearanceWidget),
     Ai("AI 模型与自动化", Features),
-    ParseRules("高级解析设置", Auto),
     ParseRulesAdvanced("高级解析规则", Auto),
 }
 
@@ -211,10 +204,8 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
                     SettingsPage.Auto -> AutoPage(
                         prefs = prefs,
                         onImport = { page = SettingsPage.Import },
-                        onParseRules = { page = SettingsPage.ParseRules },
                         onManageRules = { page = SettingsPage.ParseRulesAdvanced },
                     )
-                    SettingsPage.ParseRules -> ParseRulesPage(prefs)
                     SettingsPage.ParseRulesAdvanced -> RuleManagePage()
                     SettingsPage.LedgerSettings -> LedgerSettingsPage(onOpen = { page = it })
                     SettingsPage.Notifications -> NotificationsPage(
@@ -472,7 +463,6 @@ private fun AboutPage() {
 private fun AutoPage(
     prefs: AppPrefs,
     onImport: () -> Unit,
-    onParseRules: () -> Unit,
     onManageRules: () -> Unit,
 ) {
     val snackbar = LocalSnackbar.current
@@ -547,13 +537,6 @@ private fun AutoPage(
         }
         SettingsCard {
             ArrowPreference(
-                title = "高级解析设置",
-                summary = "自定义拦截词与强制认账词（${prefs.ignoreKeywords.size} 拦 / ${prefs.forceKeywords.size} 认）",
-                onClick = onParseRules,
-            )
-        }
-        SettingsCard {
-            ArrowPreference(
                 title = "高级解析规则",
                 summary = "系统内置与自定义规则，可启停、可测试",
                 onClick = onManageRules,
@@ -565,17 +548,6 @@ private fun AutoPage(
 @Composable
 private fun NotificationsPage(prefs: AppPrefs, onDaily: () -> Unit, onSingle: () -> Unit) {
     val context = LocalContext.current
-    var refresh by remember { mutableStateOf(0) }
-    val canPromote = remember(refresh) { IslandNotifier.canPostPromoted(context) }
-    fun islandSummary(): String {
-        val v = IslandNotifier.vendorLabel(IslandNotifier.vendor())
-        return if (IslandNotifier.supportsLiveUpdates()) "$v · 实况胶囊（免业务ID）" else "$v · 系统版本较低"
-    }
-    fun promoteSummary(): String = when {
-        !IslandNotifier.supportsLiveUpdates() -> "系统版本较低，仅普通通知"
-        canPromote -> "已授权提升；能否上岛由系统决定"
-        else -> "未开启，点这里去系统里打开「实时更新 / 焦点通知」"
-    }
     SettingsPageColumn {
         SettingsCard {
             ArrowPreference(title = "每日记账提醒", summary = prefs.reminderTime, onClick = onDaily)
@@ -612,61 +584,7 @@ private fun NotificationsPage(prefs: AppPrefs, onDaily: () -> Unit, onSingle: ()
             )
         }
         SettingsCard {
-            ArrowPreference(title = "单笔自动记账通知", summary = "生成自动账单时的提醒方式", onClick = onSingle)
-        }
-        SettingsCard {
-            ArrowPreference(
-                title = "立即发送测试提醒",
-                summary = "在前台发一条实况通知，验证是否上岛",
-                onClick = {
-                    IslandNotifier.deliver(
-                        context,
-                        IslandNotifier.Spec(
-                            id = 2099,
-                            title = "每日记账提醒",
-                            text = "今天共 2 笔：支出 ¥31.50 · 收入 ¥0.00",
-                            critical = "记账 2 笔",
-                            channelId = "ledger_island_test",
-                            channelName = "实况测试",
-                            ongoing = true,
-                            enableVendorIsland = true,
-                        ),
-                    )
-                },
-            )
-            RowDivider()
-            ArrowPreference(
-                title = "实况上岛权限",
-                summary = promoteSummary(),
-                onClick = {
-                    if (IslandNotifier.supportsLiveUpdates() && !canPromote) {
-                        val ok = runCatching {
-                            context.startActivity(
-                                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS)
-                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        }.isSuccess
-                        if (!ok) {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                )
-                            }
-                        }
-                        refresh++
-                    }
-                },
-            )
-            RowDivider()
-            SwitchPreference(
-                title = "超级岛 / 实况提醒",
-                summary = islandSummary(),
-                checked = prefs.islandLiveUpdates,
-                onCheckedChange = { prefs.islandLiveUpdates = it },
-            )
+            ArrowPreference(title = "单笔记账通知", summary = "生成自动账单时的提醒方式", onClick = onSingle)
         }
     }
 }
@@ -707,6 +625,11 @@ private fun DailyReminderPage(prefs: AppPrefs) {
 
 @Composable
 private fun SingleNotifyPage(prefs: AppPrefs) {
+    val context = LocalContext.current
+    fun islandSummary(): String {
+        val vendor = IslandNotifier.vendorLabel(IslandNotifier.vendor())
+        return if (IslandNotifier.supportsLiveUpdates()) "$vendor · 实况胶囊（免业务ID）" else "$vendor · 系统版本较低"
+    }
     SettingsPageColumn {
         HintText("生成自动记账单时的通知方式（可多选）。")
         SettingsCard {
@@ -727,6 +650,34 @@ private fun SingleNotifyPage(prefs: AppPrefs) {
                 summary = "生成自动记账单时不提示",
                 checked = prefs.singleMuted,
                 onCheckedChange = { prefs.singleMuted = it },
+            )
+        }
+        SettingsCard {
+            ArrowPreference(
+                title = "立即发送测试提醒",
+                summary = "在前台发一条实况通知，验证是否上岛",
+                onClick = {
+                    IslandNotifier.deliver(
+                        context,
+                        IslandNotifier.Spec(
+                            id = 2099,
+                            title = "单笔记账通知",
+                            text = "今天共 2 笔：支出 ¥31.50 · 收入 ¥0.00",
+                            critical = "记账 2 笔",
+                            channelId = "ledger_island_test",
+                            channelName = "实况测试",
+                            ongoing = true,
+                            enableVendorIsland = true,
+                        ),
+                    )
+                },
+            )
+            RowDivider()
+            SwitchPreference(
+                title = "超级岛 / 实况提醒",
+                summary = islandSummary(),
+                checked = prefs.islandLiveUpdates,
+                onCheckedChange = { prefs.islandLiveUpdates = it },
             )
         }
     }
@@ -1898,217 +1849,6 @@ private enum class AiPreset(
 }
 
 /** WebDAV 服务商快捷模板：选中态实心 accent，与分类 Chip 保持同一套视觉。 */
-/**
- * 高级解析设置：用户自己维护「拦截词」与「强制认账词」。
- *
- * 规则优先级（与 NotificationRules.parseAs 一致）：
- *   1. 命中强制认账词 → 无视拦截词，直接入账
- *   2. 命中拦截词 → 丢弃，不生成账单
- *   3. 都没命中 → 走内置规则
- *
- * 交互按「先看后改」设计：默认词以 Chip 展示，点 X 即删；下方输入框回车即加。
- * 每次增删立刻写回 AppPrefs，没有「保存」按钮——设置项少，多一个确认步骤反而累。
- */
-@Composable
-private fun ParseRulesPage(prefs: AppPrefs) {
-    val snackbar = LocalSnackbar.current
-    val scope = rememberCoroutineScope()
-
-    var ignoreInput by remember { mutableStateOf("") }
-    var forceInput by remember { mutableStateOf("") }
-
-    fun addKeyword(raw: String, current: Set<String>, onSet: (Set<String>) -> Unit, label: String) {
-        val word = raw.trim()
-        if (word.isEmpty()) return
-        if (current.contains(word)) {
-            scope.launch { snackbar.show("「$word」已在${label}里") }
-            return
-        }
-        onSet(current + word)
-    }
-
-    SettingsPageColumn {
-        HintText(
-            "当一条短信同时包含拦截词和认账词时，以认账词为准。\n" +
-                "例：「已支付」在认账词里，所以「花呗已支付 46.94 元」仍会入账。",
-        )
-
-        // ── 拦截词 ──────────────────────────────────────────────
-        SettingsCard {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    "忽略（拦截）关键词",
-                    style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "短信里出现这些词就不记账。「下单」「先用后付」这类只是占额度、钱还没扣。",
-                    style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
-                )
-                Spacer(Modifier.height(12.dp))
-                KeywordChips(
-                    words = prefs.ignoreKeywords,
-                    onRemove = { word -> prefs.ignoreKeywords = prefs.ignoreKeywords - word },
-                )
-                Spacer(Modifier.height(12.dp))
-                KeywordInput(
-                    value = ignoreInput,
-                    placeholder = "输入词语后回车添加，如「抖音月付」",
-                    onValueChange = { ignoreInput = it },
-                    onSubmit = {
-                        addKeyword(ignoreInput, prefs.ignoreKeywords, { prefs.ignoreKeywords = it }, "拦截词")
-                        ignoreInput = ""
-                    },
-                )
-            }
-        }
-
-        // ── 认账词 ──────────────────────────────────────────────
-        SettingsCard {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    "强制认账关键词",
-                    style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "出现这些词就认定钱真的动了，即使同时命中拦截词也会入账。",
-                    style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
-                )
-                Spacer(Modifier.height(12.dp))
-                KeywordChips(
-                    words = prefs.forceKeywords,
-                    onRemove = { word -> prefs.forceKeywords = prefs.forceKeywords - word },
-                )
-                Spacer(Modifier.height(12.dp))
-                KeywordInput(
-                    value = forceInput,
-                    placeholder = "输入词语后回车添加，如「扣费成功」",
-                    onValueChange = { forceInput = it },
-                    onSubmit = {
-                        addKeyword(forceInput, prefs.forceKeywords, { prefs.forceKeywords = it }, "认账词")
-                        forceInput = ""
-                    },
-                )
-            }
-        }
-
-        // ── 恢复默认 ────────────────────────────────────────────
-        SettingsCard {
-            ArrowPreference(
-                title = "恢复默认词库",
-                summary = "把两组词都还原成内置预设，你手动加的会被清掉",
-                onClick = {
-                    prefs.ignoreKeywords = AppPrefs.DEFAULT_IGNORE_KEYWORDS
-                    prefs.forceKeywords = AppPrefs.DEFAULT_FORCE_KEYWORDS
-                    scope.launch { snackbar.show("已恢复默认词库") }
-                },
-            )
-        }
-
-        HintText("修改即时生效，下一条短信或通知就会按新词库判断。")
-    }
-}
-
-/** 词条以可删除 Chip 展示，用 FlowRow 自动换行，词多也不会被挤出屏幕。 */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun KeywordChips(words: Set<String>, onRemove: (String) -> Unit) {
-    if (words.isEmpty()) {
-        Text(
-            "还没有任何词，短信将完全走内置规则。",
-            style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary),
-        )
-        return
-    }
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        words.forEach { word ->
-            val shape = RoundedCornerShape(50)
-            Row(
-                modifier = Modifier
-                    .clip(shape)
-                    .background(LedgerTheme.inset)
-                    .border(1.dp, LedgerTheme.borderSoft, shape)
-                    .clickable { onRemove(word) }
-                    .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    word,
-                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.text),
-                )
-                Spacer(Modifier.width(4.dp))
-                // 用 × 而不是图标：这行字太小，图标在这里认不出是「删除」
-                Text(
-                    "×",
-                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary),
-                )
-            }
-        }
-    }
-}
-
-/** 单行输入框，回车提交。 */
-@Composable
-private fun KeywordInput(
-    value: String,
-    placeholder: String,
-    onValueChange: (String) -> Unit,
-    onSubmit: () -> Unit,
-) {
-    val shape = RoundedCornerShape(12.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(LedgerTheme.inset)
-            .border(1.dp, LedgerTheme.borderSoft, shape)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(modifier = Modifier.weight(1f)) {
-            if (value.isEmpty()) {
-                Text(
-                    placeholder,
-                    style = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.textTertiary),
-                )
-            }
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                textStyle = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.text),
-                cursorBrush = SolidColor(LedgerTheme.accent),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onSubmit() }),
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        val enabled = value.isNotBlank()
-        Box(
-            modifier = Modifier
-                .height(32.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (enabled) LedgerTheme.accent else LedgerTheme.surfaceVariant)
-                .clickable(enabled = enabled, onClick = onSubmit)
-                .padding(horizontal = 14.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                "添加",
-                style = MiuixTheme.textStyles.footnote1.copy(
-                    color = if (enabled) LedgerTheme.onAccent else LedgerTheme.textTertiary,
-                ),
-            )
-        }
-    }
-}
-
 @Composable
 private fun DavTemplateChip(
     title: String,

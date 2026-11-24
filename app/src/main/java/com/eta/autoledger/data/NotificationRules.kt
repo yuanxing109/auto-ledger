@@ -42,6 +42,10 @@ data class NotifyBill(
     val externalId: String,
     val channel: NotifyChannel,
     val confidence: Float,
+    /** 正文中识别到的银行卡/账户后四位，供跨源强指纹使用。 */
+    val accountTail: String? = null,
+    /** 动态规则或手工录入产生的子分类。 */
+    val subCategory: String? = null,
     /**
      * 这条是否应当自动入库。
      *
@@ -61,6 +65,7 @@ data class NotifyBill(
         note = note,
         source = source,
         externalId = externalId,
+        subCategory = subCategory,
     )
 }
 
@@ -167,6 +172,17 @@ object NotificationRules {
         "已扣费", "已消费", "交易成功", "支出",
     )
 
+    /** 仅表示订单已创建，金额和方向并不代表资金已经实际划转。 */
+    private val PENDING_ORDER_WORDS = listOf(
+        "下单成功", "待支付", "待付款", "订单已生成", "订单生成成功", "等待支付",
+    )
+
+    /** 足以把 pending 转换成正式账单的完成证据。 */
+    private val SETTLED_PAYMENT_WORDS = listOf(
+        "已支付", "支付成功", "支付完成", "付款成功", "已付款","已扣款",
+        "扣款成功", "扣款完成", "扣费成功", "交易成功",
+    )
+
     /** 【】内的商户 / 标题名。正常 2~16 字；超过 24 字基本是营销长文，不能当商户名。 */
     private val MERCHANT_BRACKET = Regex("""【([^】]{1,64})】""")
 
@@ -199,7 +215,7 @@ object NotificationRules {
     private val EXPENSE_WORDS = listOf(
         "支付成功", "付款成功", "已付款", "付款", "支付", "消费", "支出", "扣款",
         "已扣", "交易成功", "转账给", "转给", "转账", "缴费", "缴纳", "代扣",
-        "购买", "订单支付", "续费", "取现", "还款",
+        "购买", "订单支付", "续费", "取现", "还款", "下单", "待支付", "待付款", "订单生成",
     )
 
     private val AMOUNT_YUAN = Regex(
@@ -337,6 +353,18 @@ object NotificationRules {
      */
     fun isPlausibleSender(sender: String, body: String): Boolean = plausibleSender(sender, body)
 
+    /** 只有下单/待支付信号、且没有实际完成证据时，才进入 pending。 */
+    fun isPendingOrder(text: String): Boolean {
+        val body = normalize(text)
+        return PENDING_ORDER_WORDS.any(body::contains) && !hasPaymentProof(body)
+    }
+
+    /** 出现已支付、支付成功、扣款成功等信号，代表订单已完成。 */
+    fun hasPaymentProof(text: String): Boolean {
+        val body = normalize(text)
+        return SETTLED_PAYMENT_WORDS.any(body::contains)
+    }
+
     fun parse(
         raw: NotifyRaw,
         expenseCats: List<String>,
@@ -344,12 +372,14 @@ object NotificationRules {
         otherCats: List<String>,
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
+        allowPending: Boolean = false,
     ): NotifyBill? {
         val channel = channelOf(raw.pkg) ?: return null
         return parseAs(
             channel, raw, expenseCats, incomeCats, otherCats,
             ignoreKeywords = ignoreKeywords,
             forceKeywords = forceKeywords,
+            allowPending = allowPending,
         )
     }
 
@@ -369,6 +399,7 @@ object NotificationRules {
         otherCats: List<String>,
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
+        allowPending: Boolean = false,
     ): NotifyBill? {
         // 防御性再归一化一次：本函数是公开 API，任何调用方漏了归一化都不该导致漏记。
         // NFKC 是幂等的，重复调用没有副作用。
@@ -386,6 +417,7 @@ object NotificationRules {
             NotifyChannel.SMS, raw, expenseCats, incomeCats, otherCats,
             ignoreKeywords = ignoreKeywords,
             forceKeywords = forceKeywords,
+            allowPending = allowPending,
         )
     }
 
@@ -400,6 +432,7 @@ object NotificationRules {
         otherCats: List<String>,
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
+        allowPending: Boolean = false,
     ): NotifyBill? {
         // 归一化后再做一切判定与指纹：全角数字/逗号在这里被摊平成半角，
         // 否则 AMOUNT_YUAN 直接失配（详见 [normalize] 的注释）。
@@ -419,7 +452,7 @@ object NotificationRules {
         ) return null
         // 预告类提醒（"明天将自动付款18.8"）：钱还没实际发生，等真实扣费通知到了再记。
         // 用「将来时紧邻扣费动词」的正则判定，避免「将于明日发送账单」这类真交易被误杀。
-        if (!forced &&
+        if (!allowPending && !forced &&
             COMPLETED_WORDS.none(body::contains) &&
             FUTURE_CHARGE_PATTERNS.any { it.containsMatchIn(body) }
         ) return null
@@ -430,8 +463,7 @@ object NotificationRules {
             "income" -> incomeCats
             "other" -> otherCats
             else -> expenseCats
-        }
-        if (cats.isEmpty()) return null
+        }.ifEmpty { listOf(FALLBACK_CATEGORY) }
         val fallback = if (cats.contains(FALLBACK_CATEGORY)) FALLBACK_CATEGORY else cats.first()
         val category = pickCategory(body, direction, cats) ?: fallback
         val millis = raw.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
@@ -451,6 +483,7 @@ object NotificationRules {
             ),
             channel = channel,
             confidence = direction.confidence,
+            accountTail = ParseDedup.accountTailFromText(body),
         )
     }
 
@@ -516,7 +549,11 @@ object NotificationRules {
         } else {
             body.ifBlank { title }
         }
-        return merged.replace('\n', ' ').replace(Regex("\\s+"), " ").trim()
+        // 保留换行，供 DOTALL 动态规则跨行匹配；只压平每行内的横线与重复空格。
+        return merged.lines()
+            .map { line -> line.replace(Regex("[\\t\\r\\u000B\\f ]+"), " ").trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
     }
 
     private fun extractAmount(text: String): Double? {

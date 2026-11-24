@@ -4,6 +4,6 @@
     <string name="xposed_desc">读取支付通知并自动记账（LSPosed 模块）</string>
     <string name="widget_small_label">今日收支</string>
     <string name="widget_wide_label">本月概览</string>
-    <string name="widget_small_desc">今日支出大数字，附本月收支</string>
-    <string name="widget_wide_desc">本月支出与收入并排，附今日支出与笔数</string>
+    <string name="widget_small_desc">今日支出大数字与日期，点击直接记一笔</string>
+    <string name="widget_wide_desc">今日支出、本月收支和近 7 天支出趋势，点击直接记一笔</string>
 </resources>

@@ -19,8 +19,8 @@ android {
         applicationId = "com.eta.autoledger"
         minSdk = 27
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.3.0"
+        versionCode = 5
+        versionName = "0.4.0"
     }
 
     signingConfigs {

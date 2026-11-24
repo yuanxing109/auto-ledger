@@ -25,7 +25,10 @@ object RuleSeed {
      * 不认得就跳过该条规则（而不是猜）。这样「新版本写入的新结构」在旧版本 App 上
      * 表现为「这条规则不生效」，而不是解析崩掉。
      */
-    const val PATTERN_VERSION = 1
+    const val PATTERN_VERSION = 2
+
+    /** 新 JSON 契约的默认必填能力。旧 JSON 缺失该字段时使用同一份默认值。 */
+    val DEFAULT_NECESSARY_FIELDS = listOf("amount", "direction")
 
     /**
      * 第一批内置规则。
@@ -232,6 +235,7 @@ object RuleSeed {
             put("income", JSONArray(incomeWords))
             put("block", JSONArray(blockWords))
             put("cats", cats)
+            put("necessaryFields", JSONArray(DEFAULT_NECESSARY_FIELDS))
             // 只有写死方向的规则才带这个字段；不写就代表「按词表投票」，老版本 App 忽略它即可
             if (direction != null) put("direction", direction)
         }.toString()

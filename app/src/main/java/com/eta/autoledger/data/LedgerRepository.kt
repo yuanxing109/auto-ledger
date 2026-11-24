@@ -4,17 +4,20 @@ import android.content.Context
 import com.eta.autoledger.widget.LedgerWidgetProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
-/** 小部件/提醒要的三个数，一次 SQL 聚合拿全，不要把全表读进内存。 */
+/** 小部件汇总与近 7 日趋势，全部走区间聚合，不把全表读进内存。 */
 data class WidgetTotals(
     val todayExpense: Double = 0.0,
     val todayIncome: Double = 0.0,
     val monthExpense: Double = 0.0,
     val monthIncome: Double = 0.0,
     val monthCount: Int = 0,
+    val sevenDayExpenses: List<Double> = List(7) { 0.0 },
 )
 
 /** 提醒（日报/周报/月报）用的区间汇总。 */
@@ -28,6 +31,12 @@ object LedgerRepository {
 
     /** 自动记账跨渠道去重窗口：短信与通知常差几秒各送一次同一笔扣费。 */
     private const val AUTO_IMPORT_WINDOW_MS = 2 * 60_000L
+
+    /** 强指纹候选查询窗口，围绕入账单的发生时间双向放宽 5 分钟。 */
+    private const val STRONG_MERGE_WINDOW_MS = 5 * 60_000L
+
+    /** 自动记账的候选查询、来源合并和插入必须作为一个顺序队列执行。 */
+    private val autoParsedMutex = Mutex()
 
     fun dao(context: Context): LedgerDao = LedgerDatabase.get(context).ledgerDao()
 
@@ -201,32 +210,78 @@ object LedgerRepository {
     }
 
     /**
-     * 自动记账专用入库：在 [addImported] 的数据库去重之前，再加一道内存级强去重。
+     * 自动记账专用入库：先做跨来源强指纹合并，再交给 [addImported] 做单号/时间指纹去重。
      *
      * 为什么数据库去重挡不住：`external_id` 由 `pkg|title|text|bigText|postTime` 算出，
      * 而 postTime 是**毫秒级**的。长短信被拆成多段、接收器被系统连调两次、或进程重启后
      * 补发时，同一笔账的 postTime 会差几毫秒 → external_id 与「毫秒+金额+收支」指纹
      * 双双失配 → 同一条短信写出两行。截图里 15:11 的两条 46.94 就是这么来的。
      *
-     * 这里用「金额 + 商户/标题 + 分钟级时间」作指纹，5 分钟内只放行一次。
+     * 现有秒级内存指纹继续挡住重复投递。数据库侧再按“金额分 + 方向 + 分钟桶 + 卡尾”
+     * 查询 ±5 分钟候选，强指纹命中时只合并来源，不再新增第二笔。
      * 只用于短信 / 通知通道；手动记账、CSV 导入、云恢复走 [addImported] / [add]，行为不变。
      */
-    suspend fun addAutoParsed(context: Context, entries: List<LedgerEntry>): Int {
-        if (entries.isEmpty()) return 0
+    suspend fun addAutoParsed(context: Context, entries: List<LedgerEntry>): Int = autoParsedMutex.withLock {
+        if (entries.isEmpty()) return@withLock 0
         val now = System.currentTimeMillis()
-        val accepted = entries.filter { entry ->
+        val dao = dao(context)
+        var added = 0
+
+        for (raw in entries) {
+            val entry = raw.normalized()
             val stamp = entry.timeMillis.takeIf { it > 0 } ?: now
+            val tail = ParseDedup.accountTailFromText(entry.note)
+            val strong = ParseDedup.strongFingerprint(entry.amount, entry.type, stamp, tail)
+            val candidates = dao.strongMergeCandidates(
+                amountCents = ParseDedup.amountFen(entry.amount),
+                type = entry.type,
+                since = stamp - STRONG_MERGE_WINDOW_MS,
+                until = stamp + STRONG_MERGE_WINDOW_MS,
+            )
+            val matched = findStrongMergeTarget(entry, candidates, strong)
+            if (matched != null) {
+                val mergedSource = ParseDedup.mergeSources(matched.source, entry.source)
+                if (mergedSource != matched.source) {
+                    dao.updateSource(matched.id, mergedSource)
+                    LedgerWidgetProvider.requestUpdate(context)
+                }
+                continue
+            }
+
             val merchant = entry.note.ifBlank { entry.category }
-            ParseDedup.accept(ParseDedup.fingerprint(entry.amount, merchant, stamp), now)
+            if (!ParseDedup.accept(ParseDedup.fingerprint(entry.amount, merchant, stamp), now)) continue
+            added += addImported(context, listOf(entry))
         }
-        if (accepted.isEmpty()) return 0
-        return addImported(context, accepted)
+        added
     }
 
     private fun LedgerEntry.normalized(): LedgerEntry =
         if (timeMillis > 0) this else copy(
             timeMillis = parseTime(time)?.timeInMillis ?: System.currentTimeMillis(),
         )
+
+    private fun sourcesOf(source: String): Set<String> =
+        source.split(" + ").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+
+    /** 供数据层测试复用：仅跨来源、强指纹完全一致时才允许合并。 */
+    internal fun findStrongMergeTarget(
+        incoming: LedgerEntry,
+        candidates: List<LedgerEntry>,
+        incomingStrongFingerprint: String = ParseDedup.strongFingerprint(
+            incoming.amount,
+            incoming.type,
+            incoming.timeMillis,
+            ParseDedup.accountTailFromText(incoming.note),
+        ),
+    ): LedgerEntry? = candidates.firstOrNull { candidate ->
+        sourcesOf(candidate.source).intersect(sourcesOf(incoming.source)).isEmpty() &&
+            ParseDedup.strongFingerprint(
+                amount = candidate.amount,
+                type = candidate.type,
+                timeMillis = candidate.timeMillis,
+                accountTail = ParseDedup.accountTailFromText(candidate.note),
+            ) == incomingStrongFingerprint
+    }
 
     /** 指纹用毫秒时间：分钟级会把「同分钟同额同类型」的两笔真实账单误判成一笔。 */
     private fun fingerprint(timeMillis: Long, amount: Double, type: String): String =
@@ -244,7 +299,7 @@ object LedgerRepository {
         }
     }
 
-    /** 小部件的三个数：两条 SUM 区间查询，不碰全表。 */
+    /** 小部件汇总 + 近 7 日支出，逐项使用一次性聚合，不改变其他统计口径。 */
     suspend fun widgetTotals(context: Context): WidgetTotals {
         val now = Calendar.getInstance()
         val todayStart = (now.clone() as Calendar).apply {
@@ -253,13 +308,22 @@ object LedgerRepository {
         val tomorrow = (todayStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
         val monthStart = (todayStart.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1) }
         val monthEnd = (monthStart.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
+        val trendStart = (todayStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -6) }
         val d = dao(context)
+        val dayRows = d.sumExpenseByDayOnce(trendStart.timeInMillis, tomorrow.timeInMillis)
+            .associate { it.day to it.total }
+        val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val sevenDayExpenses = List(7) { index ->
+            val day = (trendStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, index) }
+            dayRows[dayFormat.format(day.time)] ?: 0.0
+        }
         return WidgetTotals(
             todayExpense = d.sumExpenseOnce(todayStart.timeInMillis, tomorrow.timeInMillis),
             todayIncome = d.sumIncomeOnce(todayStart.timeInMillis, tomorrow.timeInMillis),
             monthExpense = d.sumExpenseOnce(monthStart.timeInMillis, monthEnd.timeInMillis),
             monthIncome = d.sumIncomeOnce(monthStart.timeInMillis, monthEnd.timeInMillis),
             monthCount = d.countRange(monthStart.timeInMillis, monthEnd.timeInMillis),
+            sevenDayExpenses = sevenDayExpenses,
         )
     }
 

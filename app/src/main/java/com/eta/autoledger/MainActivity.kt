@@ -1,19 +1,27 @@
 package com.eta.autoledger
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.content.ContextCompat
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import com.eta.autoledger.service.HealthJobService
 import com.eta.autoledger.ui.LedgerApp
 import com.eta.autoledger.ui.AppRoot
 
 class MainActivity : ComponentActivity() {
+
+    private var openAddRequest by mutableIntStateOf(0)
+
     companion object {
         const val EXTRA_OPEN_AI_SETTINGS = "open_ai_settings"
+        const val EXTRA_OPEN_ADD = "open_add"
         private const val REQ_POST_NOTIFICATIONS = 1001
     }
 
@@ -33,10 +41,28 @@ class MainActivity : ComponentActivity() {
         com.eta.autoledger.service.RecurringWorker.runNow(this)
         // Android 13+ 通知权限：不在这里申请的话，自动记账/提醒通知会被静默丢弃
         ensureNotificationPermission()
+        consumeOpenAdd(intent)
         setContent {
             AppRoot {
-                LedgerApp(openAiSettings = intent.getBooleanExtra(EXTRA_OPEN_AI_SETTINGS, false))
+                LedgerApp(
+                    openAiSettings = intent.getBooleanExtra(EXTRA_OPEN_AI_SETTINGS, false),
+                    openAddRequest = openAddRequest,
+                )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        consumeOpenAdd(intent)
+    }
+
+    private fun consumeOpenAdd(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_ADD, false) == true) {
+            openAddRequest++
+            // 这是一次性导航事件；清理后 Activity 重建不会再次把用户切到「记一笔」。
+            intent.removeExtra(EXTRA_OPEN_ADD)
         }
     }
 

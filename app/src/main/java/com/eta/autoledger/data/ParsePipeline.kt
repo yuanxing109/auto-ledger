@@ -45,20 +45,13 @@ object ParsePipeline {
     ): NotifyBill? {
         val channel = NotificationRules.channelOf(raw.pkg) ?: return null
         val body = NotificationRules.normalize(NotificationRules.bodyForParsing(raw))
-        if (body.isNotBlank()) {
-            val hit = matchDynamic(RuleType.NOTICE, raw.pkg, body, ignoreKeywords, forceKeywords, dao)
-            if (hit != null) {
-                return toBill(hit, channel, raw, body, expenseCats, incomeCats, otherCats)
-            }
-        }
-        return NotificationRules.parse(
-            raw = raw,
-            expenseCats = expenseCats,
-            incomeCats = incomeCats,
-            otherCats = otherCats,
-            ignoreKeywords = ignoreKeywords,
-            forceKeywords = forceKeywords,
+        if (body.isBlank()) return null
+        val pendingOnly = NotificationRules.isPendingOrder(body)
+        val bill = parseNoticeBill(
+            raw, channel, body, expenseCats, incomeCats, otherCats,
+            ignoreKeywords, forceKeywords, dao, allowPending = pendingOnly,
         )
+        return settlePending(raw.pkg, body, pendingOnly, bill)
     }
 
     /**
@@ -82,27 +75,101 @@ object ParsePipeline {
         val text = NotificationRules.normalize(body).trim()
         if (text.isEmpty()) return null
         if (!NotificationRules.isPlausibleSender(sender, text)) return null
-
-        val hit = matchDynamic(RuleType.SMS, sender, text, ignoreKeywords, forceKeywords, dao)
-        if (hit != null) {
-            val raw = NotifyRaw(
-                pkg = sender,
-                title = sender,
-                text = text,
-                bigText = "",
-                postTime = postTime,
-            )
-            return toBill(hit, NotifyChannel.SMS, raw, text, expenseCats, incomeCats, otherCats)
-        }
-        return NotificationRules.parseSms(
-            sender = sender,
-            body = body,
+        val pendingOnly = NotificationRules.isPendingOrder(text)
+        val raw = NotifyRaw(
+            pkg = sender,
+            title = sender,
+            text = text,
+            bigText = "",
             postTime = postTime,
+        )
+        val hit = matchDynamic(RuleType.SMS, sender, text, ignoreKeywords, forceKeywords, dao)
+        val bill = if (hit != null) {
+            toBill(hit, NotifyChannel.SMS, raw, text, expenseCats, incomeCats, otherCats)
+        } else {
+            NotificationRules.parseSms(
+                sender = sender,
+                body = body,
+                postTime = postTime,
+                expenseCats = expenseCats,
+                incomeCats = incomeCats,
+                otherCats = otherCats,
+                ignoreKeywords = ignoreKeywords,
+                forceKeywords = forceKeywords,
+                allowPending = pendingOnly,
+            )
+        }
+        return settlePending(sender, text, pendingOnly, bill)
+    }
+
+    private suspend fun parseNoticeBill(
+        raw: NotifyRaw,
+        channel: NotifyChannel,
+        body: String,
+        expenseCats: List<String>,
+        incomeCats: List<String>,
+        otherCats: List<String>,
+        ignoreKeywords: Set<String>,
+        forceKeywords: Set<String>,
+        dao: RuleDao?,
+        allowPending: Boolean,
+    ): NotifyBill? {
+        val hit = matchDynamic(RuleType.NOTICE, raw.pkg, body, ignoreKeywords, forceKeywords, dao)
+        if (hit != null) {
+            return toBill(hit, channel, raw, body, expenseCats, incomeCats, otherCats)
+        }
+        return NotificationRules.parse(
+            raw = raw,
             expenseCats = expenseCats,
             incomeCats = incomeCats,
             otherCats = otherCats,
             ignoreKeywords = ignoreKeywords,
             forceKeywords = forceKeywords,
+            allowPending = allowPending,
+        )
+    }
+
+    /**
+     * 两阶段确认：未支付订单只进入内存 pending，不生成账单；确认消息到达后把下单阶段
+     * 更有信息量的分类/备注合并到实付结果。无确认或超过 5 分钟时由 [PendingMap] 静默丢弃。
+     */
+    private fun settlePending(
+        packageName: String,
+        body: String,
+        pendingOnly: Boolean,
+        bill: NotifyBill?,
+    ): NotifyBill? {
+        if (bill == null) return null
+        if (pendingOnly) {
+            if (bill.autoRecord) {
+                PendingMap.prune()
+                PendingMap.put(
+                    PendingBill(
+                        packageName = packageName,
+                        amountCents = ParseDedup.amountFen(bill.amount),
+                        type = bill.type,
+                        category = bill.category,
+                        note = bill.note,
+                        timeMillis = bill.timeMillis,
+                        source = bill.source,
+                        channel = bill.channel,
+                        subCategory = bill.subCategory,
+                        accountTail = bill.accountTail,
+                    ),
+                )
+            }
+            return null
+        }
+        if (!NotificationRules.hasPaymentProof(body)) return bill
+
+        PendingMap.prune()
+        val pending = PendingMap.consume(packageName, ParseDedup.amountFen(bill.amount))
+        if (pending == null || pending.type != bill.type) return bill
+        return bill.copy(
+            category = if (bill.category == FALLBACK) pending.category else bill.category,
+            note = if (pending.note.length > bill.note.length) pending.note else bill.note,
+            subCategory = bill.subCategory ?: pending.subCategory,
+            accountTail = bill.accountTail ?: pending.accountTail,
         )
     }
 
@@ -146,8 +213,7 @@ object ParsePipeline {
             "income" -> incomeCats
             "other" -> otherCats
             else -> expenseCats
-        }
-        if (cats.isEmpty()) return null
+        }.ifEmpty { listOf(FALLBACK) }
         // 规则里写的分类可能已经被用户在设置页删掉了，这时回退到「其他」或首个分类，
         // 而不是把这条账单丢掉 —— 金额与方向是对的，分类错一点远好过漏记。
         val category = hit.category?.takeIf { cats.contains(it) }
@@ -165,6 +231,7 @@ object ParsePipeline {
             channel = channel,
             confidence = hit.confidence,
             autoRecord = hit.autoRecord,
+            accountTail = ParseDedup.accountTailFromText(body),
         )
     }
 

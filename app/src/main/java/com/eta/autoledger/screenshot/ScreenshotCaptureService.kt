@@ -24,10 +24,12 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.MainActivity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -40,6 +42,9 @@ import java.util.concurrent.TimeUnit
 class ScreenshotCaptureService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val taskLock = Any()
+    private var captureInProgress = false
+    private var latestStartId = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -51,7 +56,7 @@ class ScreenshotCaptureService : Service() {
         // 触发，都在这里直接退出——不建前台通知、不抓图、不调 AI。
         // 原来只在磁贴里判 needsSetup，主链路完全不看这个开关，导致关了照样记账。
         if (!AppPrefs.get(this).screenshotEnabled) {
-            stopSelf()
+            stopSelfResult(startId)
             return START_NOT_STICKY
         }
 
@@ -68,20 +73,34 @@ class ScreenshotCaptureService : Service() {
             startForeground(PROGRESS_ID, progress)
         }
         if (intent?.action == ACTION_CAPTURE_ROOT) {
+            if (!claimCapture(startId)) return START_NOT_STICKY
             scope.launch {
-                val shot = ScreenshotAccessibilityService.capture()
-                if (shot == null) {
-                    postRootFallback("请先在 设置 → 功能管理 → 无障碍截图 中开启服务")
-                } else {
-                    processBitmap(shot)
+                try {
+                    // 磁贴点击后面板仍会播放收起动画；先进入前台服务再等待，既不会阻塞主线程，
+                    // 也不会因 TileService 被系统解绑而丢失延迟任务。
+                    delay(TILE_CAPTURE_SETTLE_DELAY_MS)
+                    val shot = ScreenshotAccessibilityService.capture()
+                    if (shot == null) {
+                        postRootFallback("请先在 设置 → 功能管理 → 无障碍截图 中开启服务")
+                    } else {
+                        processBitmap(shot)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Throwable) {
+                    finishWithError("截屏失败：${failure.message ?: failure.javaClass.simpleName}")
+                } finally {
+                    finishCapture()
                 }
             }
             return START_NOT_STICKY
         }
         if (intent?.action != ACTION_CAPTURE) {
-            stopSelf()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelfResult(startId)
             return START_NOT_STICKY
         }
+        if (!claimCapture(startId)) return START_NOT_STICKY
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
         val data: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
@@ -91,11 +110,17 @@ class ScreenshotCaptureService : Service() {
         }
         if (resultCode == 0 || data == null) {
             finishWithError("没有拿到截屏授权")
+            finishCapture()
             return START_NOT_STICKY
         }
         scope.launch {
             runCatching { captureAndParse(resultCode, data) }
-                .onFailure { finishWithError("截屏或解析失败：${it.message ?: it.javaClass.simpleName}") }
+                .onFailure {
+                    if (it !is CancellationException) {
+                        finishWithError("截屏或解析失败：${it.message ?: it.javaClass.simpleName}")
+                    }
+                }
+            finishCapture()
         }
         return START_NOT_STICKY
     }
@@ -211,19 +236,33 @@ class ScreenshotCaptureService : Service() {
             .addAction(0, "开启无障碍截图", a11y)
             .build()
         runCatching { manager.notify(9004, notification) }
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     private fun finishWithError(message: String) {
         notifyResult(null, message)
-        stopSelf()
     }
 
     private fun finishWithResult(entry: ParsedEntry?, error: String?) {
         notifyResult(entry, error)
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+    }
+
+    private fun claimCapture(startId: Int): Boolean = synchronized(taskLock) {
+        latestStartId = startId
+        if (captureInProgress) {
+            false
+        } else {
+            captureInProgress = true
+            true
+        }
+    }
+
+    private fun finishCapture() {
+        val stopId = synchronized(taskLock) {
+            if (!captureInProgress) return@synchronized null
+            captureInProgress = false
+            latestStartId
+        } ?: return
+        stopSelfResult(stopId)
     }
 
     private fun notifyResult(entry: ParsedEntry?, error: String?) {
@@ -279,6 +318,7 @@ class ScreenshotCaptureService : Service() {
         const val CHANNEL_RESULT = "screenshot_result"
         const val PROGRESS_ID = 9001
         const val RESULT_ID = 9002
+        private const val TILE_CAPTURE_SETTLE_DELAY_MS = 700L
     }
 }
 

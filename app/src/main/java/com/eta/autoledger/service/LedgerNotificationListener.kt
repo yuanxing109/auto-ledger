@@ -216,21 +216,9 @@ class LedgerNotificationListener : NotificationListenerService() {
                 return@launch
             }
 
-            // 主键交给 Room 自增（传 0L），别用时间戳，否则同毫秒两笔会被 REPLACE 覆盖
-            // 短信通道可能刚把同一笔扣费记过：入库前做跨渠道窗口去重
+            // 主键交给 Room 自增（传 0L）。跨渠道强指纹命中时，仓库只合并来源，
+            // 不能在这里提前跳过，否则新来源永远无法追加到已有账单。
             val entry = bill.toEntry(0L)
-            if (runCatching {
-                LedgerRepository.isRecentDuplicate(
-                    this@LedgerNotificationListener,
-                    bill.amount,
-                    bill.type,
-                    bill.source,
-                    bill.timeMillis,
-                )
-            }.getOrElse { false }) {
-                Log.d(TAG, "窗口内已有同额自动账单，跳过：${bill.amount}")
-                return@launch
-            }
             val added = runCatching {
                 LedgerRepository.addAutoParsed(this@LedgerNotificationListener, listOf(entry))
             }.getOrElse {

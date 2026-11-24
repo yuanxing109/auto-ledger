@@ -1,5 +1,9 @@
 package com.eta.autoledger.data
 
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.security.MessageDigest
+
 /**
  * 解析结果的短时内存去重。
  *
@@ -37,6 +41,64 @@ object ParseDedup {
 
     /** 「金额|商户」-> 最近一次放行时刻，用于跨秒边界的促发判重。 */
     private val bursts = LinkedHashMap<String, Long>()
+
+    /** 金额统一换算为“分”，消除 Double 尾差对强指纹的影响。 */
+    fun amountFen(amount: Double): Long =
+        BigDecimal.valueOf(amount)
+            .setScale(2, RoundingMode.HALF_UP)
+            .movePointRight(2)
+            .longValueExact()
+
+    /**
+     * 从短信/通知正文中提取卡号后四位。
+     *
+     * 支持“尾号1234”“后四位：1234”“末四位 1234”以及“**** 1234”“6222********1234”
+     * 这类掩码格式。找不到时返回 null。
+     */
+    fun accountTailFromText(text: String): String? {
+        val labeled = Regex(
+            """(?:尾号|后四位|末四位)[^0-9]{0,8}(?:[*xX•·]{2,}\s*)?(\d{4})(?!\d)""",
+        ).find(text)?.groupValues?.getOrNull(1)
+        val masked = Regex(
+            """[*xX•·]{4,}\s*(\d{4})(?!\d)""",
+        ).find(text)?.groupValues?.getOrNull(1)
+        return (labeled ?: masked)?.uppercase()
+    }
+
+    /**
+     * 跨来源强指纹：金额分、方向、分钟桶、卡号后四位。
+     *
+     * 使用分钟桶而不是秒桶，是为了允许短信与通知到达时间相差几十秒。候选查询仍限制
+     * ±5 分钟，真正合并前必须逐条重新计算该指纹，避免只凭金额和时间窗误合并。
+     */
+    fun strongFingerprint(
+        amount: Double,
+        type: String,
+        timeMillis: Long,
+        accountTail: String?,
+    ): String {
+        val material = buildString {
+            append(amountFen(amount))
+            append('|')
+            append(type.trim().lowercase())
+            append('|')
+            append(timeMillis / 60_000L)
+            append('|')
+            append(accountTail?.trim()?.takeLast(4)?.uppercase().orEmpty())
+        }
+        return MessageDigest.getInstance("SHA-1")
+            .digest(material.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    /** 合并来源标签，使用“ + ”追加并对空白项和重复项去重。 */
+    fun mergeSources(existing: String, incoming: String): String {
+        val parts = (existing.split(" + ") + incoming.split(" + "))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        return parts.joinToString(" + ")
+    }
 
     /**
      * 生成指纹：金额 + 商户/标题 + 发生时间（精确到秒）。

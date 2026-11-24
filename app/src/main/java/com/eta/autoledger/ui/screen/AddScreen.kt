@@ -2,12 +2,15 @@ package com.eta.autoledger.ui.screen
 
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.MagicWandIcon
 import com.eta.autoledger.ui.components.AppDialog
+import com.eta.autoledger.ui.components.AiQuickEntryDialog
 import com.eta.autoledger.ui.window.LocalSnackbar
-import android.widget.Toast
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,6 +45,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,7 +59,6 @@ import java.util.Calendar
 import java.util.Locale
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.SwitchDefaults
@@ -67,7 +73,11 @@ import com.eta.autoledger.ui.theme.amountDisplayStyle
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.RecurringRule
+import com.eta.autoledger.screenshot.AiQuickEntry
 import com.eta.autoledger.service.RecurringWorker
+import com.eta.autoledger.ui.theme.LedgerDimens
+import java.math.BigDecimal
+import java.math.RoundingMode
 import kotlinx.coroutines.launch
 
 private val PageBg: Color get() = LedgerTheme.page
@@ -154,6 +164,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     var recurring by rememberSaveable { mutableStateOf(false) }
     var recurringPeriod by rememberSaveable { mutableIntStateOf(1) } // 0=每周 1=每月 2=每年
     var showPeriodPicker by remember { mutableStateOf(false) }
+    var showAiQuickEntry by rememberSaveable { mutableStateOf(false) }
     var pickYear by remember { mutableIntStateOf(calendar.get(Calendar.YEAR)) }
     var pickMonth by remember { mutableIntStateOf(calendar.get(Calendar.MONTH)) }
     var pickDay by remember { mutableIntStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
@@ -200,18 +211,38 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
         showPicker = true
     }
 
-    fun applyDateTime(year: Int, month: Int, day: Int, hour: Int, minute: Int) {
-        calendar.set(year, month, day, hour, minute)
-        timeMillis = calendar.timeInMillis
+    fun refreshTimeText() {
         val now = Calendar.getInstance()
-        val sameDay = now.get(Calendar.YEAR) == year &&
-            now.get(Calendar.MONTH) == month &&
-            now.get(Calendar.DAY_OF_MONTH) == day
+        val sameDay = now.get(Calendar.YEAR) == calendar.get(Calendar.YEAR) &&
+            now.get(Calendar.MONTH) == calendar.get(Calendar.MONTH) &&
+            now.get(Calendar.DAY_OF_MONTH) == calendar.get(Calendar.DAY_OF_MONTH)
         timeText = SimpleDateFormat(
             if (sameDay) "今天 HH:mm" else "MM月dd日 HH:mm",
             Locale.CHINA,
         ).format(calendar.time)
+    }
+
+    fun applyDateTime(year: Int, month: Int, day: Int, hour: Int, minute: Int) {
+        calendar.set(year, month, day, hour, minute)
+        timeMillis = calendar.timeInMillis
+        refreshTimeText()
         showPicker = false
+    }
+
+    fun applyAiQuickEntry(entry: AiQuickEntry) {
+        type = if (entry.type == "income") 1 else 0
+        amountInput = BigDecimal.valueOf(entry.amount)
+            .setScale(2, RoundingMode.HALF_UP)
+            .stripTrailingZeros()
+            .toPlainString()
+        negative = false
+        selectedCategory = entry.category
+        note = entry.note
+        subCategory = ""
+        calendar.timeInMillis = entry.timeMillis
+        timeMillis = entry.timeMillis
+        refreshTimeText()
+        scope.launch { snackbar.show("AI 已填写，请确认后保存") }
     }
 
     fun save(reset: Boolean) {
@@ -326,8 +357,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                 amount = displayAmount(),
                 note = note,
                 onNoteChange = { note = it },
-                onCamera = { },
-                onGallery = { },
+                onAiQuickEntry = { showAiQuickEntry = true },
             )
             Spacer(Modifier.height(12.dp))
             CategoryCard(
@@ -379,6 +409,12 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
         initialMinute = pickMinute,
         onDismiss = { showPicker = false },
         onConfirm = { y, m, d, h, mi -> applyDateTime(y, m, d, h, mi) },
+    )
+
+    AiQuickEntryDialog(
+        show = showAiQuickEntry,
+        onDismiss = { showAiQuickEntry = false },
+        onParsed = ::applyAiQuickEntry,
     )
 }
 
@@ -814,8 +850,7 @@ private fun AmountCard(
     amount: String,
     note: String,
     onNoteChange: (String) -> Unit,
-    onCamera: () -> Unit,
-    onGallery: () -> Unit,
+    onAiQuickEntry: () -> Unit,
 ) {
     val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
     Column(
@@ -838,44 +873,62 @@ private fun AmountCard(
         }
 
         Spacer(Modifier.height(12.dp))
-        BasicTextField(
-            value = note,
-            onValueChange = onNoteChange,
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
-            cursorBrush = SolidColor(AccentBlue),
-            decorationBox = { inner ->
-                Box {
-                    if (note.isEmpty()) {
-                        Text(
-                            text = "点击添加备注",
-                            style = MiuixTheme.textStyles.body2.copy(color = TextSecondary),
-                        )
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = LedgerDimens.minTouch),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicTextField(
+                value = note,
+                onValueChange = onNoteChange,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+                cursorBrush = SolidColor(AccentBlue),
+                decorationBox = { inner ->
+                    Box {
+                        if (note.isEmpty()) {
+                            Text(
+                                text = "点击添加备注",
+                                style = MiuixTheme.textStyles.body2.copy(color = TextSecondary),
+                            )
+                        }
+                        inner()
                     }
-                    inner()
-                }
-            },
-        )
-
-        Spacer(Modifier.height(8.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(0.5.dp)
-                .background(LedgerTheme.divider),
-        )
-        Spacer(Modifier.height(8.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = onCamera) {
-                Text("📷", fontSize = 19.sp)
-            }
-            IconButton(onClick = onGallery) {
-                Text("🖼️", fontSize = 19.sp)
-            }
+                },
+            )
+            AiQuickEntryButton(onClick = onAiQuickEntry)
         }
+    }
+}
+
+@Composable
+private fun AiQuickEntryButton(onClick: () -> Unit) {
+    val dimens = LocalDimens.current
+    Row(
+        modifier = Modifier
+            .heightIn(min = LedgerDimens.minTouch)
+            .clip(RoundedCornerShape(dimens.radiusCapsule))
+            .semantics { role = Role.Button }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
+            .padding(horizontal = LedgerDimens.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = MagicWandIcon,
+            contentDescription = null,
+            tint = AccentBlue,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(LedgerDimens.xs))
+        Text(
+            text = "AI 帮我记",
+            style = MiuixTheme.textStyles.button,
+            color = AccentBlue,
+        )
     }
 }
 

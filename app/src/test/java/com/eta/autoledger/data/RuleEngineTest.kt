@@ -1,6 +1,7 @@
 package com.eta.autoledger.data
 
 import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -132,6 +133,64 @@ class RuleEngineTest {
     }
 
     @Test
+    fun 金额正则使用DOTALL跨行匹配() = runBlocking {
+        val rule = noticeRule("user", "跨行", "com.tencent.mm").copy(
+            patternJson = """
+                {"v":2,"type":"notice","app":"com.tencent.mm",
+                 "necessaryFields":["amount","direction"],
+                 "amount":["支付成功.*?(\\d+(?:\\.\\d{1,2})?)"],
+                 "expense":["支付成功"],"income":[],"block":[],"cats":{}}
+            """.trimIndent(),
+        )
+        RuleEngine.ensureLoaded(FakeRuleDao(listOf(rule)))
+
+        val hit = RuleEngine.match(RuleType.NOTICE, "com.tencent.mm", "支付成功\n12.34")
+        assertEquals(12.34, hit?.amount ?: 0.0, 0.001)
+    }
+
+    @Test
+    fun 旧JSON缺少necessaryFields时按默认契约兼容() = runBlocking {
+        val oldRule = noticeRule("user", "旧规则", "com.tencent.mm")
+        assertTrue(!JSONObject(oldRule.patternJson).has("necessaryFields"))
+        RuleEngine.ensureLoaded(FakeRuleDao(listOf(oldRule)))
+
+        val hit = RuleEngine.match(RuleType.NOTICE, "com.tencent.mm", "微信支付 12.34 支付成功")
+        assertNotNull(hit)
+        assertEquals(12.34, hit?.amount ?: 0.0, 0.001)
+    }
+
+    @Test
+    fun 缺少方向证据的规则被丢弃() = runBlocking {
+        val rule = noticeRule("user", "无方向证据", "com.tencent.mm").copy(
+            patternJson = """
+                {"v":2,"type":"notice","app":"com.tencent.mm",
+                 "necessaryFields":["amount","direction"],
+                 "amount":["微信支付\\s*(\\d+(?:\\.\\d{1,2})?)"],
+                 "expense":[],"income":[],"block":[],"cats":{}}
+            """.trimIndent(),
+        )
+        RuleEngine.ensureLoaded(FakeRuleDao(listOf(rule)))
+
+        assertEquals(0, RuleEngine.cachedCount)
+        assertNull(RuleEngine.match(RuleType.NOTICE, "com.tencent.mm", "微信支付 12.34"))
+    }
+
+    @Test
+    fun 未知必填能力按缺失处理并丢弃规则() = runBlocking {
+        val rule = noticeRule("user", "未知能力", "com.tencent.mm").copy(
+            patternJson = """
+                {"v":2,"type":"notice","app":"com.tencent.mm",
+                 "necessaryFields":["amount","direction","futureField"],
+                 "amount":["微信支付\\s*(\\d+(?:\\.\\d{1,2})?)"],
+                 "expense":["支付成功"],"income":[],"block":[],"cats":{}}
+            """.trimIndent(),
+        )
+        RuleEngine.ensureLoaded(FakeRuleDao(listOf(rule)))
+
+        assertEquals(0, RuleEngine.cachedCount)
+    }
+
+    @Test
     fun 命中结果带上规则的自动记账开关() = runBlocking {
         val dao = FakeRuleDao(
             listOf(noticeRule("user", "微信", "com.tencent.mm", autoRecord = false)),
@@ -207,6 +266,19 @@ class RuleEngineTest {
         val dao = FakeRuleDao(listOf(noticeRule("user", "微信", "com.tencent.mm")))
         RuleEngine.ensureLoaded(dao)
         assertNull(RuleEngine.match(RuleType.NOTICE, "com.tencent.mm", ""))
+    }
+
+    @Test
+    fun 新种子规则写入v2默认必填能力() {
+        val rules = RuleSeed.systemRules()
+        assertTrue(rules.isNotEmpty())
+        rules.forEach { rule ->
+            val json = JSONObject(rule.patternJson)
+            assertEquals(2, json.getInt("v"))
+            val necessary = json.getJSONArray("necessaryFields")
+            assertEquals("amount", necessary.getString(0))
+            assertEquals("direction", necessary.getString(1))
+        }
     }
 
     // ── 夹具 ──────────────────────────────────────────────────────────

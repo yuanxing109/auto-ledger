@@ -63,6 +63,6 @@ object RuleSafety {
      */
     fun compile(pattern: String): Regex? {
         if (unsafeReason(pattern) != null) return null
-        return runCatching { Regex(pattern) }.getOrNull()
+        return runCatching { Regex(pattern, RegexOption.DOT_MATCHES_ALL) }.getOrNull()
     }
 }

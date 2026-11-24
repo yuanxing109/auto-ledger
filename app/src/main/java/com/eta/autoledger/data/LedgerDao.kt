@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 data class Bucket(val bucket: String, val total: Double)
 
+/** 小部件近 7 日趋势的一天支出。 */
+data class DayAmount(val day: String, val total: Double)
+
 data class CategoryAgg(
     val name: String,
     val total: Double,
@@ -145,6 +148,14 @@ interface LedgerDao {
     )
     suspend fun sumExpenseOnce(start: Long, end: Long): Double
 
+    /** 小部件专用：一次查询近 7 日支出，按本地日期分组。 */
+    @Query(
+        "SELECT strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime') AS day, " +
+            "COALESCE(SUM(amount), 0.0) AS total FROM Bill WHERE type = 'expense' " +
+            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end GROUP BY day ORDER BY day",
+    )
+    suspend fun sumExpenseByDayOnce(start: Long, end: Long): List<DayAmount>
+
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
             "WHERE type == 'income' AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
@@ -273,6 +284,23 @@ interface LedgerDao {
         since: Long,
         until: Long,
     ): Int
+
+    /** 自动记账强指纹的候选集：精确金额、方向、发生时间 ±5 分钟。 */
+    @Query(
+        "SELECT * FROM Bill WHERE is_recurring = 0 " +
+            "AND CAST(ROUND(amount * 100) AS INTEGER) = :amountCents AND type = :type " +
+            "AND timestamp BETWEEN :since AND :until ORDER BY timestamp ASC, id ASC",
+    )
+    suspend fun strongMergeCandidates(
+        amountCents: Long,
+        type: String,
+        since: Long,
+        until: Long,
+    ): List<LedgerEntry>
+
+    /** 只更新来源标签，供跨渠道强指纹命中后合并来源。 */
+    @Query("UPDATE Bill SET source = :source WHERE id = :id")
+    suspend fun updateSource(id: Long, source: String): Int
 
     /**
      * IGNORE 而不是 REPLACE：主键交给 SQLite 自增后，撞键只可能是 external_id 唯一索引，

@@ -3,6 +3,8 @@ package com.eta.autoledger.data
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -43,6 +45,76 @@ class ParseDedupTest {
             ParseDedup.fingerprint(46.9, "美团", 1_700_000_000_000),
             ParseDedup.fingerprint(46.90, "美团", 1_700_000_000_000),
         )
+    }
+
+    @Test
+    fun 金额稳定换算为分() {
+        assertEquals(1940L, ParseDedup.amountFen(19.40))
+        assertEquals(30L, ParseDedup.amountFen(0.1 + 0.2))
+        assertEquals(268L, ParseDedup.amountFen(2.675))
+    }
+
+    @Test
+    fun 强指纹使用分钟桶并且金额精度稳定() {
+        val a = ParseDedup.strongFingerprint(19.40, "expense", 1_700_000_000_000, "1234")
+        val b = ParseDedup.strongFingerprint(19.4, "expense", 1_700_000_020_000, "1234")
+        assertEquals(a, b)
+        assertEquals(40, a.length)
+    }
+
+    @Test
+    fun 强指纹区分方向卡尾和分钟() {
+        val base = ParseDedup.strongFingerprint(19.40, "expense", 1_700_000_000_000, "1234")
+        assertNotEquals(base, ParseDedup.strongFingerprint(19.40, "income", 1_700_000_000_000, "1234"))
+        assertNotEquals(base, ParseDedup.strongFingerprint(19.40, "expense", 1_700_000_000_000, "5678"))
+        assertNotEquals(base, ParseDedup.strongFingerprint(19.40, "expense", 1_700_000_060_000, "1234"))
+    }
+
+    @Test
+    fun 卡尾支持中文标签和掩码格式() {
+        assertEquals("1234", ParseDedup.accountTailFromText("您尾号1234的卡消费19.40元"))
+        assertEquals("5678", ParseDedup.accountTailFromText("信用卡后四位：5678"))
+        assertEquals("9012", ParseDedup.accountTailFromText("末四位 9012"))
+        assertEquals("2468", ParseDedup.accountTailFromText("6222********2468"))
+        assertEquals("1357", ParseDedup.accountTailFromText("卡号 **** 1357"))
+        assertNull(ParseDedup.accountTailFromText("没有卡号信息"))
+    }
+
+    @Test
+    fun 来源按加号去重追加() {
+        assertEquals("微信通知 + 短信记账", ParseDedup.mergeSources("微信通知", "短信记账"))
+        assertEquals("微信通知 + 短信记账", ParseDedup.mergeSources("微信通知 + 短信记账", "微信通知"))
+        assertEquals("微信通知 + 短信记账", ParseDedup.mergeSources("微信通知", " 短信记账 "))
+        assertEquals("微信通知", ParseDedup.mergeSources("微信通知", "   "))
+    }
+
+    @Test
+    fun 强指纹只合并不同来源且同分钟同卡尾的账单() {
+        val existing = LedgerEntry(
+            id = 1L,
+            amount = 19.40,
+            type = "expense",
+            category = "餐饮",
+            time = "2023-11-14 22:13",
+            timeMillis = 1_700_000_000_000L,
+            note = "尾号1234消费19.40元",
+            source = "银行通知",
+        )
+        val incoming = existing.copy(
+            id = 0L,
+            timeMillis = existing.timeMillis + 30_000L,
+            source = "短信记账",
+        )
+        assertNotNull(LedgerRepository.findStrongMergeTarget(incoming, listOf(existing)))
+
+        val sameSource = incoming.copy(source = "银行通知")
+        assertNull(LedgerRepository.findStrongMergeTarget(sameSource, listOf(existing)))
+
+        val differentMinute = incoming.copy(timeMillis = existing.timeMillis + 60_000L)
+        assertNull(LedgerRepository.findStrongMergeTarget(differentMinute, listOf(existing)))
+
+        val differentTail = incoming.copy(note = "尾号5678消费19.40元")
+        assertNull(LedgerRepository.findStrongMergeTarget(differentTail, listOf(existing)))
     }
 
     // ── 促发窗口 ──────────────────────────────────────────────────────

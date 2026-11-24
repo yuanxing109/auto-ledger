@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -100,7 +101,7 @@ private data class Tab(
 
 
 @Composable
-fun LedgerApp(openAiSettings: Boolean = false) {
+fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
     val context = LocalContext.current
     val prefs = remember { AppPrefs.get(context) }
     // 全站唯一主题根：解析「外观」模式 → 灌 Miuix 色板/字体槽 → 同步自绘色板。
@@ -118,6 +119,15 @@ fun LedgerApp(openAiSettings: Boolean = false) {
         // 全局 Snackbar：自己维护「同一时刻只有一条」的模型（见 LedgerSnackbar），
         // 新提示直接顶掉旧的，不会在屏幕里排队堆叠。
         val snackbar = remember { LedgerSnackbar() }
+
+        LaunchedEffect(openAddRequest) {
+            if (openAddRequest > 0) {
+                showSettings = false
+                showSearch = false
+                showAiSheet = false
+                selected = 1
+            }
+        }
         fun analyzeImage(uri: Uri) {
             scope.launch {
                 Toast.makeText(context, "正在交给 AI 识别…", Toast.LENGTH_SHORT).show()

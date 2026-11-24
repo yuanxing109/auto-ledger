@@ -21,6 +21,7 @@ class ParsePipelineTest {
     fun reset() {
         RuleEngine.resetForTest()
         ParseDedup.clear()
+        PendingMap.clearForTest()
     }
 
     // ── 动态规则优先 ──────────────────────────────────────────────────
@@ -45,6 +46,36 @@ class ParsePipelineTest {
         val dao = FakeRuleDao(listOf(userRule("我的微信", "com.tencent.mm", category = "转账")))
         val bill = ParsePipeline.parse(raw = wechatRaw("微信支付 12.34 支付成功 转账"), cats(), dao = dao)
         assertEquals("转账", bill?.category)
+    }
+
+    @Test
+    fun 动态规则可跨行提取折叠通知金额() = runBlocking {
+        val rule = RuleEntity(
+            id = RuleEntity.makeId(RuleType.NOTICE, "com.tencent.mm", "跨行规则"),
+            app = "com.tencent.mm",
+            type = RuleType.NOTICE,
+            name = "跨行规则",
+            creator = RuleEntity.CREATOR_USER,
+            patternJson = """
+                {"v":2,"type":"notice","app":"com.tencent.mm",
+                 "amount":["转账金额.*?(\\d+(?:\\.\\d{1,2})?)"],
+                 "expense":["支付成功"],"income":[],"block":[],"cats":{},
+                 "necessaryFields":["amount","direction"]}
+            """.trimIndent(),
+            enabled = true,
+            autoRecord = true,
+            updatedAt = 0L,
+        )
+        val raw = NotifyRaw(
+            pkg = "com.tencent.mm",
+            title = "微信",
+            text = "",
+            bigText = "转账金额\n12.34\n支付成功",
+            postTime = 1_700_000_000_000,
+        )
+        val bill = ParsePipeline.parse(raw = raw, cats(), dao = FakeRuleDao(listOf(rule)))
+        assertNotNull("换行文本应被 DOTALL 动态规则识别", bill)
+        assertEquals(12.34, bill!!.amount, 0.001)
     }
 
     @Test
@@ -254,6 +285,56 @@ class ParsePipelineTest {
         assertNotNull("106 通道的企业代付短信不该被发送方闸门挡掉", bill)
         assertEquals(19.40, bill!!.amount, 0.001)
         assertEquals("income", bill.type)
+    }
+
+    // ── 两阶段确认 ──────────────────────────────────────────────────────
+
+    @Test
+    fun 未支付下单只进入PendingMap不生成账单() = runBlocking {
+        val bill = ParsePipeline.parse(
+            raw = NotifyRaw(
+                pkg = "com.tencent.mm",
+                title = "订单通知",
+                text = "订单已生成 12.34元，待支付",
+                bigText = "",
+                postTime = 1_700_000_000_000,
+            ),
+            cats(),
+            dao = null,
+        )
+
+        assertNull("待支付订单不能直接生成账单", bill)
+        assertEquals("待确认订单只应挂起一条", 1, PendingMap.size())
+    }
+
+    @Test
+    fun 五分钟内支付成功会合并Pending信息并清空挂起项() = runBlocking {
+        val rawPending = wechatRaw("微信支付 12.34元 下单成功，订单商家：老王面馆")
+        assertNull(
+            "下单阶段不能直接记成已支付",
+            ParsePipeline.parse(raw = rawPending, cats(), dao = null),
+        )
+
+        val confirmed = ParsePipeline.parse(
+            raw = wechatRaw("微信支付 12.34元 支付成功"),
+            cats(),
+            dao = null,
+        )
+        assertNotNull(confirmed)
+        assertEquals(12.34, confirmed!!.amount, 0.001)
+        assertTrue("应保留下单阶段的商户信息", confirmed.note.contains("老王面馆"))
+        assertEquals("确认后必须消费 pending", 0, PendingMap.size())
+    }
+
+    @Test
+    fun 分类列表为空时回退其他而不是丢账() = runBlocking {
+        val bill = ParsePipeline.parse(
+            raw = wechatRaw("微信支付 12.34 元 支付成功"),
+            cats = Triple(emptyList(), emptyList(), emptyList()),
+            dao = null,
+        )
+        assertNotNull("分类缺失不能导致整笔账单丢失", bill)
+        assertEquals("其他", bill!!.category)
     }
 
     // ── 夹具 ──────────────────────────────────────────────────────────

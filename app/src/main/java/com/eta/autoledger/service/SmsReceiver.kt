@@ -120,15 +120,8 @@ class SmsReceiver : BroadcastReceiver() {
                     return@forEach
                 }
 
-                // 主键交给 Room 自增（传 0L），别用时间戳，否则同毫秒两笔会被 REPLACE 覆盖
-                // 短信与通知通道可能把同一笔扣费各送一次：入库前先做跨渠道窗口去重
-                val duplicate = runCatching {
-                    LedgerRepository.isRecentDuplicate(context, bill.amount, bill.type, bill.source, bill.timeMillis)
-                }.getOrElse { false }
-                if (duplicate) {
-                    Log.d(TAG, "窗口内已有同额自动账单，跳过：${bill.source} ${bill.amount}")
-                    return@forEach
-                }
+                // 主键交给 Room 自增（传 0L）。跨渠道合并由 addAutoParsed 的强指纹完成，
+                // 必须让新来源进入仓库，才能追加到已有账单而不是被提前跳过。
                 val added = runCatching {
                     LedgerRepository.addAutoParsed(context, listOf(bill.toEntry(0L)))
                 }.getOrElse {

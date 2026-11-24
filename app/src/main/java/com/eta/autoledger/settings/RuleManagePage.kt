@@ -8,6 +8,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,8 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.LedgerDatabase
 import com.eta.autoledger.data.RuleEntity
 import com.eta.autoledger.data.RuleEngine
@@ -58,6 +64,7 @@ import top.yukonga.miuix.kmp.basic.SwitchDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Locale
 
@@ -79,6 +86,7 @@ private const val DEFAULT_AMOUNT_REGEX =
 fun RuleManagePage() {
     val context = LocalContext.current
     val dao = remember(context) { LedgerDatabase.get(context).ruleDao() }
+    val prefs = remember(context) { AppPrefs.get(context) }
     val snackbar = LocalSnackbar.current
     val scope = rememberCoroutineScope()
     val dimens = LocalDimens.current
@@ -99,6 +107,16 @@ fun RuleManagePage() {
     val systemRules = rules.filter { it.creator == RuleEntity.CREATOR_SYSTEM }
     val userRules = rules.filter { it.creator == RuleEntity.CREATOR_USER }
     val visible = if (tab == 0) systemRules else userRules
+    val pageTitle = when (tab) {
+        0 -> "系统规则"
+        1 -> "我的规则"
+        else -> "全局词库"
+    }
+    val pageSummary = when (tab) {
+        0 -> "系统规则由内置规则库维护，只能启停。"
+        1 -> "自定义解析规则，可新建、编辑、测试与删除。"
+        else -> "维护所有短信与通知共用的拦截词和强制认账词。"
+    }
 
     fun toggle(rule: RuleEntity, next: Boolean) {
         scope.launch {
@@ -113,21 +131,23 @@ fun RuleManagePage() {
     SettingsPageColumn {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("解析规则", style = MiuixTheme.textStyles.title3, color = TextPrimary)
+                Text(pageTitle, style = MiuixTheme.textStyles.title3, color = TextPrimary)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "系统规则由内置规则库维护，只能启停；我的规则可新建、编辑并测试。",
+                    pageSummary,
                     style = MiuixTheme.textStyles.footnote1,
                     color = TextSecondary,
                 )
             }
-            IconButton(onClick = { editorSeed = null; editorShow = true }) {
-                Icon(
-                    imageVector = MiuixIcons.Add,
-                    contentDescription = "新建规则",
-                    tint = AccentBlue,
-                    modifier = Modifier.size(20.dp),
-                )
+            if (tab != 2) {
+                IconButton(onClick = { editorSeed = null; editorShow = true }) {
+                    Icon(
+                        imageVector = MiuixIcons.Add,
+                        contentDescription = "新建规则",
+                        tint = AccentBlue,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
 
@@ -138,46 +158,50 @@ fun RuleManagePage() {
             onTab = { tab = it },
         )
 
-        if (!loaded) {
-            HintText("正在加载规则…")
-        } else if (visible.isEmpty()) {
-            SettingsCard {
-                Column(Modifier.fillMaxWidth().padding(dimens.cardPadding)) {
-                    Text(
-                        if (tab == 0) "没有系统规则" else "还没有自定义规则",
-                        style = MiuixTheme.textStyles.body1,
-                        color = TextPrimary,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        if (tab == 0) {
-                            "内置规则会在应用启动时自动播种。"
-                        } else {
-                            "点右上角「+」新建一条，例如把某条固定话术的短信判为收入。"
-                        },
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = TextSecondary,
-                    )
-                }
-            }
+        if (tab == 2) {
+            GlobalWordLibraryContent(prefs)
         } else {
-            SettingsCard {
-                visible.forEachIndexed { index, rule ->
-                    if (index > 0) RowDivider()
-                    RuleRow(
-                        rule = rule,
-                        onToggle = { toggle(rule, it) },
-                        onEdit = if (rule.creator == RuleEntity.CREATOR_USER) {
-                            { editorSeed = rule; editorShow = true }
-                        } else {
-                            null
-                        },
-                    )
+            if (!loaded) {
+                HintText("正在加载规则…")
+            } else if (visible.isEmpty()) {
+                SettingsCard {
+                    Column(Modifier.fillMaxWidth().padding(dimens.cardPadding)) {
+                        Text(
+                            if (tab == 0) "没有系统规则" else "还没有自定义规则",
+                            style = MiuixTheme.textStyles.body1,
+                            color = TextPrimary,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            if (tab == 0) {
+                                "内置规则会在应用启动时自动播种。"
+                            } else {
+                                "点右上角「+」新建一条，例如把某条固定话术的短信判为收入。"
+                            },
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = TextSecondary,
+                        )
+                    }
+                }
+            } else {
+                SettingsCard {
+                    visible.forEachIndexed { index, rule ->
+                        if (index > 0) RowDivider()
+                        RuleRow(
+                            rule = rule,
+                            onToggle = { toggle(rule, it) },
+                            onEdit = if (rule.creator == RuleEntity.CREATOR_USER) {
+                                { editorSeed = rule; editorShow = true }
+                            } else {
+                                null
+                            },
+                        )
+                    }
                 }
             }
-        }
 
-        HintText("匹配顺序：我的规则优先于系统规则；同一条规则内先判拦截词，再定收支方向，最后抠金额。")
+            HintText("匹配顺序：我的规则优先于系统规则；同一条规则内先判拦截词，再定收支方向，最后抠金额。")
+        }
     }
 
     RuleEditorDialog(
@@ -205,6 +229,231 @@ fun RuleManagePage() {
     )
 }
 
+/** 全局词库与具体规则解耦：所有短信和通知共用同一份拦截词/认账词。 */
+@Composable
+private fun GlobalWordLibraryContent(prefs: AppPrefs) {
+    val dimens = LocalDimens.current
+    val snackbar = LocalSnackbar.current
+    val scope = rememberCoroutineScope()
+    var ignoreInput by remember { mutableStateOf("") }
+    var forceInput by remember { mutableStateOf("") }
+
+    HintText(
+        "当一条短信同时包含拦截词和认账词时，以认账词为准。\n" +
+            "例：「已支付」在认账词里，所以「花呗已支付 46.94 元」仍会入账。",
+    )
+
+    SettingsCard {
+        Column(modifier = Modifier.padding(dimens.cardPadding)) {
+            Text(
+                "忽略（拦截）关键词",
+                style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+            )
+            Spacer(Modifier.height(dimens.gapSmall / 2))
+            Text(
+                "短信里出现这些词就不记账。「下单」「先用后付」这类只是占额度、钱还没扣。",
+                style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+            )
+            Spacer(Modifier.height(dimens.gap))
+            KeywordChips(
+                words = prefs.ignoreKeywords,
+                onRemove = { word -> prefs.ignoreKeywords = prefs.ignoreKeywords - word },
+            )
+            Spacer(Modifier.height(dimens.gap))
+            KeywordInput(
+                value = ignoreInput,
+                placeholder = "输入词语后回车添加，如「抖音月付」",
+                onValueChange = { ignoreInput = it },
+                onSubmit = {
+                    addKeyword(
+                        raw = ignoreInput,
+                        current = prefs.ignoreKeywords,
+                        label = "拦截词",
+                        onSet = { prefs.ignoreKeywords = it },
+                        onDuplicate = { message ->
+                            scope.launch { snackbar.show(message) }
+                        },
+                    )
+                    ignoreInput = ""
+                },
+            )
+        }
+    }
+
+    SettingsCard {
+        Column(modifier = Modifier.padding(dimens.cardPadding)) {
+            Text(
+                "强制认账关键词",
+                style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+            )
+            Spacer(Modifier.height(dimens.gapSmall / 2))
+            Text(
+                "出现这些词就认定钱真的动了，即使同时命中拦截词也会入账。",
+                style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+            )
+            Spacer(Modifier.height(dimens.gap))
+            KeywordChips(
+                words = prefs.forceKeywords,
+                onRemove = { word -> prefs.forceKeywords = prefs.forceKeywords - word },
+            )
+            Spacer(Modifier.height(dimens.gap))
+            KeywordInput(
+                value = forceInput,
+                placeholder = "输入词语后回车添加，如「扣费成功」",
+                onValueChange = { forceInput = it },
+                onSubmit = {
+                    addKeyword(
+                        raw = forceInput,
+                        current = prefs.forceKeywords,
+                        label = "认账词",
+                        onSet = { prefs.forceKeywords = it },
+                        onDuplicate = { message ->
+                            scope.launch { snackbar.show(message) }
+                        },
+                    )
+                    forceInput = ""
+                },
+            )
+        }
+    }
+
+    SettingsCard {
+        ArrowPreference(
+            title = "恢复默认词库",
+            summary = "把两组词都还原成内置预设，你手动加的会被清掉",
+            onClick = {
+                prefs.ignoreKeywords = AppPrefs.DEFAULT_IGNORE_KEYWORDS
+                prefs.forceKeywords = AppPrefs.DEFAULT_FORCE_KEYWORDS
+                scope.launch { snackbar.show("已恢复默认词库") }
+            },
+        )
+    }
+
+    HintText("修改即时生效，下一条短信或通知就会按新词库判断。")
+}
+
+private fun addKeyword(
+    raw: String,
+    current: Set<String>,
+    label: String,
+    onSet: (Set<String>) -> Unit,
+    onDuplicate: (String) -> Unit,
+) {
+    val word = raw.trim()
+    if (word.isEmpty()) return
+    if (word in current) {
+        onDuplicate("「$word」已在${label}里")
+        return
+    }
+    onSet(current + word)
+}
+
+/** 词条以可删除 Chip 展示，FlowRow 保证长词和大量词自动换行。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KeywordChips(words: Set<String>, onRemove: (String) -> Unit) {
+    val dimens = LocalDimens.current
+    if (words.isEmpty()) {
+        Text(
+            "还没有任何词，短信将完全走内置规则。",
+            style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary),
+        )
+        return
+    }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(dimens.gapSmall),
+        verticalArrangement = Arrangement.spacedBy(dimens.gapSmall),
+    ) {
+        words.forEach { word ->
+            val shape = RoundedCornerShape(dimens.radiusCapsule)
+            Row(
+                modifier = Modifier
+                    .heightIn(min = LedgerDimens.minTouch)
+                    .clip(shape)
+                    .background(LedgerTheme.inset)
+                    .border(1.dp, LedgerTheme.borderSoft, shape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = LocalIndication.current,
+                        onClickLabel = "删除「$word」",
+                    ) { onRemove(word) }
+                    .padding(horizontal = dimens.gap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    word,
+                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.text),
+                )
+                Spacer(Modifier.width(dimens.gapSmall / 2))
+                Text(
+                    "×",
+                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary),
+                )
+            }
+        }
+    }
+}
+
+/** 单行输入，回车或右侧「添加」提交。 */
+@Composable
+private fun KeywordInput(
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    val dimens = LocalDimens.current
+    val shape = RoundedCornerShape(dimens.radiusSmall)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = LedgerDimens.minTouch)
+            .clip(shape)
+            .background(LedgerTheme.inset)
+            .border(1.dp, LedgerTheme.borderSoft, shape)
+            .padding(start = dimens.gap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(
+                    placeholder,
+                    style = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.textTertiary),
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                textStyle = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.text),
+                cursorBrush = SolidColor(LedgerTheme.accent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+            )
+        }
+        Spacer(Modifier.width(dimens.gapSmall))
+        val enabled = value.isNotBlank()
+        Box(
+            modifier = Modifier
+                .height(LedgerDimens.minTouch)
+                .clip(RoundedCornerShape(dimens.radiusSmall))
+                .background(if (enabled) LedgerTheme.accent else LedgerTheme.surfaceVariant)
+                .clickable(enabled = enabled, onClickLabel = "添加词条", onClick = onSubmit)
+                .padding(horizontal = dimens.cardPadding),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "添加",
+                style = MiuixTheme.textStyles.footnote1.copy(
+                    color = if (enabled) LedgerTheme.onAccent else LedgerTheme.textTertiary,
+                ),
+            )
+        }
+    }
+}
+
 @Composable
 private fun RuleTabStrip(tab: Int, systemCount: Int, userCount: Int, onTab: (Int) -> Unit) {
     val dimens = LocalDimens.current
@@ -217,7 +466,11 @@ private fun RuleTabStrip(tab: Int, systemCount: Int, userCount: Int, onTab: (Int
             .border(1.dp, LedgerTheme.borderSoft, shape)
             .padding(4.dp),
     ) {
-        listOf("系统规则" to systemCount, "我的规则" to userCount).forEachIndexed { index, item ->
+        listOf<Pair<String, Int?>>(
+            "系统规则" to systemCount,
+            "我的规则" to userCount,
+            "全局词库" to null,
+        ).forEachIndexed { index, item ->
             val selected = tab == index
             Box(
                 modifier = Modifier
@@ -232,7 +485,7 @@ private fun RuleTabStrip(tab: Int, systemCount: Int, userCount: Int, onTab: (Int
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "${item.first} ${item.second}",
+                    item.second?.let { "${item.first} $it" } ?: item.first,
                     style = MiuixTheme.textStyles.body2,
                     color = if (selected) AccentBlue else TextSecondary,
                 )
@@ -683,6 +936,7 @@ private fun buildPatternJson(
     json.put("expense", JSONArray(expense))
     json.put("income", JSONArray(income))
     json.put("block", JSONArray(block))
+    json.put("necessaryFields", JSONArray(RuleSeed.DEFAULT_NECESSARY_FIELDS))
     val cats = JSONObject()
     categories.forEach { entry -> cats.put(entry.key, JSONArray(entry.value)) }
     json.put("cats", cats)
@@ -714,7 +968,10 @@ private fun buildUserRule(
     for (raw in amount) {
         val reason = RuleSafety.unsafeReason(raw)
         if (reason != null) return null to "正则被拒：$reason"
-        if (runCatching { Regex(raw) }.isFailure) return null to "正则无法编译：$raw"
+        if (RuleSafety.compile(raw) == null) return null to "正则无法编译：$raw"
+    }
+    if (direction == null && expense.isEmpty() && income.isEmpty()) {
+        return null to "请指定收支方向，或至少填写一个支出词/收入词"
     }
     val cleanApp = app.trim().ifBlank { null }
     val id = seed?.id ?: RuleEntity.makeId(type, cleanApp, trimmed)
@@ -775,9 +1032,8 @@ private fun runRuleTest(
 
     val expenseHits = expenseWords.count { body.contains(it) }
     val incomeHits = incomeWords.count { body.contains(it) }
-    val hasVocabulary = expenseWords.isNotEmpty() || incomeWords.isNotEmpty()
-    if (hasVocabulary && expenseHits == 0 && incomeHits == 0 && forcedDirection == null) {
-        return "支出词与收入词一个都没命中，这条规则会跳过"
+    if (forcedDirection == null && expenseHits == 0 && incomeHits == 0) {
+        return "缺少方向证据：请指定方向，或让原文命中至少一个支出词/收入词"
     }
 
     val direction = forcedDirection ?: when {
@@ -798,8 +1054,8 @@ private fun runRuleTest(
 
 private fun extractTestAmount(body: String, patterns: List<String>): Double? {
     for (raw in patterns) {
-        if (RuleSafety.unsafeReason(raw) != null) continue
-        val match = runCatching { Regex(raw).find(body) }.getOrNull() ?: continue
+        val pattern = RuleSafety.compile(raw) ?: continue
+        val match = pattern.find(body) ?: continue
         val text = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } ?: match.value
         val value = text.replace(",", "").toDoubleOrNull() ?: continue
         if (value > 0.0 && value <= 1_000_000.0) return value

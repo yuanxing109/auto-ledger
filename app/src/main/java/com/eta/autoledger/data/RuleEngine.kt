@@ -45,6 +45,9 @@ object RuleEngine {
     /** `pattern_json.direction` 的合法取值；其余写法一律忽略，回落到词表投票。 */
     private val DIRECTIONS = setOf("income", "expense", "other")
 
+    /** 当前内核能够验证的必填能力；未知名称不能假装已经满足。 */
+    private val KNOWN_NECESSARY_FIELDS = setOf("amount", "direction")
+
     /** 缓存的规则列表，user 在前 system 在后，已按 [RuleEntity] 的查询顺序排好。 */
     @Volatile
     private var cached: List<CompiledRule> = emptyList()
@@ -138,20 +141,34 @@ object RuleEngine {
             Log.w(TAG, "规则 ${entity.name} 的 JSON 解析失败，跳过", it)
             return null
         }
+        val necessaryFields = json.necessaryFields()
+        val unknownFields = necessaryFields.toSet() - KNOWN_NECESSARY_FIELDS
+        if (unknownFields.isNotEmpty()) {
+            Log.w(TAG, "规则 ${entity.name} 含未知必填能力，跳过：${unknownFields.joinToString()}")
+            return null
+        }
         val amountPatterns = json.stringList("amount").mapNotNull { raw ->
-            val reason = RuleSafety.unsafeReason(raw)
-            if (reason != null) {
-                Log.w(TAG, "规则 ${entity.name} 的金额正则被拒绝：$reason")
-                null
-            } else {
-                runCatching { Regex(raw) }.getOrElse {
-                    Log.w(TAG, "规则 ${entity.name} 的金额正则编译失败，跳过该条", it)
-                    null
+            RuleSafety.compile(raw).also { compiled ->
+                if (compiled == null) {
+                    val reason = RuleSafety.unsafeReason(raw) ?: "正则无法编译"
+                    Log.w(TAG, "规则 ${entity.name} 的金额正则被拒绝：$reason")
                 }
             }
         }
         // 一条可用的金额正则都没有，这条规则不可能产出账单，直接丢弃
         if (amountPatterns.isEmpty()) return null
+
+        val expenseWords = json.stringList("expense")
+        val incomeWords = json.stringList("income")
+        val forcedDirection = json.optString("direction").takeIf { it in DIRECTIONS }
+        if ("direction" in necessaryFields &&
+            forcedDirection == null &&
+            expenseWords.isEmpty() &&
+            incomeWords.isEmpty()
+        ) {
+            Log.w(TAG, "规则 ${entity.name} 缺少方向证据，跳过")
+            return null
+        }
 
         return CompiledRule(
             id = entity.id,
@@ -160,11 +177,11 @@ object RuleEngine {
             type = entity.type,
             autoRecord = entity.autoRecord,
             amountPatterns = amountPatterns,
-            expenseWords = json.stringList("expense"),
-            incomeWords = json.stringList("income"),
+            expenseWords = expenseWords,
+            incomeWords = incomeWords,
             blockWords = json.stringList("block"),
             categories = json.stringListMap("cats"),
-            forcedDirection = json.optString("direction").takeIf { it in DIRECTIONS },
+            forcedDirection = forcedDirection,
         )
     }
 
@@ -193,7 +210,7 @@ object RuleEngine {
          * 命中判定。顺序即语义，改动前先读注释。
          *
          * 1. block 词命中 → 直接不匹配（营销/验证码/账单提醒）。
-         * 2. 词表投票定方向；词表全空则视为「规则不区分方向」，按支出处理。
+         * 2. 词表投票定方向；没有强制方向且词表零命中时视为证据不足。
          * 3. 金额正则逐条试，取第一条能解析出合法金额的。
          * 4. 分类从 `cats` 里按命中词数挑，多者优先。
          */
@@ -202,9 +219,8 @@ object RuleEngine {
 
             val expenseHits = expenseWords.count { body.contains(it) }
             val incomeHits = incomeWords.count { body.contains(it) }
-            val hasVocabulary = expenseWords.isNotEmpty() || incomeWords.isNotEmpty()
-            if (hasVocabulary && expenseHits == 0 && incomeHits == 0 && forcedDirection == null) {
-                // 规则带了词表却一个都没命中：证据不足，交给下一条规则
+            if (forcedDirection == null && expenseHits == 0 && incomeHits == 0) {
+                // 没有强制方向，正文也没有任何收支词：不得默认成支出。
                 return null
             }
             val direction = forcedDirection ?: when {
@@ -272,6 +288,16 @@ private fun JSONObject.stringList(name: String): List<String> {
     for (i in 0 until array.length()) {
         val value = array.optString(i, "")
         if (value.isNotBlank()) out.add(value)
+    }
+    return out
+}
+
+/** 旧 JSON 没有 necessaryFields 时沿用 v2 默认契约。 */
+private fun JSONObject.necessaryFields(): List<String> {
+    val array = optJSONArray("necessaryFields") ?: return RuleSeed.DEFAULT_NECESSARY_FIELDS
+    val out = ArrayList<String>(array.length())
+    for (i in 0 until array.length()) {
+        array.optString(i, "").trim().takeIf { it.isNotEmpty() }?.let(out::add)
     }
     return out
 }

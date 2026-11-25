@@ -162,10 +162,17 @@ object ParsePipeline {
         PendingMap.prune()
         val pending = PendingMap.consume(packageName, ParseDedup.amountFen(bill.amount))
         if (pending == null || pending.type != bill.type) return bill
+        val mergedCategory = if (bill.category == FALLBACK) pending.category else bill.category
+        val mergedSubCategory = when {
+            bill.subCategory != null -> CategoryStore.validSubCategory(mergedCategory, bill.subCategory)
+            mergedCategory == pending.category ->
+                CategoryStore.validSubCategory(mergedCategory, pending.subCategory)
+            else -> null
+        }
         return bill.copy(
-            category = if (bill.category == FALLBACK) pending.category else bill.category,
+            category = mergedCategory,
             note = if (pending.note.length > bill.note.length) pending.note else bill.note,
-            subCategory = bill.subCategory ?: pending.subCategory,
+            subCategory = mergedSubCategory,
             accountTail = bill.accountTail ?: pending.accountTail,
         )
     }
@@ -211,15 +218,18 @@ object ParsePipeline {
             "other" -> otherCats
             else -> expenseCats
         }.ifEmpty { listOf(FALLBACK) }
-        // 规则里写的分类可能已经被用户在设置页删掉了，这时回退到「其他」或首个分类，
-        // 而不是把这条账单丢掉 —— 金额与方向是对的，分类错一点远好过漏记。
+        // 规则里写的分类可能已经被用户在设置页删掉了。规则命中代表金额与方向可信，
+        // 失效分类仍按既有契约回退“其他”；只有规则分类有效且与推断主分类一致时才带子分类。
+        val inferred = CategoryInference.infer(body, cats)
         val category = hit.category?.takeIf { cats.contains(it) }
             ?: if (cats.contains(FALLBACK)) FALLBACK else cats.first()
+        val subCategory = inferred.subCategory.takeIf { inferred.category == category }
         val millis = raw.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
         return NotifyBill(
             amount = hit.amount,
             type = hit.type,
             category = category,
+            subCategory = subCategory,
             note = noteOf(body),
             time = formatTime(millis),
             timeMillis = millis,

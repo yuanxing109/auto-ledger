@@ -23,6 +23,7 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.graphics.createBitmap
 import com.eta.autoledger.AppPrefs
+import com.eta.autoledger.data.CategoryStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -197,7 +198,13 @@ class ScreenshotCaptureService : Service() {
         }
 
         val parsed = runCatching {
-            VisionHelper.callVisionModel(prefs, base64, VisionHelper.MIME_PNG)
+            VisionHelper.callVisionModel(
+                prefs = prefs,
+                base64 = base64,
+                mime = VisionHelper.MIME_PNG,
+                expenseCategories = CategoryStore.names(this@ScreenshotCaptureService, 0),
+                incomeCategories = CategoryStore.names(this@ScreenshotCaptureService, 1),
+            )
         }.getOrElse {
             finishWithResult(null, VisionHelper.userFacingError(it))
             return

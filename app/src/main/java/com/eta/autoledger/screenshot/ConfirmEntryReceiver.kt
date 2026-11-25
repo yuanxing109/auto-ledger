@@ -11,6 +11,7 @@ import androidx.core.app.NotificationManagerCompat
 import android.app.PendingIntent
 import com.eta.autoledger.service.BillNotifier
 import com.eta.autoledger.service.UndoBillReceiver
+import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import kotlinx.coroutines.CoroutineScope
@@ -28,11 +29,22 @@ class ConfirmEntryReceiver : BroadcastReceiver() {
         if (intent.action != ACTION_CONFIRM) return
 
         val time = intent.getStringExtra("time").orEmpty().ifBlank { LedgerRepository.formatTime() }
+        val type = intent.getStringExtra("type") ?: "expense"
+        val availableCategories = CategoryStore.names(context, typeIndex(type))
+        val rawCategory = intent.getStringExtra("category") ?: "其他"
+        val category = rawCategory.takeIf { it in availableCategories }
+            ?: availableCategories.firstOrNull { it == "其他" }
+            ?: availableCategories.firstOrNull()
+            ?: "其他"
+        val subCategory = intent.getStringExtra("subCategory")
+            ?.takeIf { rawCategory == category }
+            ?.let { CategoryStore.validSubCategory(category, it) }
         val entry = LedgerEntry(
             id = 0L,
             amount = intent.getDoubleExtra("amount", 0.0),
-            type = intent.getStringExtra("type") ?: "expense",
-            category = intent.getStringExtra("category") ?: "其他",
+            type = type,
+            category = category,
+            subCategory = subCategory,
             time = time,
             note = intent.getStringExtra("note") ?: "",
             source = "截屏记账",
@@ -87,7 +99,11 @@ class ConfirmEntryReceiver : BroadcastReceiver() {
             undoIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val summary = "${entry.category} ¥ %,.2f".format(entry.amount)
+        val categoryLabel = entry.subCategory?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?.let { "${entry.category} · $it" }
+            ?: entry.category
+        val summary = "$categoryLabel ¥ %,.2f".format(entry.amount)
         val notification = NotificationCompat.Builder(context, BillNotifier.CHANNEL_AUTO)
             .setSmallIcon(android.R.drawable.ic_menu_save)
             .setContentTitle("已入账")
@@ -109,5 +125,11 @@ class ConfirmEntryReceiver : BroadcastReceiver() {
         const val ACTION_CONFIRM = "com.eta.autoledger.CONFIRM_ENTRY"
         const val ACTION_CANCEL = "com.eta.autoledger.CANCEL_ENTRY"
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        private fun typeIndex(type: String): Int = when (type) {
+            "income" -> 1
+            "other" -> 2
+            else -> 0
+        }
     }
 }

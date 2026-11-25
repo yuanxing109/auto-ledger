@@ -194,7 +194,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
         negative = false
         selectedCategory = entry.category
         note = entry.note
-        subCategory = ""
+        subCategory = entry.subCategory.orEmpty()
         calendar.timeInMillis = entry.timeMillis
         timeMillis = entry.timeMillis
         refreshTimeText()

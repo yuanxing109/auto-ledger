@@ -78,6 +78,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import com.eta.autoledger.data.CategoryStore
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -148,7 +149,13 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
                             error("请先在设置中配置 AI 模型")
                         }
                         val base64 = VisionHelper.readImageBase64(context, uri)
-                        VisionHelper.callVisionModel(prefs, base64, VisionHelper.MIME_JPEG)
+                        VisionHelper.callVisionModel(
+                            prefs = prefs,
+                            base64 = base64,
+                            mime = VisionHelper.MIME_JPEG,
+                            expenseCategories = CategoryStore.names(context, 0),
+                            incomeCategories = CategoryStore.names(context, 1),
+                        )
                     }
                 }
                 result.onSuccess { entry -> VisionHelper.postResult(context, entry, null) }

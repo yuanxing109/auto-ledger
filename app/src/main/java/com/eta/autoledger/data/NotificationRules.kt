@@ -228,59 +228,6 @@ object NotificationRules {
         MoneyPatterns.NEAR_VERB,
     )
 
-    private val EXPENSE_KEYWORDS: List<Pair<String, List<String>>> = listOf(
-        "餐饮" to listOf(
-            "美团外卖", "饿了么", "麦当劳", "肯德基", "汉堡王", "必胜客", "德克士",
-            "星巴克", "瑞幸", "喜茶", "奈雪", "茶百道", "古茗", "蜜雪", "沪上阿姨",
-            "汉堡", "咖啡", "奶茶", "烧烤", "火锅", "麻辣烫", "拉面", "米线", "快餐",
-            "早餐", "午餐", "晚餐", "餐厅", "饭店", "食堂", "外卖", "小吃", "食品",
-            "面馆", "美食", "黄焖鸡", "沙县", "兰州拉面", "老乡鸡", "烘焙", "蛋糕",
-        ),
-        "交通" to listOf(
-            "滴滴", "高德打车", "打车", "出租车", "地铁", "公交", "加油", "中石油",
-            "中石化", "壳牌", "停车", "高速", "ETC", "12306", "火车票", "机票",
-            "共享单车", "哈啰",
-        ),
-        "购物" to listOf(
-            "淘宝", "天猫", "京东", "拼多多", "唯品会", "苏宁", "超市", "便利店", "商场",
-            "盒马", "沃尔玛", "永辉", "优衣库", "服饰", "百货", "小店",
-            "先用后付", "确认收货", "自动付款", "抖音", "快手", "小红书", "得物",
-            "网易严选", "名创优品", "屈臣氏", "全家", "罗森", "无印良品", "会员店",
-        ),
-        "娱乐" to listOf(
-            "电影院", "影城", "游戏", "Steam", "腾讯视频", "爱奇艺", "优酷", "哔哩哔哩",
-            "KTV", "演唱会", "门票", "会员", "网吧",
-        ),
-        "通讯" to listOf("话费", "流量", "中国移动", "中国联通", "中国电信", "宽带"),
-        "美容" to listOf("理发", "美发", "美容", "美甲", "健身", "瑜伽"),
-        "医疗" to listOf("医院", "药房", "药店", "诊所", "挂号", "体检", "医保", "口腔"),
-        "住房" to listOf("房租", "物业", "水费", "电费", "燃气", "取暖", "房贷", "租金"),
-        "旅行" to listOf("酒店", "民宿", "携程", "飞猪", "去哪儿", "景区", "旅游", "度假"),
-        "红包" to listOf("红包"),
-        "转账" to listOf("转账", "转给", "转至"),
-        "消费" to listOf(
-            "消费", "扣款", "收银台", "当面付", "扫码", "付款", "已支付", "支付",
-            "收款", "商户", "订单",
-        ),
-    )
-
-    private val INCOME_KEYWORDS: List<Pair<String, List<String>>> = listOf(
-        "退款" to listOf("退款", "退货", "退回"),
-        "红包" to listOf("红包"),
-        "薪资" to listOf("工资", "薪资", "薪酬", "代发"),
-        "理财" to listOf("利息", "收益", "分红", "理财"),
-        "转账" to listOf("转账", "转入"),
-        "收债" to listOf("收款"),
-        "借入" to listOf("借入", "借款到账"),
-    )
-
-    private val OTHER_KEYWORDS: List<Pair<String, List<String>>> = listOf(
-        "还款" to listOf("还款"),
-        "提现" to listOf("提现"),
-        "充值" to listOf("充值"),
-        "代付" to listOf("代付"),
-    )
-
     /**
      * 文本归一化：NFKC 兼容分解。
      *
@@ -461,13 +408,15 @@ object NotificationRules {
             "other" -> otherCats
             else -> expenseCats
         }.ifEmpty { listOf(FALLBACK_CATEGORY) }
-        val fallback = if (cats.contains(FALLBACK_CATEGORY)) FALLBACK_CATEGORY else cats.first()
-        val category = pickCategory(body, direction, cats) ?: fallback
+        val inferred = CategoryInference.infer(body, cats)
+        val category = inferred.category.takeIf(cats::contains)
+            ?: if (cats.contains(FALLBACK_CATEGORY)) FALLBACK_CATEGORY else cats.first()
         val millis = raw.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
         return NotifyBill(
             amount = amount,
             type = direction.type,
             category = category,
+            subCategory = inferred.subCategory.takeIf { inferred.category == category },
             note = noteOf(body),
             time = formatTime(millis),
             timeMillis = millis,
@@ -600,21 +549,6 @@ object NotificationRules {
             }
             else -> null
         }
-    }
-
-    private fun pickCategory(body: String, direction: Direction, cats: List<String>): String? {
-        val table = when (direction.type) {
-            "income" -> INCOME_KEYWORDS
-            "other" -> OTHER_KEYWORDS
-            else -> EXPENSE_KEYWORDS
-        }
-        val hit = table.firstOrNull { (name, words) ->
-            cats.contains(name) && words.any { body.contains(it) }
-        }
-        if (hit != null) return hit.first
-        // 支出方向优先兜底到「消费」而不是「其他」，微信/支付宝通用支付单至少有个合理分类
-        if (direction.type == "expense" && cats.contains("消费")) return "消费"
-        return if (cats.contains(FALLBACK_CATEGORY)) FALLBACK_CATEGORY else null
     }
 
     private fun noteOf(body: String): String {

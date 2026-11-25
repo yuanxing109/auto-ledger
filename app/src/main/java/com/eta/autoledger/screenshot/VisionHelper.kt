@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.graphics.scale
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.MainActivity
+import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.network.AiClient
 import com.eta.autoledger.network.AiPrompt
 import com.eta.autoledger.network.AiResponseFormatException
@@ -31,6 +32,7 @@ data class ParsedEntry(
     val category: String,
     val time: String,
     val note: String,
+    val subCategory: String? = null,
 )
 
 object VisionHelper {
@@ -39,7 +41,13 @@ object VisionHelper {
      * 图片 MIME 必须由调用方传入：相册导入走 JPEG，截屏服务走 PNG，
      * 早先写死 "image/png" 会让 JPEG 的 base64 被当成 PNG 解析而报 400。
      */
-    fun callVisionModel(prefs: AppPrefs, base64: String, mime: String = MIME_JPEG): ParsedEntry {
+    fun callVisionModel(
+        prefs: AppPrefs,
+        base64: String,
+        mime: String = MIME_JPEG,
+        expenseCategories: List<String> = CategoryStore.expense,
+        incomeCategories: List<String> = CategoryStore.income,
+    ): ParsedEntry {
         // 相册与截屏两条调用路径可能各自已经拼过 data URI 前缀，
         // 再拼一次就变成 data:image/jpeg;base64,data:image/jpeg;base64,/9j/…
         // 服务端要么 400，要么回一段不是 JSON 的错误页 —— 统一在这里剥干净。
@@ -47,7 +55,7 @@ object VisionHelper {
         val content = JSONArray().apply {
             put(JSONObject().apply {
                 put("type", "text")
-                put("text", strictPrompt(prefs.aiPrompt))
+                put("text", strictPrompt(prefs.aiPrompt, expenseCategories, incomeCategories))
             })
             put(JSONObject().apply {
                 put("type", "image_url")
@@ -67,6 +75,14 @@ object VisionHelper {
             messages = messages,
             maxTokens = 400,
         )
+        return parseResponse(contentText, expenseCategories, incomeCategories)
+    }
+
+    internal fun parseResponse(
+        contentText: String,
+        expenseCategories: List<String>,
+        incomeCategories: List<String>,
+    ): ParsedEntry {
         val obj = AiClient.parseJsonObject(contentText)
             ?: AiClient.invalidResponse(contentText)
         val amount = obj.optDouble("amount", 0.0)
@@ -75,13 +91,21 @@ object VisionHelper {
         }
         val rawType = cleanField(obj, "type").lowercase(Locale.ROOT)
         val type = if (rawType == "income") "income" else "expense"
-        val category = cleanField(obj, "category").ifBlank { "其他" }.take(12)
+        val available = if (type == "income") incomeCategories else expenseCategories
+        val contractCategories = available.filter { it in CategoryStore.aiPrimaryCategories }
+        val category = cleanField(obj, "category")
+            .takeIf { it in contractCategories }
+            ?: contractCategories.firstOrNull { it == "其他" }
+            ?: contractCategories.firstOrNull()
+            ?: "其他"
+        val subCategory = CategoryStore.validSubCategory(category, cleanField(obj, "subCategory"))
         val note = cleanField(obj, "note").take(120)
         if (note.isBlank()) AiClient.invalidResponse(contentText)
         return ParsedEntry(
             amount = amount,
             type = type,
             category = category,
+            subCategory = subCategory,
             time = saneTime(cleanField(obj, "time")),
             note = note,
         )
@@ -114,7 +138,17 @@ object VisionHelper {
     }
 
     /** 用户 Prompt 只作为辅助场景说明，字段契约始终由统一骨架控制。 */
-    internal fun strictPrompt(base: String): String = AiPrompt.forVision(base)
+    internal fun strictPrompt(
+        base: String,
+        expenseCategories: List<String> = CategoryStore.expense,
+        incomeCategories: List<String> = CategoryStore.income,
+    ): String = AiPrompt.forVision(
+        businessHint = base,
+        primaryCategories = CategoryStore.aiPrimaryCategories,
+        subCategoryTree = CategoryStore.subCategoryTreeFor(CategoryStore.aiPrimaryCategories),
+        expenseCategories = expenseCategories,
+        incomeCategories = incomeCategories,
+    )
 
     /**
      * 模型偶尔会编出离谱日期（当前 11 月却返回「2026-02-12 07:22」），
@@ -202,11 +236,12 @@ object VisionHelper {
                 .setStyle(NotificationCompat.BigTextStyle().bigText(error ?: "处理失败"))
         } else {
             val sign = if (entry.type == "income") "+" else "-"
+            val categoryLabel = categoryLabel(entry.category, entry.subCategory)
             builder.setContentTitle("识别到${if (entry.type == "income") "收入" else "支出"} $sign¥ %,.2f".format(entry.amount))
-                .setContentText(listOf(entry.category, entry.time, entry.note).filter { it.isNotBlank() }.joinToString(" · "))
+                .setContentText(listOf(categoryLabel, entry.time, entry.note).filter { it.isNotBlank() }.joinToString(" · "))
                 .setStyle(
                     NotificationCompat.BigTextStyle().bigText(
-                        "分类：${entry.category}\n金额：$sign¥ %,.2f\n时间：${entry.time}\n备注：${entry.note}".format(entry.amount),
+                        "分类：$categoryLabel\n金额：$sign¥ %,.2f\n时间：${entry.time}\n备注：${entry.note}".format(entry.amount),
                     ),
                 )
             val confirm = PendingIntent.getBroadcast(
@@ -217,6 +252,7 @@ object VisionHelper {
                     putExtra("amount", entry.amount)
                     putExtra("type", entry.type)
                     putExtra("category", entry.category)
+                    putExtra("subCategory", entry.subCategory)
                     putExtra("time", entry.time)
                     putExtra("note", entry.note)
                 },
@@ -247,4 +283,9 @@ object VisionHelper {
     private const val THREE_DAYS_MS = 3L * 24 * 60 * 60 * 1000
 
     private fun max(a: Int, b: Int) = if (a > b) a else b
+
+    private fun categoryLabel(category: String, subCategory: String?): String {
+        val child = subCategory?.trim().orEmpty()
+        return if (child.isEmpty()) category else "$category · $child"
+    }
 }

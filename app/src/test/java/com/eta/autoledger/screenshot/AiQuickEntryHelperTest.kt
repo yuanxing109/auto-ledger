@@ -28,13 +28,14 @@ class AiQuickEntryHelperTest {
             nowMillis = nowMillis,
         ) { prompt ->
             promptSeen = prompt
-            """{"amount":18.5,"type":"expense","category":"交通","time":"昨天 18:05","note":"打车"}"""
+            """{"amount":18.5,"type":"expense","category":"交通","subCategory":"打车租车","time":"昨天 18:05","note":"打车"}"""
         }
 
         assertNotNull(result)
         assertEquals(18.5, result!!.amount, 0.001)
         assertEquals("expense", result.type)
         assertEquals("交通", result.category)
+        assertEquals("打车租车", result.subCategory)
         assertEquals("打车", result.note)
         assertEquals(-1, result.dateOffset)
         assertEquals(-1L, calendarDayDistance(result.timeMillis, nowMillis))
@@ -43,6 +44,10 @@ class AiQuickEntryHelperTest {
         assertTrue(promptSeen.contains("\"time\": \"昨天\""))
         assertTrue(promptSeen.contains("向您支付"))
         assertTrue(promptSeen.contains("向我支付"))
+        assertTrue(promptSeen.contains("\"subCategory\": \"奶茶咖啡\""))
+        assertTrue(promptSeen.contains("餐饮：早中晚餐、外卖、水果零食、奶茶咖啡"))
+        assertTrue(promptSeen.contains("人情社交"))
+        assertTrue(promptSeen.contains("宠物、住房、代付、其他"))
         assertTrue(!promptSeen.contains("date_offset"))
         assertTrue(!promptSeen.contains("confidence"))
     }
@@ -57,7 +62,7 @@ class AiQuickEntryHelperTest {
         ) {
             """
                 ```json
-                {"amount":12,"type":"expense","category":"餐饮","time":"今天","note":"早餐"}
+                {"amount":12,"type":"expense","category":"餐饮","subCategory":"早中晚餐","time":"今天","note":"早餐"}
                 ```
             """.trimIndent()
         }
@@ -65,6 +70,7 @@ class AiQuickEntryHelperTest {
         assertNotNull(result)
         assertEquals(12.0, result!!.amount, 0.001)
         assertEquals("餐饮", result.category)
+        assertEquals("早中晚餐", result.subCategory)
         assertEquals(0, result.dateOffset)
         assertEquals(0L, calendarDayDistance(result.timeMillis, nowMillis))
     }
@@ -105,12 +111,13 @@ class AiQuickEntryHelperTest {
             incomeCategories = incomeCategories,
             nowMillis = nowMillis,
         ) {
-            """{"amount":20,"type":"income","category":"餐饮","time":"今天","note":"退款"}"""
+            """{"amount":20,"type":"income","category":"餐饮","subCategory":"奶茶咖啡","time":"今天","note":"退款"}"""
         }
 
         assertNotNull(result)
         assertEquals("income", result!!.type)
         assertEquals("其他", result.category)
+        assertEquals(null, result.subCategory)
     }
 
     @Test
@@ -130,6 +137,22 @@ class AiQuickEntryHelperTest {
         assertEquals("其他", result.category)
         assertEquals(-1, result.dateOffset)
         assertTrue(result.time.endsWith("14:26"))
+    }
+
+    @Test
+    fun `无可匹配契约分类时回退其他而不是自定义分类`() {
+        val result = AiQuickEntryHelper.resolveWithModelCall(
+            text = "自定义消费 20",
+            expenseCategories = listOf("我的自定义分类"),
+            incomeCategories = listOf("其他"),
+            nowMillis = nowMillis,
+        ) {
+            """{"amount":20,"type":"expense","category":"我的自定义分类","subCategory":"","time":"今天","note":"自定义消费"}"""
+        }
+
+        assertNotNull(result)
+        assertEquals("其他", result!!.category)
+        assertEquals(null, result.subCategory)
     }
 
     private fun calendarDayDistance(fromMillis: Long, toMillis: Long): Long {

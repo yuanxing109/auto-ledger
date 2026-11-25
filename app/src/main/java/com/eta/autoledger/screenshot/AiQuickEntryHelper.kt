@@ -2,6 +2,7 @@ package com.eta.autoledger.screenshot
 
 import android.util.Log
 import com.eta.autoledger.AppPrefs
+import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.network.AiClient
 import com.eta.autoledger.network.AiPrompt
 import com.eta.autoledger.util.AiDateTimeResolver
@@ -15,6 +16,7 @@ data class AiQuickEntry(
     val dateOffset: Int,
     val time: String,
     val timeMillis: Long,
+    val subCategory: String? = null,
 )
 
 /**
@@ -68,7 +70,14 @@ object AiQuickEntryHelper {
         expenseCategories: List<String>,
         incomeCategories: List<String>,
     ): String {
-        return AiPrompt.forText(text, expenseCategories, incomeCategories)
+        val categories = (CategoryStore.aiPrimaryCategories + expenseCategories + incomeCategories).distinct()
+        return AiPrompt.forText(
+            text = text,
+            expenseCategories = expenseCategories,
+            incomeCategories = incomeCategories,
+            primaryCategories = CategoryStore.aiPrimaryCategories,
+            subCategoryTree = CategoryStore.subCategoryTreeFor(categories),
+        )
     }
 
     internal fun parseResponse(
@@ -85,11 +94,13 @@ object AiQuickEntryHelper {
         val type = field(obj, "type").takeIf { it == "expense" || it == "income" }
             ?: return@runCatching null
         val categories = if (type == "income") incomeCategories else expenseCategories
+        val contractCategories = categories.filter { it in CategoryStore.aiPrimaryCategories }
         val rawCategory = field(obj, "category")
-        val category = rawCategory.takeIf { it in categories }
-            ?: categories.firstOrNull { it == "其他" }
-            ?: categories.firstOrNull()
+        val category = rawCategory.takeIf { it in contractCategories }
+            ?: contractCategories.firstOrNull { it == "其他" }
+            ?: contractCategories.firstOrNull()
             ?: "其他"
+        val subCategory = CategoryStore.validSubCategory(category, field(obj, "subCategory"))
         val note = field(obj, "note").ifBlank { originalText.trim() }.take(120)
         val resolvedTime = AiDateTimeResolver.resolve(
             rawTime = field(obj, "time"),
@@ -105,6 +116,7 @@ object AiQuickEntryHelper {
             dateOffset = dateOffset,
             time = resolvedTime.display,
             timeMillis = resolvedTime.timeMillis,
+            subCategory = subCategory,
         )
     }.getOrNull()
 

@@ -41,6 +41,20 @@ class ParsePipelineTest {
     }
 
     @Test
+    fun 动态规则合法主分类携带推断子分类() = runBlocking {
+        val dao = FakeRuleDao(listOf(userRule("瑞幸规则", "com.tencent.mm", category = "餐饮")))
+        val bill = ParsePipeline.parse(
+            raw = wechatRaw("微信支付 18.50 瑞幸咖啡 支付成功"),
+            cats(),
+            dao = dao,
+        )
+
+        assertNotNull(bill)
+        assertEquals("餐饮", bill!!.category)
+        assertEquals("奶茶咖啡", bill.subCategory)
+    }
+
+    @Test
     fun 动态规则的分类来自规则而不是内置词表() = runBlocking {
         // 内置词表里「支付成功」会落到「消费」，这条规则明确写的是「转账」
         val dao = FakeRuleDao(listOf(userRule("我的微信", "com.tencent.mm", category = "转账")))
@@ -84,6 +98,7 @@ class ParsePipelineTest {
         val bill = ParsePipeline.parse(raw = wechatRaw("微信支付 12.34 支付成功"), cats(), dao = dao)
         assertNotNull("金额与方向都是对的，不该因为分类不存在就丢账", bill)
         assertEquals("其他", bill?.category)
+        assertNull(bill?.subCategory)
     }
 
     // ── 内置兜底 ──────────────────────────────────────────────────────
@@ -235,6 +250,19 @@ class ParsePipelineTest {
     }
 
     @Test
+    fun 内置规则给精确商户写入合法子分类() = runBlocking {
+        val bill = ParsePipeline.parse(
+            raw = wechatRaw("微信支付 瑞幸咖啡 18.50 元 支付成功"),
+            cats(),
+            dao = null,
+        )
+
+        assertNotNull(bill)
+        assertEquals("餐饮", bill!!.category)
+        assertEquals("奶茶咖啡", bill.subCategory)
+    }
+
+    @Test
     fun 内置的向您支付规则写死收入方向() = runBlocking {
         val systemRules = RuleSeed.systemRules()
         assertEquals("内置规则应保持为可验收的 4 条", 4, systemRules.size)
@@ -324,6 +352,26 @@ class ParsePipelineTest {
         assertEquals(12.34, confirmed!!.amount, 0.001)
         assertTrue("应保留下单阶段的商户信息", confirmed.note.contains("老王面馆"))
         assertEquals("确认后必须消费 pending", 0, PendingMap.size())
+    }
+
+    @Test
+    fun 跨主分类确认时不能继承Pending子分类() = runBlocking {
+        val pending = wechatRaw("微信支付 12.34元 下单成功，美团外卖").copy(
+            postTime = 1_700_000_000_000,
+        )
+        assertNull(ParsePipeline.parse(raw = pending, cats(), dao = null))
+
+        val confirmed = ParsePipeline.parse(
+            raw = wechatRaw("微信支付 12.34元 消费 支付成功").copy(
+                postTime = 1_700_000_030_000,
+            ),
+            cats(),
+            dao = null,
+        )
+
+        assertNotNull(confirmed)
+        assertEquals("消费", confirmed!!.category)
+        assertNull("其他主分类不能携带 pending 的餐饮子分类", confirmed.subCategory)
     }
 
     @Test

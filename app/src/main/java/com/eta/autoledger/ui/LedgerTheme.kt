@@ -73,6 +73,12 @@ object LedgerTheme {
     /** 普通卡片的统一半透明表面。 */
     val glassCard: Color get() = colors.glassCard
 
+    /** 卡片统一柔和阴影色。 */
+    val cardShadow: Color get() = colors.cardShadow
+
+    /** 首页核心资产卡的实色表面。 */
+    val raisedCard: Color get() = colors.raisedCard
+
     // ---------------- 文字 ----------------
 
     val text: Color get() = colors.text
@@ -90,16 +96,10 @@ object LedgerTheme {
     /** 主色块上的文字（深色模式下 accent 是亮蓝，必须配深字）。 */
     val onAccent: Color get() = colors.onAccent
 
-    /** 首页 Hero 大卡片渐变起止色（深色下是深海军蓝，不是亮蓝）。 */
-    val heroStart: Color get() = colors.heroStart
-    val heroEnd: Color get() = colors.heroEnd
-    /** Hero 卡片上的文字色（与 [heroStart]/[heroEnd] 成对，深色下为浅色）。 */
-    val onHero: Color get() = colors.onHero
-
     val income: Color get() = colors.income
 
-    /** 兼容旧名：支出金额用正文色，不用红；红留给 [danger]。 */
-    val expense: Color get() = colors.text
+    /** 支出金额的柔和砖红。 */
+    val expense: Color get() = colors.expense
 
     val danger: Color get() = colors.danger
 

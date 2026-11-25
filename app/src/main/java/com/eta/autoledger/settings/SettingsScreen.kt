@@ -22,8 +22,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -61,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -81,6 +86,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import com.eta.autoledger.ui.components.AppDialog
@@ -247,95 +253,101 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun SettingsAmbienceCard() {
-    ThemeSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "品牌色", style = MiuixTheme.textStyles.title4, color = LedgerTheme.text, modifier = Modifier.weight(1f))
-                Text(text = "固定", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "全局强调色，用于主按钮、选中态与预算剩余。",
-                style = MiuixTheme.textStyles.footnote1,
-                color = LedgerTheme.textSecondary,
-            )
-            Spacer(Modifier.height(12.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(12.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(LedgerTheme.accent),
-            )
-        }
-    }
-}
-
-@Composable
 private fun MainPage(onOpen: (SettingsPage) -> Unit) {
     SettingsPageColumn {
-        // 品牌色卡片保留在首屏，但只作为视觉标识，不再是可点配置项。
-        SettingsAmbienceCard()
-
-        // 高频：每天/每周都会碰的三件事
+        // 常用：记账、提醒与个性化
         SettingsCard {
-            ArrowPreference(
+            SettingsNavigationRow(
                 title = "自动记账",
                 summary = "读取收支信息，自动生成账单",
                 onClick = { onOpen(SettingsPage.Auto) },
             )
             RowDivider()
-            ArrowPreference(
+            SettingsNavigationRow(
                 title = "记账设置",
                 summary = "分类管理与预算",
                 onClick = { onOpen(SettingsPage.LedgerSettings) },
             )
             RowDivider()
-            ArrowPreference(
+            SettingsNavigationRow(
                 title = "通知与提醒",
                 summary = "每日提醒、周期账单与单笔通知",
                 onClick = { onOpen(SettingsPage.Notifications) },
             )
-        }
-
-        // 中频：数据的进出与存档
-        SettingsCard {
-            ArrowPreference(
+            RowDivider()
+            SettingsNavigationRow(
                 title = "数据与备份",
                 summary = "导入、导出与 WebDAV 云备份",
                 onClick = { onOpen(SettingsPage.DataBackup) },
             )
             RowDivider()
-            ArrowPreference(
+            SettingsNavigationRow(
                 title = "外观与小部件",
                 summary = "主题模式与桌面收支卡片",
                 onClick = { onOpen(SettingsPage.AppearanceWidget) },
             )
         }
 
-        // 低频：装完设一次
+        // 系统与支持：高级能力、权限和版本信息
         SettingsCard {
-            ArrowPreference(
+            SettingsNavigationRow(
                 title = "AI 与高级功能",
                 summary = "截屏记账、AI 识图与模型配置",
                 onClick = { onOpen(SettingsPage.Features) },
             )
             RowDivider()
-            ArrowPreference(
+            SettingsNavigationRow(
                 title = "权限与后台",
                 summary = "通知使用权、电池白名单、通知渠道与数据清理",
                 onClick = { onOpen(SettingsPage.SysAccess) },
             )
-        }
-
-        SettingsCard {
-            ArrowPreference(
+            RowDivider()
+            SettingsNavigationRow(
                 title = "关于",
                 summary = "版本信息、开源许可与安全设置",
                 onClick = { onOpen(SettingsPage.About) },
             )
         }
+    }
+}
+
+@Composable
+private fun SettingsNavigationRow(
+    title: String,
+    summary: String,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val arrowColor by animateColorAsState(
+        targetValue = if (pressed) LedgerTheme.accent else LedgerTheme.textTertiary,
+        animationSpec = tween(rememberMotionDuration(120)),
+        label = "settings-arrow",
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(horizontal = LocalDimens.current.cardPadding, vertical = LocalDimens.current.gap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MiuixTheme.textStyles.title4, color = LedgerTheme.text)
+            Spacer(Modifier.height(LedgerDimens.xs))
+            Text(text = summary, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+        }
+        Icon(
+            imageVector = MiuixIcons.ChevronForward,
+            contentDescription = null,
+            tint = arrowColor,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 

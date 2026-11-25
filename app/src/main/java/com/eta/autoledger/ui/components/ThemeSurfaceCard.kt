@@ -13,7 +13,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
 
@@ -28,6 +32,8 @@ fun ThemeSurfaceCard(
     modifier: Modifier = Modifier,
     shape: Shape? = null,
     contentPadding: PaddingValues? = null,
+    containerColor: Color = LedgerTheme.glassCard,
+    shadowElevation: Dp = 2.dp,
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -45,12 +51,18 @@ fun ThemeSurfaceCard(
     }
     Column(
         modifier = modifier
+            .shadow(
+                elevation = shadowElevation,
+                shape = resolvedShape,
+                ambientColor = LedgerTheme.cardShadow,
+                spotColor = LedgerTheme.cardShadow,
+            )
             .clip(resolvedShape)
             .then(clickModifier)
             .drawBehind {
                 drawRowSurface(
                     shape = resolvedShape,
-                    fill = LedgerTheme.glassCard,
+                    fill = containerColor,
                     stroke = LedgerTheme.borderSoft,
                     strokeWidthDp = 1f,
                 )

@@ -408,15 +408,18 @@ private fun Sparkle() {
 private fun SummaryCard(data: ReportData, tab: Int, income: Boolean) {
     ReportCard {
         Column(modifier = Modifier.padding(16.dp)) {
+            val amountColor = if (income) LedgerTheme.income else LedgerTheme.expense
             Row {
                 SummaryCell(
                     label = "${data.periodName}${if (income) "收入" else "支出"}（元）",
                     value = "%,.2f".format(data.total),
+                    valueColor = amountColor,
                     modifier = Modifier.weight(1f),
                 )
                 SummaryCell(
                     label = "日均${if (income) "收入" else "支出"}（元）",
                     value = "%,.2f".format(data.dailyAvg),
+                    valueColor = amountColor,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -425,13 +428,17 @@ private fun SummaryCard(data: ReportData, tab: Int, income: Boolean) {
                 SummaryCell(
                     label = "${data.compareLabel}${if (income) "收入" else "支出"}（元）",
                     value = "%+,.2f".format(data.changeAmount),
-                    valueColor = if (data.changeAmount < 0) LedgerTheme.danger else TextSecondary,
+                    valueColor = when {
+                        data.changeAmount > 0 -> LedgerTheme.income
+                        data.changeAmount < 0 -> LedgerTheme.expense
+                        else -> TextSecondary
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 SummaryCell(
                     label = "收支结余（元）",
                     value = "%+,.2f".format(data.balance),
-                    valueColor = AccentBlue,
+                    valueColor = if (data.balance < 0) LedgerTheme.expense else LedgerTheme.income,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -447,9 +454,9 @@ private fun SummaryCell(
     valueColor: Color = TextPrimary,
 ) {
     Column(modifier = modifier) {
-        Text(text = label, style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+        Text(text = label, style = MiuixTheme.textStyles.footnote1, color = TextSecondary)
         Spacer(Modifier.height(4.dp))
-        Text(text = value, style = TextStyle(fontSize = 22.sp, color = valueColor))
+        Text(text = value, style = MiuixTheme.textStyles.headline2, color = valueColor)
     }
 }
 

@@ -910,10 +910,7 @@ private fun CategoryCell(
             modifier = Modifier
                 .size(46.dp)
                 .clip(CircleShape)
-                .then(
-                    if (selected) Modifier.border(2.dp, AccentBlue, CircleShape)
-                    else Modifier,
-                ),
+                .background(if (selected) LedgerTheme.tint(AccentBlue, 0.12f) else Color.Transparent),
             contentAlignment = Alignment.Center,
         ) {
             Box(

@@ -9,6 +9,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.theme.heroAmountStyle
+import com.eta.autoledger.ui.theme.LedgerDimens
 import com.eta.autoledger.util.AppDateFormats
 import top.yukonga.miuix.kmp.icon.extended.Search
 import com.eta.autoledger.ui.components.EntryEditDialog
@@ -17,7 +19,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,7 +50,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -120,6 +120,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     // 分组已迁到 ViewModel 增量维护：loadMore 追加时只合并新页，不再全量重算。
     // 原实现 remember(entries) 的 key 是整个 List，每次翻页都触发 O(n) 重分组 → 累计 O(n²)。
     val groups = billsState.groups
+    val entryShape = RoundedCornerShape(LocalDimens.current.radiusSmall)
 
     // 触底判断：拿 LazyColumn 的 item 下标与 item 总数比，两者同量纲。
     //
@@ -220,6 +221,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                             .fillMaxWidth()
                             .animateItem()
                             .padding(bottom = 8.dp),
+                        shape = entryShape,
                         contentPadding = PaddingValues(0.dp),
                         onClick = { editingEntry = entry.ledger },
                     ) {
@@ -283,11 +285,7 @@ private fun CoreAssetCard(
     visible: Boolean,
     onToggle: () -> Unit,
 ) {
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
     val dimen = LocalDimens.current
-    val heroStart = LedgerTheme.heroStart.copy(alpha = 0.94f)
-    val heroEnd = LedgerTheme.heroEnd.copy(alpha = 0.86f)
-    val heroBrush = remember(heroStart, heroEnd) { Brush.linearGradient(listOf(heroStart, heroEnd)) }
     val remaining = (budget - budgetSpent).coerceAtLeast(0.0)
     val progress = if (visible && budget > 0.0) {
         (budgetSpent / budget).toFloat().coerceIn(0f, 1f)
@@ -295,32 +293,30 @@ private fun CoreAssetCard(
         0f
     }
     val budgetLabel = if (budgetStartDay == 1) "月预算" else "本期预算"
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(heroBrush)
-            .border(1.dp, LedgerTheme.onHero.copy(alpha = 0.2f), cardShape)
-            .padding(horizontal = dimen.cardPadding, vertical = dimen.gap),
+    ThemeSurfaceCard(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(0.dp),
+        containerColor = LedgerTheme.raisedCard,
     ) {
+        Column(modifier = Modifier.padding(horizontal = dimen.cardPadding, vertical = dimen.gap)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = dateLabel,
                     style = MiuixTheme.textStyles.footnote1,
-                    color = LedgerTheme.onHero.copy(alpha = 0.78f),
+                    color = LedgerTheme.textSecondary,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = "本月支出",
                     style = MiuixTheme.textStyles.body2,
-                    color = LedgerTheme.onHero.copy(alpha = 0.86f),
+                    color = LedgerTheme.textSecondary,
                 )
             }
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(LedgerTheme.onHero.copy(alpha = 0.14f))
+                    .clip(RoundedCornerShape(dimen.radiusSmall))
+                    .background(LedgerTheme.tint(LedgerTheme.accent, 0.10f))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -328,13 +324,13 @@ private fun CoreAssetCard(
                     modifier = Modifier
                         .size(6.dp)
                         .clip(CircleShape)
-                        .background(if (autoRecordEnabled) LedgerTheme.onHero else LedgerTheme.onHero.copy(alpha = 0.45f)),
+                        .background(if (autoRecordEnabled) LedgerTheme.income else LedgerTheme.textTertiary),
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = if (autoRecordEnabled) "自动记账 ON" else "自动记账 OFF",
                     style = MiuixTheme.textStyles.footnote2,
-                    color = LedgerTheme.onHero,
+                    color = LedgerTheme.accent,
                 )
             }
         }
@@ -343,14 +339,14 @@ private fun CoreAssetCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = if (visible) "¥ %,.2f".format(monthExpense) else "¥ ****",
-                style = MiuixTheme.textStyles.headline1,
-                color = LedgerTheme.onHero,
+                style = heroAmountStyle(),
+                color = LedgerTheme.accent,
             )
             IconButton(onClick = onToggle) {
                 Icon(
                     imageVector = if (visible) MiuixIcons.Show else MiuixIcons.Hide,
                     contentDescription = if (visible) "隐藏金额" else "显示金额",
-                    tint = LedgerTheme.onHero.copy(alpha = 0.82f),
+                    tint = LedgerTheme.textSecondary,
                 )
             }
         }
@@ -360,6 +356,7 @@ private fun CoreAssetCard(
             HeroMetric(
                 label = "本月收入",
                 value = if (visible) "¥ %,.2f".format(monthIncome) else "¥ ****",
+                valueColor = LedgerTheme.income,
                 modifier = Modifier.weight(1f),
             )
             HeroMetric(
@@ -370,6 +367,7 @@ private fun CoreAssetCard(
             HeroMetric(
                 label = "日均支出",
                 value = if (visible) "¥ %,.2f".format(dailyAverageExpense) else "¥ ****",
+                valueColor = LedgerTheme.expense,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -380,7 +378,7 @@ private fun CoreAssetCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(0.5.dp)
-                    .background(LedgerTheme.onHero.copy(alpha = 0.2f)),
+                    .background(LedgerTheme.divider),
             )
             Spacer(Modifier.height(dimen.gapSmall))
             Text(
@@ -390,7 +388,7 @@ private fun CoreAssetCard(
                     else -> "$budgetLabel · 金额已隐藏"
                 },
                 style = MiuixTheme.textStyles.footnote1,
-                color = LedgerTheme.onHero.copy(alpha = 0.86f),
+                color = LedgerTheme.textSecondary,
             )
             Spacer(Modifier.height(8.dp))
             Box(
@@ -398,32 +396,38 @@ private fun CoreAssetCard(
                     .fillMaxWidth()
                     .height(7.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(LedgerTheme.onHero.copy(alpha = 0.22f)),
+                    .background(LedgerTheme.tint(LedgerTheme.accent, 0.14f)),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(progress)
                         .height(7.dp)
-                        .background(LedgerTheme.onHero),
+                        .background(LedgerTheme.accent),
                 )
             }
+        }
         }
     }
 }
 
 @Composable
-private fun HeroMetric(label: String, value: String, modifier: Modifier = Modifier) {
+private fun HeroMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = LedgerTheme.text,
+) {
     Column(modifier = modifier) {
         Text(
             text = label,
             style = MiuixTheme.textStyles.footnote2,
-            color = LedgerTheme.onHero.copy(alpha = 0.7f),
+            color = LedgerTheme.textSecondary,
         )
         Spacer(Modifier.height(3.dp))
         Text(
             text = value,
             style = MiuixTheme.textStyles.body2,
-            color = LedgerTheme.onHero,
+            color = valueColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -517,11 +521,11 @@ private fun EntryRow(entry: EntryUi) {
                 Spacer(Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(entry.sourceColor.copy(alpha = 0.14f))
+                        .clip(RoundedCornerShape(LedgerDimens.radiusSm))
+                        .background(LedgerTheme.tint(LedgerTheme.accent, 0.08f))
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    Text(text = entry.source, style = MiuixTheme.textStyles.footnote2, color = entry.sourceColor)
+                    Text(text = entry.source, style = MiuixTheme.textStyles.footnote2, color = LedgerTheme.accent)
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -537,8 +541,7 @@ private fun EntryRow(entry: EntryUi) {
         Text(
             text = entry.amountText,
             style = MiuixTheme.textStyles.title2,
-            color = if (entry.signedAmount > 0) MiuixTheme.colorScheme.primary
-            else MiuixTheme.colorScheme.onBackground,
+            color = if (entry.signedAmount > 0) LedgerTheme.income else LedgerTheme.expense,
         )
     }
 }

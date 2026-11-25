@@ -31,7 +31,7 @@ internal fun ledgerLightColors(): Colors {
         primaryVariant = p.accentPressed,
         onPrimaryVariant = p.onAccent,
         primaryContainer = LedgerPalette.tint(p.accent, 0.16f, false),
-        onPrimaryContainer = p.onAccent,
+        onPrimaryContainer = p.text,
 
         secondary = p.surfaceVariant,
         onSecondary = p.text,
@@ -86,7 +86,7 @@ internal fun ledgerDarkColors(): Colors {
         primaryVariant = p.accentPressed,
         onPrimaryVariant = p.onAccent,
         primaryContainer = LedgerPalette.tint(p.accent, 0.16f, true),
-        onPrimaryContainer = p.onAccent,
+        onPrimaryContainer = p.text,
 
         secondary = p.surfaceVariant,
         onSecondary = p.text,

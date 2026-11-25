@@ -90,7 +90,7 @@ data class LedgerDimens(
             gapSmall = sm,
             gapLarge = xl,
             radiusSmall = radiusMd,
-            radiusCard = radiusXl,
+            radiusCard = radiusLg,
             radiusSheet = radiusDialog,
             radiusCapsule = 50.dp,
         )

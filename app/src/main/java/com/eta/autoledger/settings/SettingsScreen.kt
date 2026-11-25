@@ -91,6 +91,7 @@ import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import com.eta.autoledger.ui.components.AppDialog
 import com.eta.autoledger.ui.components.ThemeSurfaceCard
+import com.eta.autoledger.ui.components.ThemeIconBadge
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.AppPrefs
@@ -236,7 +237,7 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(LedgerTheme.glassCard)
+            .background(LedgerTheme.surface)
             .statusBarsPadding()
             .padding(horizontal = 4.dp, vertical = 4.dp)
             .height(48.dp),
@@ -810,24 +811,14 @@ private fun CategoryManageCell(
         modifier = modifier.clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape),
-            contentAlignment = Alignment.Center,
+        ThemeIconBadge(
+            size = 40.dp,
+            borderColor = if (isAdd) AccentBlue else item.color,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isAdd) AccentBlue.copy(alpha = 0.22f) else item.color.copy(alpha = 0.32f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (isAdd) {
-                    Icon(imageVector = MiuixIcons.Add, contentDescription = "添加", tint = AccentBlue, modifier = Modifier.size(18.dp))
-                } else {
-                    Text(text = CategoryStore.emoji(item.name), fontSize = 18.sp)
-                }
+            if (isAdd) {
+                Icon(imageVector = MiuixIcons.Add, contentDescription = "添加", tint = AccentBlue, modifier = Modifier.size(18.dp))
+            } else {
+                Text(text = CategoryStore.emoji(item.name), fontSize = 18.sp)
             }
         }
         Spacer(Modifier.height(4.dp))
@@ -884,7 +875,7 @@ private fun CategoryEditDialog(
         show = show,
         maxWidth = 400.dp,
         outsideMargin = DpSize(32.dp, 24.dp),
-        panelColor = LedgerTheme.card,
+        panelColor = LedgerTheme.surface,
         onDismissRequest = onDismiss,
     ) {
         Text(text = title, style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
@@ -915,7 +906,7 @@ private fun CategoryEditDialog(
                         .weight(1f)
                         .height(48.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(LedgerTheme.tint(LedgerTheme.danger))
+                        .background(LedgerTheme.surfaceVariant)
                         .clickable(onClick = onDelete),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1485,7 +1476,7 @@ private fun AiPage(prefs: AppPrefs) {
                         .fillMaxWidth()
                         .heightIn(min = LedgerDimens.minTouch)
                         .clip(shape)
-                        .background(if (selected) LedgerTheme.accent.copy(alpha = 0.12f) else LedgerTheme.inset)
+                        .background(if (selected) LedgerTheme.surfacePressed else LedgerTheme.inset)
                         .border(1.dp, if (selected) LedgerTheme.accent else LedgerTheme.borderSoft, shape)
                         .clickable {
                             model = name

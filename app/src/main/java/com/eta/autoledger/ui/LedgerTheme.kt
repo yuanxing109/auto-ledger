@@ -32,14 +32,14 @@ object LedgerTheme {
 
     // ---------------- 表面层次：page < inset < surface < surfaceVariant ----------------
 
-    /** 页面底色。浅色用冷灰白（不用纯白），深色用近黑。 */
+    /** 页面底色。浅色为冷白，深色为近黑，均为实色。 */
     val page: Color get() = colors.page
 
     /** 卡片 / 顶栏 / 弹层底色。 */
     val surface: Color get() = colors.surface
 
     /** 兼容旧名：等同于 [surface]。 */
-    val card: Color get() = colors.surface.copy(alpha = 0.86f)
+    val card: Color get() = colors.surface
 
     /** 卡片内部再压一层：输入框、键帽、次级卡片。 */
     val surfaceVariant: Color get() = colors.surfaceVariant
@@ -52,7 +52,7 @@ object LedgerTheme {
 
     // ---------------- 线 ----------------
 
-    /** 可交互组件边界（按钮/chip/输入框/选中态）：WCAG 1.4.11 要求 ≥3:1。 */
+    /** 可交互组件边界；选中态还必须同时用颜色、文字或图标表达。 */
     val border: Color get() = colors.border
 
     /** 装饰性卡片/容器外框：不受 3:1 约束，仅需肉眼可辨。 */
@@ -64,20 +64,20 @@ object LedgerTheme {
     /** 列表分隔线 / 图表虚线网格。 */
     val divider: Color get() = colors.divider
 
+    /** 图表网格专用中性实色。 */
+    val chartGrid: Color get() = colors.chartGrid
+
+    /** 未选中柱图的实色中性填充。 */
+    val chartMuted: Color get() = colors.chartMuted
+
     /** 遮罩（弹层背后的压暗层）。 */
     val scrim: Color get() = colors.scrim
 
     /** 自定义全局背景图上的主题可读性遮罩。 */
     val backgroundOverlay: Color get() = colors.backgroundOverlay
 
-    /** 普通卡片的统一半透明表面。 */
-    val glassCard: Color get() = colors.glassCard
-
     /** 卡片统一柔和阴影色。 */
     val cardShadow: Color get() = colors.cardShadow
-
-    /** 首页核心资产卡的实色表面。 */
-    val raisedCard: Color get() = colors.raisedCard
 
     // ---------------- 文字 ----------------
 
@@ -109,14 +109,6 @@ object LedgerTheme {
     val budgetRemaining: Color get() = colors.budgetRemaining
     val budgetNearLimit: Color get() = colors.budgetNearLimit
     val budgetOver: Color get() = colors.budgetOver
-
-    /**
-     * 半透明叠色块（chip 选中底、进度条底槽、图表面积填充）。
-     *
-     * 深色比浅色多 0.04 alpha：近黑底上同等 alpha 会显得"没填满"。
-     */
-    fun tint(foreground: Color, alpha: Float = 0.12f): Color =
-        LedgerPalette.tint(foreground, alpha, dark)
 
     // ---------------- 图表调色板 ----------------
 

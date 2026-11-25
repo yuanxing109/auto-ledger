@@ -144,7 +144,7 @@ fun EntryEditDialog(
                 onClick = onDelete,
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.textButtonColors(
-                    color = LedgerTheme.tint(LedgerTheme.danger, 0.14f),
+                    color = LedgerTheme.surfaceVariant,
                     textColor = LedgerTheme.danger,
                 ),
             )

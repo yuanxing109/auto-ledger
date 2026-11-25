@@ -84,11 +84,11 @@ fun amountDisplayStyle(): TextStyle = MiuixTheme.textStyles.headline1.copy(
     textAlign = TextAlign.End,
 )
 
-/** 首页核心资产卡主金额：26sp、700、等宽数字。 */
+/** 首页核心资产卡主金额：32sp、700、等宽数字。 */
 @Composable
 fun heroAmountStyle(): TextStyle = MiuixTheme.textStyles.headline1.copy(
-    fontSize = 26.sp,
-    lineHeight = 32.sp,
+    fontSize = 32.sp,
+    lineHeight = 38.sp,
     fontWeight = FontWeight.Bold,
     fontFeatureSettings = "tnum",
     textAlign = TextAlign.Start,

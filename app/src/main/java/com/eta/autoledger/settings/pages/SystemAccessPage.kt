@@ -246,7 +246,7 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
         summary = "该操作不可恢复，确定要删除全部记账数据吗？",
         maxWidth = 420.dp,
         outsideMargin = DpSize(24.dp, 24.dp),
-        panelColor = LedgerTheme.card,
+        panelColor = LedgerTheme.surface,
         onDismissRequest = { showClearConfirm = false },
     ) {
         Spacer(Modifier.height(16.dp))
@@ -260,7 +260,7 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
             }
             Box(
                 modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp))
-                    .background(LedgerTheme.tint(LedgerTheme.danger)).clickable {
+                    .background(LedgerTheme.surfaceVariant).clickable {
                         scope.launch { LedgerRepository.clear(context) }
                         showClearConfirm = false
                         scope.launch { snackbar.show("已清空记账数据") }

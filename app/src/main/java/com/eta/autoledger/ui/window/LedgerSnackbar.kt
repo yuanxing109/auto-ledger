@@ -168,7 +168,12 @@ private fun SnackbarCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(elevation = 6.dp, shape = shape)
+            .shadow(
+                elevation = 6.dp,
+                shape = shape,
+                ambientColor = LedgerTheme.cardShadow,
+                spotColor = LedgerTheme.cardShadow,
+            )
             .clip(shape)
             .background(LedgerTheme.surface)
             .border(1.dp, LedgerTheme.borderSoft, shape)

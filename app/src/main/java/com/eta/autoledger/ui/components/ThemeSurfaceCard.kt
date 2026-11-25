@@ -13,32 +13,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
 
 /**
  * 全站普通卡片的统一表面。
  *
- * 填充和 1dp 边框在同一个 drawBehind 里完成，避免每张卡额外增加 border 绘制节点。
- * 当前视觉使用语义色，不引入实时模糊或逐帧背景采样。
+ * 统一使用纯色 surface、1dp 清晰边框与 16dp 圆角，无渐变、无模糊、无默认阴影。
+ * 填充和边框在同一个 drawBehind 里完成，避免每张卡额外增加绘制节点。
  */
 @Composable
 fun ThemeSurfaceCard(
     modifier: Modifier = Modifier,
     shape: Shape? = null,
     contentPadding: PaddingValues? = null,
-    containerColor: Color = LedgerTheme.glassCard,
-    shadowElevation: Dp = 2.dp,
+    containerColor: Color = LedgerTheme.surface,
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val dimens = LocalDimens.current
-    val resolvedShape = shape ?: RoundedCornerShape(dimens.radiusCard)
+    val resolvedShape = shape ?: remember(dimens.radiusCard) { RoundedCornerShape(dimens.radiusCard) }
     val resolvedPadding = contentPadding ?: PaddingValues(dimens.cardPadding)
     val clickModifier = if (onClick == null) {
         Modifier
@@ -51,19 +47,13 @@ fun ThemeSurfaceCard(
     }
     Column(
         modifier = modifier
-            .shadow(
-                elevation = shadowElevation,
-                shape = resolvedShape,
-                ambientColor = LedgerTheme.cardShadow,
-                spotColor = LedgerTheme.cardShadow,
-            )
             .clip(resolvedShape)
             .then(clickModifier)
             .drawBehind {
                 drawRowSurface(
                     shape = resolvedShape,
                     fill = containerColor,
-                    stroke = LedgerTheme.borderSoft,
+                    stroke = LedgerTheme.border,
                     strokeWidthDp = 1f,
                 )
             }

@@ -62,7 +62,7 @@ internal fun RowDivider() {
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 16.dp)
-            .height(0.5.dp)
+            .height(1.dp)
             .background(LedgerTheme.divider),
     )
 }

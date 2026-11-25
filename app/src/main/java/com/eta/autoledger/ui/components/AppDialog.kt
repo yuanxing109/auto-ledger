@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -144,7 +145,8 @@ fun AppDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(LedgerTheme.scrim.copy(alpha = LedgerTheme.scrim.alpha * scrimAlpha))
+                        .graphicsLayer { alpha = scrimAlpha }
+                        .background(LedgerTheme.scrim)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,

@@ -177,7 +177,7 @@ internal fun ExportPage() {
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(if (selected) LedgerTheme.tint(LedgerTheme.accent) else LedgerTheme.surfaceVariant)
+                                .background(if (selected) LedgerTheme.surfacePressed else LedgerTheme.surfaceVariant)
                                 .border(
                                     1.dp,
                                     if (selected) AccentBlue else LedgerTheme.border,
@@ -206,7 +206,7 @@ internal fun ExportPage() {
                 .fillMaxWidth()
                 .height(52.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(if (working) LedgerTheme.tint(LedgerTheme.accent) else AccentBlue)
+                .background(if (working) LedgerTheme.accentPressed else AccentBlue)
                 .clickable(enabled = !working) {
                     if (start.isEmpty() || end.isEmpty()) {
                         scope.launch { snackbar.show("请先选择开始时间和结束时间") }
@@ -279,7 +279,7 @@ internal fun ExportPage() {
                 style = TextStyle(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
-                    // working 态底是 tint(accent) 的浅色块，onAccent 的白字压不住，改用主色文字
+                    // working 态使用实色 accentPressed，沿用主色文字保证层级清晰
                     color = if (working) LedgerTheme.accent else LedgerTheme.onAccent,
                 ),
             )

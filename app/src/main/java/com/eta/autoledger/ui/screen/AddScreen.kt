@@ -6,6 +6,7 @@ import com.eta.autoledger.ui.MagicWandIcon
 import com.eta.autoledger.ui.components.AppDialog
 import com.eta.autoledger.ui.components.AiQuickEntryDialog
 import com.eta.autoledger.ui.components.ThemeSurfaceCard
+import com.eta.autoledger.ui.components.ThemeIconBadge
 import com.eta.autoledger.ui.window.LocalSnackbar
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -526,7 +527,7 @@ private fun DatePill(timeText: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .border(1.dp, AccentBlue, RoundedCornerShape(50))
-            .background(LedgerTheme.card)
+            .background(LedgerTheme.surface)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -906,30 +907,19 @@ private fun CategoryCell(
         modifier = modifier.clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape)
-                .background(if (selected) LedgerTheme.tint(AccentBlue, 0.12f) else Color.Transparent),
-            contentAlignment = Alignment.Center,
+        ThemeIconBadge(
+            size = 46.dp,
+            borderColor = if (selected || category.name == "添加") AccentBlue else category.color,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(category.color.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (category.name == "添加") {
-                    Icon(
-                        imageVector = MiuixIcons.Add,
-                        contentDescription = "添加分类",
-                        tint = AccentBlue,
-                        modifier = Modifier.size(18.dp),
-                    )
-                } else {
-                    Text(text = category.emoji, style = MiuixTheme.textStyles.title3)
-                }
+            if (category.name == "添加") {
+                Icon(
+                    imageVector = MiuixIcons.Add,
+                    contentDescription = "添加分类",
+                    tint = AccentBlue,
+                    modifier = Modifier.size(18.dp),
+                )
+            } else {
+                Text(text = category.emoji, style = MiuixTheme.textStyles.title3)
             }
         }
         Spacer(Modifier.height(4.dp))

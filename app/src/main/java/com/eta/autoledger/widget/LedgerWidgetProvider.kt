@@ -398,7 +398,7 @@ private fun DrawScope.drawSmallContent(
         textPaint(palette.textTertiary, 10f, scaledDensity, Paint.Align.CENTER),
     )
     drawCircle(
-        color = palette.accent.copy(alpha = 0.10f),
+        color = palette.surfaceVariant,
         radius = px(20f),
         center = Offset(size.width - px(18f), px(18f)),
     )
@@ -419,7 +419,7 @@ private fun DrawScope.drawSevenDayTrend(
     val maxValue = max(points.maxOrNull() ?: 0.0, 1.0)
     drawLine(gridColor, Offset(left, bottom), Offset(right, bottom), strokeWidth = 1f)
     drawLine(
-        gridColor.copy(alpha = 0.55f),
+        gridColor,
         Offset(left, top),
         Offset(right, top),
         strokeWidth = 1f,

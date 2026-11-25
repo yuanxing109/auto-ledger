@@ -183,10 +183,7 @@ fun SearchScreen(onClose: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            // 必须用不透明底：根层只有半透明 page 底色，
-            // LedgerTheme.page 是半透明（浅 0x99 / 深 0x59），会让系统壁纸/窗口色透出来。
-            // surface 是全站不透明底色，与其他页卡片一致。
-            .background(LedgerTheme.surface)
+            .background(LedgerTheme.page)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
@@ -625,8 +622,8 @@ private fun ResultRow(
     }
     // 圆角只建一次：原来 clip 和 border 各 new 一个 RoundedCornerShape(16.dp)。
     val rowShape = remember { RoundedCornerShape(16.dp) }
-    val rowBg = LedgerTheme.surface.copy(alpha = 0.34f)
-    val rowBorder = LedgerTheme.borderSoft.copy(alpha = 0.5f)
+    val rowBg = LedgerTheme.surface
+    val rowBorder = LedgerTheme.borderSoft
     Row(
         modifier = Modifier
             .fillMaxWidth()

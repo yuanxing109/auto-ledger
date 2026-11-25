@@ -475,7 +475,7 @@ private fun RuleTabStrip(tab: Int, systemCount: Int, userCount: Int, onTab: (Int
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(dimens.radiusSmall))
-                    .background(if (selected) LedgerTheme.tint(AccentBlue) else LedgerTheme.surface)
+                    .background(if (selected) LedgerTheme.surfacePressed else LedgerTheme.surface)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = LocalIndication.current,
@@ -576,7 +576,7 @@ private fun RuleEditorDialog(
         show = show,
         maxWidth = 520.dp,
         outsideMargin = DpSize(20.dp, 24.dp),
-        panelColor = LedgerTheme.card,
+        panelColor = LedgerTheme.surface,
         onDismissRequest = onDismiss,
     ) {
         Column(
@@ -835,7 +835,7 @@ private fun ChoiceRow(options: List<Pair<String, String>>, selected: String, onS
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(dimens.radiusSmall))
-                    .background(if (active) LedgerTheme.tint(AccentBlue) else LedgerTheme.inset)
+                    .background(if (active) LedgerTheme.surfacePressed else LedgerTheme.inset)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = LocalIndication.current,
@@ -864,7 +864,7 @@ private fun DialogButton(
     val dimens = LocalDimens.current
     val shape = RoundedCornerShape(dimens.radiusSmall)
     val bg = when {
-        danger -> LedgerTheme.tint(LedgerTheme.danger)
+        danger -> LedgerTheme.surfaceVariant
         primary -> AccentBlue
         else -> LedgerTheme.inset
     }

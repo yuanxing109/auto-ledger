@@ -6,6 +6,7 @@ import com.eta.autoledger.util.AppDateFormats
 import com.eta.autoledger.ui.rememberMotionDuration
 import com.eta.autoledger.ui.components.AppDialog
 import com.eta.autoledger.ui.components.ThemeSurfaceCard
+import com.eta.autoledger.ui.components.ThemeIconBadge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
@@ -347,7 +348,7 @@ private fun CircleArrow(onClick: () -> Unit, forward: Boolean) {
                 .size(30.dp)
                 .clip(CircleShape)
                 .border(1.dp, CardBorder, CircleShape)
-                .background(LedgerTheme.card),
+                .background(LedgerTheme.surface),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -490,7 +491,7 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
     var selected by remember(points) { mutableStateOf<Int?>(null) }
     val textMeasurer = rememberTextMeasurer()
     val lineColor = AccentBlue
-    val gridColor = LedgerTheme.divider
+    val gridColor = LedgerTheme.chartGrid
     val labelStyle =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary)
     val bubbleWidth = with(density) { 108.dp.toPx() }
     val bubbleHeight = with(density) { 44.dp.toPx() }
@@ -538,8 +539,6 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
             ) {
                 if (points.isEmpty() || chartSize.width == 0) return@Canvas
                 val max = (points.maxOfOrNull { it.value } ?: 1.0).coerceAtLeast(1.0)
-                val dash = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx()))
-
                 for (i in 0..4) {
                     val value = max * i / 4.0
                     val y = yAt(value, max)
@@ -548,7 +547,6 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                         start = Offset(padLeft, y),
                         end = Offset(chartSize.width - padRight, y),
                         strokeWidth = 1.dp.toPx(),
-                        pathEffect = dash,
                     )
                     val label = if (i == 0) "0" else "%,.2f".format(value)
                     val layout = textMeasurer.measure(label, labelStyle)
@@ -564,18 +562,6 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                     val y = yAt(point.value, max)
                     if (index == 0) line.moveTo(x, y) else line.lineTo(x, y)
                 }
-                val area = Path().apply {
-                    addPath(line)
-                    lineTo(xAt(points.lastIndex), chartSize.height - padBottom)
-                    lineTo(xAt(0), chartSize.height - padBottom)
-                    close()
-                }
-                drawPath(
-                    path = area,
-                    brush = Brush.verticalGradient(
-                        listOf(AccentBlue.copy(alpha = 0.16f), AccentBlue.copy(alpha = 0.01f)),
-                    ),
-                )
                 drawPath(
                     path = line,
                     color = lineColor,
@@ -585,11 +571,11 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                 if (guideIndex in points.indices) {
                     val gx = xAt(guideIndex)
                     drawLine(
-                        color = lineColor.copy(alpha = 0.35f),
+                        color = LedgerTheme.divider,
                         start = Offset(gx, padTop),
                         end = Offset(gx, chartSize.height - padBottom),
                         strokeWidth = 1.dp.toPx(),
-                        pathEffect = dash,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())),
                     )
                 }
                 points.forEachIndexed { index, point ->
@@ -618,7 +604,7 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                     Column {
                         Text(
                             text = "${points[index].label}${if (income) "收入" else "支出"}",
-                            style =MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent.copy(alpha = 0.8f)),
+                            style = MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent),
                         )
                         Text(
                             text = "¥ %,.2f".format(points[index].value),
@@ -667,8 +653,7 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
     val labelStyle =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary)
-    val gridColor = LedgerTheme.divider
-    val barColor = AccentBlue
+    val gridColor = LedgerTheme.chartGrid
     val padLeftDp = 44.dp
     val chartHeight = 176.dp
     var chartSize by remember { mutableStateOf(IntSize.Zero) }
@@ -716,8 +701,6 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
                 val bottom = size.height - 6.dp.toPx()
                 val top = 6.dp.toPx()
                 val max = (points.maxOfOrNull { it.value } ?: 1.0).coerceAtLeast(1.0)
-                val dash = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx()))
-
                 for (i in 0..4) {
                     val value = max * i / 4.0
                     val y = bottom - (value / max * (bottom - top)).toFloat()
@@ -726,7 +709,6 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
                         start = Offset(left, y),
                         end = Offset(size.width - right, y),
                         strokeWidth = 1.dp.toPx(),
-                        pathEffect = dash,
                     )
                     val label = if (i == 0) "0" else "%,.2f".format(value)
                     val layout = textMeasurer.measure(label, labelStyle)
@@ -747,12 +729,7 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
                     val isActive = index == activeIndex
                     val isLast = index == points.lastIndex
                     drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                barColor.copy(alpha = if (isActive || isLast) 0.95f else 0.55f),
-                                barColor.copy(alpha = if (isActive || isLast) 0.7f else 0.28f),
-                            ),
-                        ),
+                        color = if (isActive || isLast) AccentBlue else LedgerTheme.chartMuted,
                         topLeft = Offset(x, bottom - barHeight),
                         size = Size(barWidth, barHeight),
                         cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx()),
@@ -791,7 +768,7 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
                         )
                         Text(
                             text = points[index].label,
-                            style =MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent.copy(alpha = 0.8f)),
+                            style = MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent),
                         )
                     }
                 }
@@ -1009,7 +986,7 @@ private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
                 val elbowX = center.x + sign * (outerR + 12.dp.toPx())
                 val kink = Offset(elbowX, labelY)
                 val end = Offset(elbowX + sign * 5.dp.toPx(), labelY)
-                val lineColor = slices[i].color.copy(alpha = 0.55f)
+                val lineColor = slices[i].color
                 drawLine(lineColor, edge, stub, strokeWidth = 1.dp.toPx())
                 drawLine(lineColor, stub, kink, strokeWidth = 1.dp.toPx())
                 drawLine(lineColor, kink, end, strokeWidth = 1.dp.toPx())
@@ -1085,13 +1062,7 @@ private fun CategoryRow(
                 style = TextStyle(fontSize = 12.sp, color = TextSecondary),
                 modifier = Modifier.width(20.dp),
             )
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(slice.color.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
-            ) {
+            ThemeIconBadge(size = 38.dp, borderColor = slice.color) {
                 Text(text = slice.emoji, fontSize = 17.sp)
             }
             Spacer(Modifier.width(12.dp))

@@ -15,10 +15,12 @@ import com.eta.autoledger.util.AppDateFormats
 import top.yukonga.miuix.kmp.icon.extended.Search
 import com.eta.autoledger.ui.components.EntryEditDialog
 import com.eta.autoledger.ui.components.ThemeSurfaceCard
+import com.eta.autoledger.ui.components.ThemeIconBadge
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -296,7 +298,6 @@ private fun CoreAssetCard(
     ThemeSurfaceCard(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(0.dp),
-        containerColor = LedgerTheme.raisedCard,
     ) {
         Column(modifier = Modifier.padding(horizontal = dimen.cardPadding, vertical = dimen.gap)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -316,7 +317,7 @@ private fun CoreAssetCard(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(dimen.radiusSmall))
-                    .background(LedgerTheme.tint(LedgerTheme.accent, 0.10f))
+                    .background(LedgerTheme.inset)
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -340,7 +341,7 @@ private fun CoreAssetCard(
             Text(
                 text = if (visible) "¥ %,.2f".format(monthExpense) else "¥ ****",
                 style = heroAmountStyle(),
-                color = LedgerTheme.accent,
+                color = LedgerTheme.text,
             )
             IconButton(onClick = onToggle) {
                 Icon(
@@ -396,7 +397,7 @@ private fun CoreAssetCard(
                     .fillMaxWidth()
                     .height(7.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(LedgerTheme.tint(LedgerTheme.accent, 0.14f)),
+                    .background(LedgerTheme.inset),
             ) {
                 Box(
                     modifier = Modifier
@@ -499,13 +500,7 @@ private fun EntryRow(entry: EntryUi) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(LocalDimens.current.radiusSmall))
-                .background(entry.categoryColor.copy(alpha = 0.16f)),
-            contentAlignment = Alignment.Center,
-        ) {
+        ThemeIconBadge(size = 40.dp, borderColor = entry.categoryColor) {
             Text(text = entry.emoji, style = MiuixTheme.textStyles.title3)
         }
         Spacer(Modifier.width(12.dp))
@@ -522,7 +517,8 @@ private fun EntryRow(entry: EntryUi) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(LedgerDimens.radiusSm))
-                        .background(LedgerTheme.tint(LedgerTheme.accent, 0.08f))
+                        .background(LedgerTheme.inset)
+                        .border(1.dp, LedgerTheme.accent, RoundedCornerShape(LedgerDimens.radiusSm))
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Text(text = entry.source, style = MiuixTheme.textStyles.footnote2, color = LedgerTheme.accent)

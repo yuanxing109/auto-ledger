@@ -21,7 +21,7 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
  * - `background/onBackground` ← `page/text`（页面底色）
  * - `surface*` 五档容器全部映射到 `surface/surfaceVariant/inset`，不再让 Miuix 自己算五档灰
  * - `outline/dividerLine` ← `border/divider`（深色靠描边分层，不靠阴影）
- * - `error*` ← `danger` + 12% 淡底
+ * - `error*` ← `danger` + 实色中性容器
  */
 internal fun ledgerLightColors(): Colors {
     val p = LedgerPalette.light
@@ -30,8 +30,8 @@ internal fun ledgerLightColors(): Colors {
         onPrimary = p.onAccent,
         primaryVariant = p.accentPressed,
         onPrimaryVariant = p.onAccent,
-        primaryContainer = LedgerPalette.tint(p.accent, 0.16f, false),
-        onPrimaryContainer = p.text,
+        primaryContainer = p.surfaceVariant,
+        onPrimaryContainer = p.accent,
 
         secondary = p.surfaceVariant,
         onSecondary = p.text,
@@ -72,7 +72,7 @@ internal fun ledgerLightColors(): Colors {
 
         error = p.danger,
         onError = p.onAccent,
-        errorContainer = LedgerPalette.tint(p.danger, 0.12f, false),
+        errorContainer = p.surfaceVariant,
         onErrorContainer = p.danger,
     )
 }
@@ -85,8 +85,8 @@ internal fun ledgerDarkColors(): Colors {
         onPrimary = p.onAccent,
         primaryVariant = p.accentPressed,
         onPrimaryVariant = p.onAccent,
-        primaryContainer = LedgerPalette.tint(p.accent, 0.16f, true),
-        onPrimaryContainer = p.text,
+        primaryContainer = p.surfaceVariant,
+        onPrimaryContainer = p.accent,
 
         secondary = p.surfaceVariant,
         onSecondary = p.text,
@@ -127,7 +127,7 @@ internal fun ledgerDarkColors(): Colors {
 
         error = p.danger,
         onError = p.onAccent,
-        errorContainer = LedgerPalette.tint(p.danger, 0.12f, true),
+        errorContainer = p.surfaceVariant,
         onErrorContainer = p.danger,
     )
 }

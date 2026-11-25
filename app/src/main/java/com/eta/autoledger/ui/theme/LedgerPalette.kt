@@ -32,20 +32,20 @@ data class LedgerColors(
     /** 按下态表面：深色用实心提亮一档（#1C242E），不用白色透明叠加。 */
     val surfacePressed: Color,
     // ---- 线 ----
-    /** 可交互组件边界（按钮/chip/输入框/选中态）：WCAG 1.4.11 要求 ≥3:1。 */
+    /** 可交互组件边界；选中态还必须同时用颜色、文字或图标表达。 */
     val border: Color,
-    /** 装饰性卡片/容器外框：不受 3:1 约束，仅需肉眼可辨。 */
+    /** 装饰性卡片/容器外框：1dp 实色细线。 */
     val borderSoft: Color,
     val divider: Color,
+    /** 图表网格专用中性实色线。 */
+    val chartGrid: Color,
+    /** 未选中柱图的实色中性填充。 */
+    val chartMuted: Color,
     val scrim: Color,
     /** 自定义首页背景上的可读性遮罩。 */
     val backgroundOverlay: Color,
-    /** 全站普通卡片的半透明表面。 */
-    val glassCard: Color,
     /** 卡片柔和投影色，必须使用带透明度的语义色。 */
     val cardShadow: Color,
-    /** 首页核心资产卡的实色表面。 */
-    val raisedCard: Color,
     // ---- 文字 ----
     val text: Color,
     val textSecondary: Color,
@@ -88,32 +88,32 @@ data class LedgerColors(
  */
 object LedgerPalette {
 
-    /** 浅色：冷灰白底 + 白卡 + 蓝强调。不用纯白做页面底，避免大面积高亮刺眼。 */
+    /** 浅色：干净冷白底 + 纯白实色卡片 + 清晰 Zinc 细线。 */
     val light: LedgerColors = LedgerColors(
-        page = Color(0x99F5F7FB),
-        surface = Color(0xE6FFFFFF),
-        surfaceVariant = Color(0x1A0B1220),
-        inset = Color(0x120B1220),
-        surfacePressed = Color(0xFFEDF1F7),
-        border = Color(0x770B1220),
-        borderSoft = Color(0x1F0B1220),
-        divider = Color(0x140B1220),
-        scrim = Color(0x990B1220),
+        page = Color(0xFFFAFAFA),
+        surface = Color(0xFFFFFFFF),
+        surfaceVariant = Color(0xFFF4F4F5),
+        inset = Color(0xFFF4F4F5),
+        surfacePressed = Color(0xFFEFEFF1),
+        border = Color(0xFFE4E4E7),
+        borderSoft = Color(0xFFE4E4E7),
+        divider = Color(0xFFE4E4E7),
+        chartGrid = Color(0xFFF1F1F3),
+        chartMuted = Color(0xFFA1A1AA),
+        scrim = Color(0x99000000),
         backgroundOverlay = Color(0x80FFFFFF),
-        glassCard = Color(0xBFFFFFFF),
         cardShadow = Color(0x0D000000),
-        raisedCard = Color(0xFFFFFFFF),
-        text = Color(0xFF14181F),
-        textSecondary = Color(0xFF5B6675),
-        textTertiary = Color(0xFF8D97A6),
-        accent = Color(0xFF3B74D0),
-        accentPressed = Color(0xFF315FA9),
+        text = Color(0xFF09090B),
+        textSecondary = Color(0xFF71717A),
+        textTertiary = Color(0xFFA1A1AA),
+        accent = Color(0xFF2563EB),
+        accentPressed = Color(0xFF1D4FD7),
         onAccent = Color(0xFFFFFFFF),
         income = Color(0xFF399E75),
         expense = Color(0xFFD16158),
         danger = Color(0xFFC6534D),
         warning = Color(0xFFB7791F),
-        chart1 = Color(0xFF3B74D0),
+        chart1 = Color(0xFF2563EB),
         chart2 = Color(0xFF399E75),
         chart3 = Color(0xFFF59E0B),
         chart4 = Color(0xFF0891B2),
@@ -122,36 +122,36 @@ object LedgerPalette {
     )
 
     /**
-     * 深色：近黑分档 `page < inset < surface < surfaceVariant`。
+     * 深色：近黑实色分档 `page < inset < surface < surfaceVariant`。
      *
-     * 不用 `#000000`：纯黑与卡片 `#141A21` 的强对比会让滚动时数字「抖动」（OLED 亮度
+     * 不用 `#000000`：纯黑与卡片 `#18181B` 的强对比会让滚动时数字「抖动」（OLED 亮度
      * 切换更明显），而且近黑底上的阴影完全不可见，所以深色一律靠 `border` 描边分层。
      */
     val dark: LedgerColors = LedgerColors(
-        page = Color(0x590B0F14),
-        surface = Color(0xCC141A21),
-        surfaceVariant = Color(0x33FFFFFF),
-        inset = Color(0x22FFFFFF),
-        surfacePressed = Color(0xFF1C242E),
-        border = Color(0x62FFFFFF),
-        borderSoft = Color(0x33FFFFFF),
-        divider = Color(0x1FFFFFFF),
-        scrim = Color(0xB30B1220),
+        page = Color(0xFF09090B),
+        surface = Color(0xFF18181B),
+        surfaceVariant = Color(0xFF27272A),
+        inset = Color(0xFF202023),
+        surfacePressed = Color(0xFF27272A),
+        border = Color(0xFF27272A),
+        borderSoft = Color(0xFF27272A),
+        divider = Color(0xFF3F3F46),
+        chartGrid = Color(0xFF202023),
+        chartMuted = Color(0xFF52525B),
+        scrim = Color(0xB3000000),
         backgroundOverlay = Color(0xB3000000),
-        glassCard = Color(0xBF171D25),
         cardShadow = Color(0x0D000000),
-        raisedCard = Color(0xFF1C222A),
-        text = Color(0xFFE8EDF3),
-        textSecondary = Color(0xFFA3AEBD),
-        textTertiary = Color(0xFF7A8798),
-        accent = Color(0xFF7898D2),
-        accentPressed = Color(0xFF5F7FB8),
-        onAccent = Color(0xFF06101F),
+        text = Color(0xFFFAFAFA),
+        textSecondary = Color(0xFFA1A1AA),
+        textTertiary = Color(0xFF71717A),
+        accent = Color(0xFF60A5FA),
+        accentPressed = Color(0xFF3B82F6),
+        onAccent = Color(0xFF09090B),
         income = Color(0xFF70C39D),
         expense = Color(0xFFE18B83),
         danger = Color(0xFFD97870),
         warning = Color(0xFFD7A94E),
-        chart1 = Color(0xFF7898D2),
+        chart1 = Color(0xFF60A5FA),
         chart2 = Color(0xFF70C39D),
         chart3 = Color(0xFFFBBF24),
         chart4 = Color(0xFF22D3EE),
@@ -162,13 +162,4 @@ object LedgerPalette {
     /** 按当前模式取一套。 */
     fun of(isDark: Boolean): LedgerColors = if (isDark) dark else light
 
-    /**
-     * 给「底 + 半透明色」叠出来的块用（如 `primaryContainer`、预算进度条底槽）。
-     *
-     * 深色比浅色多 0.04 alpha：近黑底上同等 alpha 的色块会偏暗，肉眼看起来"没填满"。
-     */
-    fun tint(base: Color, alpha: Float, isDark: Boolean): Color {
-        val a = if (isDark) (alpha + 0.04f).coerceAtMost(0.32f) else alpha
-        return base.copy(alpha = a)
-    }
 }

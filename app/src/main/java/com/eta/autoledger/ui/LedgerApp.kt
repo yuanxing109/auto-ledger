@@ -23,6 +23,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import com.eta.autoledger.ui.rememberMotionDuration
 import com.eta.autoledger.ui.components.AppDialog
+import com.eta.autoledger.ui.components.ThemeIconBadge
 import com.eta.autoledger.ui.theme.LedgerDimens
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -306,20 +307,6 @@ private fun LedgerBackdrop(path: String) {
                 contentScale = ContentScale.Crop,
             )
             Box(modifier = Modifier.fillMaxSize().background(LedgerTheme.backgroundOverlay))
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.linearGradient(
-                            listOf(
-                                LedgerTheme.accent.copy(alpha = 0.16f),
-                                LedgerTheme.accentPressed.copy(alpha = 0.06f),
-                                LedgerTheme.page,
-                            ),
-                        ),
-                    ),
-            )
         }
     }
 }
@@ -409,13 +396,7 @@ private fun SheetOption(
             .padding(horizontal = dimens.gap, vertical = dimens.gap),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier
-                .size(dimens.gapLarge)
-                .clip(CircleShape)
-                .background(LedgerTheme.tint(LedgerTheme.accent, 0.1f)),
-            contentAlignment = Alignment.Center,
-        ) {
+        ThemeIconBadge(size = dimens.gapLarge, borderColor = LedgerTheme.accent) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
@@ -455,7 +436,7 @@ private fun LedgerTopBar(
                 .fillMaxWidth()
                 .height(52.dp)
                 .clip(barShape)
-                .background(LedgerTheme.glassCard),
+                .background(LedgerTheme.surface),
         ) {
             if (onBack != null) {
                 IconButton(
@@ -524,7 +505,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(barShape)
-                .background(LedgerTheme.glassCard)
+                .background(LedgerTheme.surface)
                 .padding(bottom = 12.dp),
         ) {
             Box(
@@ -555,7 +536,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
                             .heightIn(min = LedgerDimens.minTouch)
                             .clip(RoundedCornerShape(LocalDimens.current.radiusSmall))
                             .background(
-                                if (selected) LedgerTheme.tint(LedgerTheme.accent, 0.10f)
+                                if (selected) LedgerTheme.surfacePressed
                                 else Color.Transparent,
                             )
                             .selectable(
@@ -589,71 +570,26 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
 
 @Composable
 private fun LedgerBottomBar(selected: Int, onSelect: (Int) -> Unit) {
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
+            .shadow(
+                elevation = 8.dp,
+                ambientColor = LedgerTheme.cardShadow,
+                spotColor = LedgerTheme.cardShadow,
+                clip = false,
+            )
+            .background(LedgerTheme.surface)
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 12.dp),
     ) {
-        val dockShape = RoundedCornerShape(50)
-        Box(
-            modifier = Modifier.fillMaxWidth().height(88.dp),
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LedgerTheme.divider))
+        Row(
+            modifier = Modifier.fillMaxWidth().height(64.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(72.dp)
-                    .clip(dockShape)
-                    .background(LedgerTheme.glassCard)
-                    .border(1.dp, LedgerTheme.borderSoft, dockShape),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    DockTab("记账", MiuixIcons.Home, selected == 0, Modifier.weight(1f)) { onSelect(0) }
-                    Spacer(Modifier.weight(1f))
-                    DockTab("报表", MiuixIcons.GridView, selected == 2, Modifier.weight(1f)) { onSelect(2) }
-                }
-            }
-            Column(
-                modifier = Modifier.align(Alignment.TopCenter),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .shadow(
-                            elevation = 8.dp,
-                            shape = CircleShape,
-                            ambientColor = LedgerTheme.cardShadow,
-                            spotColor = LedgerTheme.cardShadow,
-                        )
-                        .clip(CircleShape)
-                        .background(LedgerTheme.accent)
-                        .border(2.dp, LedgerTheme.raisedCard, CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = LocalIndication.current,
-                        ) { onSelect(1) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Add,
-                        contentDescription = "记一笔",
-                        tint = LedgerTheme.onAccent,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "记一笔",
-                    style = MiuixTheme.textStyles.footnote2,
-                    color = LedgerTheme.accent,
-                )
-            }
+            DockTab("记账", MiuixIcons.Home, selected == 0, Modifier.weight(1f)) { onSelect(0) }
+            DockTab("记一笔", MiuixIcons.Add, selected == 1, Modifier.weight(1f)) { onSelect(1) }
+            DockTab("报表", MiuixIcons.GridView, selected == 2, Modifier.weight(1f)) { onSelect(2) }
         }
     }
 }
@@ -666,16 +602,6 @@ private fun DockTab(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val chipAlpha by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 420f),
-        label = "dockChip",
-    )
-    val scale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.92f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 380f),
-        label = "dockScale",
-    )
     val color = if (selected) LedgerTheme.accent else LedgerTheme.textSecondary
     Column(
         modifier = modifier
@@ -688,22 +614,7 @@ private fun DockTab(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier
-                .size(width = 48.dp, height = 32.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                .clip(RoundedCornerShape(16.dp))
-                .background(
-                    if (selected) LedgerTheme.accent.copy(alpha = 0.16f + 0.06f * chipAlpha)
-                    else Color.Transparent
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(imageVector = icon, contentDescription = label, tint = color)
-        }
+        Icon(imageVector = icon, contentDescription = label, tint = color)
         Spacer(Modifier.height(2.dp))
         Text(label, style = MiuixTheme.textStyles.footnote2, color = color)
     }

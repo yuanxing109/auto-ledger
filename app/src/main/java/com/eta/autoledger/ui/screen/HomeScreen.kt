@@ -11,8 +11,8 @@ import kotlinx.coroutines.launch
 import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.util.AppDateFormats
 import top.yukonga.miuix.kmp.icon.extended.Search
-import com.eta.autoledger.ui.components.drawRowSurface
 import com.eta.autoledger.ui.components.EntryEditDialog
+import com.eta.autoledger.ui.components.ThemeSurfaceCard
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -49,7 +49,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -121,16 +120,6 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     // 分组已迁到 ViewModel 增量维护：loadMore 追加时只合并新页，不再全量重算。
     // 原实现 remember(entries) 的 key 是整个 List，每次翻页都触发 O(n) 重分组 → 累计 O(n²)。
     val groups = billsState.groups
-
-    // 行容器样式：提到 items{} 之外只算一次。
-    // 原来写在 items 的 lambda 里，每个 item 每次重组都要 new 2 个 RoundedCornerShape
-    // + 2 个 Color 副本；一屏 10 行、每秒多次重组就是几十次无谓分配。
-    // LocalDimens.current 是 CompositionLocal，必须在组合体内取值后传给 remember，
-    // 不能写进 remember 的 lambda（那个 lambda 不是 @Composable）。
-    val cardRadius = LocalDimens.current.radiusCard
-    val rowShape = remember(cardRadius) { RoundedCornerShape(cardRadius) }
-    val rowBg = LedgerTheme.surface.copy(alpha = 0.34f)
-    val rowBorder = LedgerTheme.border.copy(alpha = 0.55f)
 
     // 触底判断：拿 LazyColumn 的 item 下标与 item 总数比，两者同量纲。
     //
@@ -226,18 +215,15 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                     key = { it.ledger.id },
                     contentType = { "entry" },
                 ) { entry ->
-                    Box(
+                    ThemeSurfaceCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .animateItem()
-                            .padding(bottom = 8.dp)
-                            .clip(rowShape)
-                            // 一次绘制同时铺背景和描边：原先是 background + border 两条
-                            // modifier，每行每帧要走两遍绘制节点，且 border 还要再建一个
-                            // 内缩的 outline。drawBehind 里 outline 只算一次。
-                            .drawBehind { drawRowSurface(rowShape, rowBg, rowBorder) },
+                            .padding(bottom = 8.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        onClick = { editingEntry = entry.ledger },
                     ) {
-                        EntryRow(entry, onClick = { editingEntry = entry.ledger })
+                        EntryRow(entry)
                     }
                 }
             }
@@ -271,15 +257,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
 
 @Composable
 private fun EmptyCard() {
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, cardShape)
-            .padding(16.dp),
-    ) {
+    ThemeSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text(text = "还没有账目", style = MiuixTheme.textStyles.title3)
         Spacer(Modifier.height(4.dp))
         Text(
@@ -510,11 +488,10 @@ private fun DayHeader(group: DayGroupUi) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EntryRow(entry: EntryUi, onClick: () -> Unit) {
+private fun EntryRow(entry: EntryUi) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

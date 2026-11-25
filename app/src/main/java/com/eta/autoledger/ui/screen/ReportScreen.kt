@@ -5,6 +5,7 @@ import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.util.AppDateFormats
 import com.eta.autoledger.ui.rememberMotionDuration
 import com.eta.autoledger.ui.components.AppDialog
+import com.eta.autoledger.ui.components.ThemeSurfaceCard
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
@@ -104,7 +105,6 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private val PageBg: Color get() = LedgerTheme.page
 private val CardBorder: Color get() = LedgerTheme.borderSoft
 private val TextPrimary: Color get() = LedgerTheme.text
 private val TextSecondary: Color get() = LedgerTheme.textSecondary
@@ -241,7 +241,7 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
     // ScrollState，用户滚到一半换个月就弹回顶部。
     val reportScroll = rememberScrollState()
 
-    Box(modifier = modifier.fillMaxSize().background(PageBg)) {
+    Box(modifier = modifier.fillMaxSize().background(Color.Transparent)) {
         AnimatedContent(
             targetState = frame,
             transitionSpec = { fadeIn(tween(motion)) togetherWith fadeOut(tween(motion)) },
@@ -392,16 +392,11 @@ private fun ReportCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, cardShape),
-    ) {
-        content()
-    }
+    ThemeSurfaceCard(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(0.dp),
+        content = { content() },
+    )
 }
 
 @Composable
@@ -487,7 +482,7 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
     var chartSize by remember { mutableStateOf(IntSize.Zero) }
     var selected by remember(points) { mutableStateOf<Int?>(null) }
     val textMeasurer = rememberTextMeasurer()
-    val lineColor = if (income) AccentBlue else AccentBlue
+    val lineColor = AccentBlue
     val gridColor = LedgerTheme.divider
     val labelStyle =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary)
     val bubbleWidth = with(density) { 108.dp.toPx() }

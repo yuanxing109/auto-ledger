@@ -5,6 +5,7 @@ import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.ui.MagicWandIcon
 import com.eta.autoledger.ui.components.AppDialog
 import com.eta.autoledger.ui.components.AiQuickEntryDialog
+import com.eta.autoledger.ui.components.ThemeSurfaceCard
 import com.eta.autoledger.ui.window.LocalSnackbar
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -14,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -78,7 +80,6 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlinx.coroutines.launch
 
-private val PageBg: Color get() = LedgerTheme.page
 private val AccentBlue: Color get() = LedgerTheme.accent
 private val TextPrimary: Color get() = LedgerTheme.text
 private val TextSecondary: Color get() = LedgerTheme.textSecondary
@@ -288,7 +289,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
         if (!reset) onDone()
     }
 
-    Column(modifier = modifier.fillMaxSize().background(PageBg)) {
+    Column(modifier = modifier.fillMaxSize().background(Color.Transparent)) {
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -377,15 +378,7 @@ private fun SubCategoryField(
     onValueChange: (String) -> Unit,
 ) {
     val dimens = LocalDimens.current
-    val shape = RoundedCornerShape(dimens.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, shape)
-            .padding(horizontal = dimens.cardPadding, vertical = dimens.gap),
-    ) {
+    ThemeSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = "子分类（可选）",
             style = MiuixTheme.textStyles.footnote1,
@@ -429,16 +422,8 @@ private fun RecurringCard(
     onPeriodClick: () -> Unit,
     dateHint: String,
 ) {
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
     val periodLabel = listOf("每周", "每月", "每年")[periodIndex.coerceIn(0, 2)]
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.border, cardShape)
-            .padding(16.dp),
-    ) {
+    ThemeSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -805,15 +790,7 @@ private fun AmountCard(
     onNoteChange: (String) -> Unit,
     onAiQuickEntry: () -> Unit,
 ) {
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, cardShape)
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-    ) {
+    ThemeSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = "¥", style = TextStyle(fontSize = 20.sp, color = TextPrimary))
             Spacer(Modifier.width(8.dp))
@@ -891,15 +868,7 @@ private fun CategoryCard(
     selected: String,
     onSelect: (String) -> Unit,
 ) {
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, cardShape)
-            .padding(horizontal = 12.dp, vertical = 16.dp),
-    ) {
+    ThemeSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         categories.chunked(5).forEachIndexed { index, rowItems ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -982,14 +951,18 @@ private fun Keyboard(
     onSaveAgain: () -> Unit,
     onDone: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-            .background(LedgerTheme.surface)
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+    val dimens = LocalDimens.current
+    val keyboardShape = RoundedCornerShape(topStart = dimens.radiusCard, topEnd = dimens.radiusCard)
+    ThemeSurfaceCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = keyboardShape,
+        contentPadding = PaddingValues(0.dp),
     ) {
+        Column(
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(dimens.cardPadding),
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1040,6 +1013,7 @@ private fun Keyboard(
                 }
             }
             if (rowIndex != rows.lastIndex) Spacer(Modifier.height(8.dp))
+        }
         }
     }
 }

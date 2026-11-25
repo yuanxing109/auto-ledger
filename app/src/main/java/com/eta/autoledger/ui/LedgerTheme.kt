@@ -70,6 +70,9 @@ object LedgerTheme {
     /** 自定义全局背景图上的主题可读性遮罩。 */
     val backgroundOverlay: Color get() = colors.backgroundOverlay
 
+    /** 普通卡片的统一半透明表面。 */
+    val glassCard: Color get() = colors.glassCard
+
     // ---------------- 文字 ----------------
 
     val text: Color get() = colors.text

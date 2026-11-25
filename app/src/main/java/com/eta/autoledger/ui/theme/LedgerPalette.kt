@@ -40,6 +40,8 @@ data class LedgerColors(
     val scrim: Color,
     /** 自定义首页背景上的可读性遮罩。 */
     val backgroundOverlay: Color,
+    /** 全站普通卡片的半透明表面。 */
+    val glassCard: Color,
     // ---- 文字 ----
     val text: Color,
     val textSecondary: Color,
@@ -97,6 +99,7 @@ object LedgerPalette {
         divider = Color(0x140B1220),
         scrim = Color(0x990B1220),
         backgroundOverlay = Color(0x80FFFFFF),
+        glassCard = Color(0xBFFFFFFF),
         text = Color(0xFF14181F),
         textSecondary = Color(0xFF5B6675),
         textTertiary = Color(0xFF8D97A6),
@@ -134,6 +137,7 @@ object LedgerPalette {
         divider = Color(0x1FFFFFFF),
         scrim = Color(0xB30B1220),
         backgroundOverlay = Color(0xB3000000),
+        glassCard = Color(0xBF171D25),
         text = Color(0xFFE8EDF3),
         textSecondary = Color(0xFFA3AEBD),
         textTertiary = Color(0xFF7A8798),

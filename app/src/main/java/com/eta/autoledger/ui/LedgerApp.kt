@@ -449,7 +449,7 @@ private fun LedgerTopBar(
                 .fillMaxWidth()
                 .height(52.dp)
                 .clip(barShape)
-                .background(LedgerTheme.surface),
+                .background(LedgerTheme.glassCard),
         ) {
             if (onBack != null) {
                 IconButton(
@@ -518,7 +518,7 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(barShape)
-                .background(LedgerTheme.surface)
+                .background(LedgerTheme.glassCard)
                 .padding(bottom = 12.dp),
         ) {
             Box(
@@ -602,7 +602,7 @@ private fun LedgerBottomBar(selected: Int, onSelect: (Int) -> Unit) {
                 .fillMaxWidth()
                 .height(72.dp)
                 .clip(dockShape)
-                .background(LedgerTheme.surface)
+                .background(LedgerTheme.glassCard)
                 .border(1.dp, LedgerTheme.borderSoft, dockShape),
         ) {
             Row(

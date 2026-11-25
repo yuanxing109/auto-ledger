@@ -1,10 +1,10 @@
 package com.eta.autoledger.settings
 
 import com.eta.autoledger.ui.LedgerTheme
-import com.eta.autoledger.ui.LocalDimens
+import com.eta.autoledger.ui.components.ThemeSurfaceCard
+import androidx.compose.foundation.layout.PaddingValues
 import com.eta.autoledger.util.AppDateFormats
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,14 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -30,7 +28,6 @@ import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-internal val PageBg: Color get() = LedgerTheme.page
 internal val AccentBlue: Color get() = LedgerTheme.accent
 internal val TextPrimary: Color get() = LedgerTheme.text
 internal val TextSecondary: Color get() = LedgerTheme.textSecondary
@@ -52,16 +49,11 @@ internal fun SettingsPageColumn(content: @Composable () -> Unit) {
 
 @Composable
 internal fun SettingsCard(content: @Composable () -> Unit) {
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, cardShape),
-    ) {
-        Column { content() }
-    }
+    ThemeSurfaceCard(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(0.dp),
+        content = { content() },
+    )
 }
 
 @Composable

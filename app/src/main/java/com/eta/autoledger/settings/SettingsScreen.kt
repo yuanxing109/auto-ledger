@@ -58,7 +58,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -77,7 +76,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -86,6 +84,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import com.eta.autoledger.ui.components.AppDialog
+import com.eta.autoledger.ui.components.ThemeSurfaceCard
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.AppPrefs
@@ -156,6 +155,7 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             SettingsTopBar(title = page.title, onBack = {
                 val parent = page.parent
@@ -166,7 +166,7 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(PageBg)
+                .background(Color.Transparent)
                 .padding(padding),
         ) {
             AnimatedContent(
@@ -230,7 +230,7 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(PageBg)
+            .background(LedgerTheme.glassCard)
             .statusBarsPadding()
             .padding(horizontal = 4.dp, vertical = 4.dp)
             .height(48.dp),
@@ -248,15 +248,7 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
 
 @Composable
 private fun SettingsAmbienceCard() {
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, cardShape)
-            .padding(16.dp),
-    ) {
+    ThemeSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "品牌色", style = MiuixTheme.textStyles.title4, color = LedgerTheme.text, modifier = Modifier.weight(1f))
@@ -1243,14 +1235,8 @@ private fun ImportPage() {
 
 @Composable
 private fun ImportPlatformCard(title: String, summary: String, modifier: Modifier, onClick: () -> Unit) {
-    Card(
-        modifier = modifier
-            .shadow(4.dp, RoundedCornerShape(16.dp), clip = false)
-            .border(1.dp, LedgerTheme.border, RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
-        cornerRadius = 16.dp,
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+    ThemeSurfaceCard(modifier = modifier, onClick = onClick) {
+        Column {
             Text(title, style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
             Spacer(Modifier.height(4.dp))
             Text(summary, style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary))

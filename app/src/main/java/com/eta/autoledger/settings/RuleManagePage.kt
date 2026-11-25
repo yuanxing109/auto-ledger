@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,6 +53,7 @@ import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.ui.theme.LedgerDimens
 import com.eta.autoledger.ui.components.AppDialog
+import com.eta.autoledger.ui.components.ThemeSurfaceCard
 import com.eta.autoledger.ui.window.LocalSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -458,14 +460,11 @@ private fun KeywordInput(
 private fun RuleTabStrip(tab: Int, systemCount: Int, userCount: Int, onTab: (Int) -> Unit) {
     val dimens = LocalDimens.current
     val shape = RoundedCornerShape(dimens.radiusCard)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, shape)
-            .padding(4.dp),
+    ThemeSurfaceCard(
+        shape = shape,
+        contentPadding = PaddingValues(4.dp),
     ) {
+    Row(modifier = Modifier.fillMaxWidth()) {
         listOf<Pair<String, Int?>>(
             "系统规则" to systemCount,
             "我的规则" to userCount,
@@ -491,6 +490,7 @@ private fun RuleTabStrip(tab: Int, systemCount: Int, userCount: Int, onTab: (Int
                 )
             }
         }
+    }
     }
 }
 

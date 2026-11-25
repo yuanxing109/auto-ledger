@@ -67,6 +67,9 @@ object LedgerTheme {
     /** 遮罩（弹层背后的压暗层）。 */
     val scrim: Color get() = colors.scrim
 
+    /** 自定义全局背景图上的主题可读性遮罩。 */
+    val backgroundOverlay: Color get() = colors.backgroundOverlay
+
     // ---------------- 文字 ----------------
 
     val text: Color get() = colors.text

@@ -1,6 +1,8 @@
 package com.eta.autoledger.ui
 
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -18,6 +20,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import com.eta.autoledger.ui.rememberMotionDuration
 import com.eta.autoledger.ui.components.AppDialog
 import androidx.compose.foundation.LocalIndication
@@ -52,6 +55,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,7 +63,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -182,6 +190,7 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
         }
         CompositionLocalProvider(LocalSnackbar provides snackbar) {
             Box(modifier = Modifier.fillMaxSize()) {
+                LedgerBackdrop(path = prefs.customBackgroundPath)
                 AnimatedContent(
                     targetState = overlay,
                     transitionSpec = { fadeIn(tween(overlayDuration)) togetherWith fadeOut(tween(overlayDuration)) },
@@ -196,6 +205,7 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
                         2 -> SearchScreen(onClose = { showSearch = false })
 
                         else -> Scaffold(
+                            containerColor = Color.Transparent,
                             topBar = {
                                 if (selected == 2) {
                                     ReportTopBar(
@@ -271,6 +281,67 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
         }
     }
 }
+
+/** 静态位图背景。图片只解码一次，滚动和页面切换期间复用同一份 ImageBitmap。 */
+@Composable
+private fun LedgerBackdrop(path: String) {
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = path) {
+        value = withContext(Dispatchers.IO) {
+            if (path.isBlank()) null else runCatching { decodeBackgroundBitmap(path) }.getOrNull()
+        }
+    }
+    Box(modifier = Modifier.fillMaxSize().background(LedgerTheme.page)) {
+        val image = bitmap
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            Box(modifier = Modifier.fillMaxSize().background(LedgerTheme.backgroundOverlay))
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                LedgerTheme.accent.copy(alpha = 0.16f),
+                                LedgerTheme.accentPressed.copy(alpha = 0.06f),
+                                LedgerTheme.page,
+                            ),
+                        ),
+                    ),
+            )
+        }
+    }
+}
+
+private fun decodeBackgroundBitmap(path: String): ImageBitmap? {
+    val file = File(path)
+    if (!file.isFile) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sampleSize = 1
+    while (
+        bounds.outWidth / sampleSize > MAX_BACKGROUND_EDGE ||
+        bounds.outHeight / sampleSize > MAX_BACKGROUND_EDGE
+    ) {
+        sampleSize *= 2
+    }
+    val bitmap: Bitmap = BitmapFactory.decodeFile(
+        path,
+        BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        },
+    ) ?: return null
+    return bitmap.asImageBitmap()
+}
+
+private const val MAX_BACKGROUND_EDGE = 2048
 
 @Composable
 private fun AiActionSheet(

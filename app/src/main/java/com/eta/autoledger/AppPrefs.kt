@@ -157,6 +157,15 @@ class AppPrefs private constructor(context: Context) {
         get() = homeBudgetState
         set(value) { homeBudgetState = value; prefs.edit { putBoolean("home_budget_card", value) } }
 
+    /** App 私有目录中的自定义全局背景图路径，空串表示使用主题渐变背景。 */
+    private var customBackgroundPathState by mutableStateOf(prefs.getString("custom_background_path", "") ?: "")
+    var customBackgroundPath: String
+        get() = customBackgroundPathState
+        set(value) {
+            customBackgroundPathState = value
+            prefs.edit { putString("custom_background_path", value) }
+        }
+
     private var aiBaseUrlState by mutableStateOf(prefs.getString("ai_base_url", "") ?: "")
     var aiBaseUrl: String
         get() = aiBaseUrlState

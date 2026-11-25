@@ -38,6 +38,8 @@ data class LedgerColors(
     val borderSoft: Color,
     val divider: Color,
     val scrim: Color,
+    /** 自定义首页背景上的可读性遮罩。 */
+    val backgroundOverlay: Color,
     // ---- 文字 ----
     val text: Color,
     val textSecondary: Color,
@@ -46,7 +48,7 @@ data class LedgerColors(
     val accent: Color,
     val accentPressed: Color,
     val onAccent: Color,
-    // ---- 首页大卡片（Hero）专用：纯 surface 实心（无渐变），不用蓝渐变/大色块 ----
+    // ---- 首页大卡片（Hero）专用：强调色系渐变 + 高对比浅色文字 ----
     val heroStart: Color,
     val heroEnd: Color,
     val onHero: Color,
@@ -94,16 +96,15 @@ object LedgerPalette {
         borderSoft = Color(0x1F0B1220),
         divider = Color(0x140B1220),
         scrim = Color(0x990B1220),
+        backgroundOverlay = Color(0x80FFFFFF),
         text = Color(0xFF14181F),
         textSecondary = Color(0xFF5B6675),
         textTertiary = Color(0xFF8D97A6),
         accent = Color(0xFF2563EB),
         accentPressed = Color(0xFF1D4FD7),
         onAccent = Color(0xFFFFFFFF),
-        // Hero 改为纯 surface（无渐变）；onHero 暂留浅色，待 HomeScreen 去掉 GlassSurface
-        // 改用实心 surface 后再换成 text（页面层改动，不在本次 token 修正范围）。
-        heroStart = Color(0xE6FFFFFF),
-        heroEnd = Color(0xE6FFFFFF),
+        heroStart = Color(0xFF2563EB),
+        heroEnd = Color(0xFF1D4FD7),
         onHero = Color(0xFFFFFFFF),
         income = Color(0xFF0B8A5F),
         danger = Color(0xFFDC2626),
@@ -132,16 +133,17 @@ object LedgerPalette {
         borderSoft = Color(0x33FFFFFF),
         divider = Color(0x1FFFFFFF),
         scrim = Color(0xB30B1220),
+        backgroundOverlay = Color(0xB3000000),
         text = Color(0xFFE8EDF3),
         textSecondary = Color(0xFFA3AEBD),
         textTertiary = Color(0xFF7A8798),
         accent = Color(0xFF6D9BFF),
         accentPressed = Color(0xFF5A88F0),
         onAccent = Color(0xFF06101F),
-        // 纯 surface 实心 Hero（无渐变）；onHero 暂留浅色，待页面改实心 surface 后换 text。
-        heroStart = Color(0xCC141A21),
-        heroEnd = Color(0xCC141A21),
-        onHero = Color(0xFFE8EDF3),
+        // 深色下使用同一蓝色家族的深色分级，保证白字对比度。
+        heroStart = Color(0xFF244E9D),
+        heroEnd = Color(0xFF17366D),
+        onHero = Color(0xFFF5F8FF),
         income = Color(0xFF34D399),
         danger = Color(0xFFF87171),
         warning = Color(0xFFFBBF24),

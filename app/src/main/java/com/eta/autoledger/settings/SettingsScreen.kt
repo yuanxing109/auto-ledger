@@ -13,6 +13,7 @@ import android.app.TimePickerDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import java.io.File
 import androidx.compose.runtime.LaunchedEffect
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.BackHandler
@@ -984,7 +985,7 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
         SettingsCard {
             SwitchPreference(
                 title = "首页显示预算卡片",
-                summary = "开启后在记账首页展示（最多两个）",
+                summary = "开启后，预算进度会显示在首页核心资产卡底部",
                 checked = prefs.homeBudgetCard,
                 onCheckedChange = { prefs.homeBudgetCard = it },
             )
@@ -1559,11 +1560,42 @@ private suspend fun fetchModels(baseUrl: String, key: String): Result<List<Strin
 /** 只读信息行：标题在左、值在右，用于展示运行模式与最近采集时间。 */
 @Composable
 private fun AppearancePage(prefs: AppPrefs) {
+    val context = LocalContext.current
+    val snackbar = LocalSnackbar.current
+    val scope = rememberCoroutineScope()
+    var importingBackground by remember { mutableStateOf(false) }
     val modes = listOf(
         ThemeMode.SYSTEM to ("跟随系统" to "随系统的深色/浅色开关自动切换"),
         ThemeMode.LIGHT to ("浅色" to "始终使用浅色主题"),
         ThemeMode.DARK to ("深色" to "始终使用深色主题，夜间看账不刺眼"),
     )
+    val backgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null || importingBackground) return@rememberLauncherForActivityResult
+        importingBackground = true
+        scope.launch {
+            snackbar.show("正在导入背景图…")
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val target = File(context.filesDir, "custom_background_${System.currentTimeMillis()}.img")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        target.outputStream().use { output -> input.copyTo(output) }
+                    } ?: error("无法读取所选图片")
+                    target
+                }
+            }
+            importingBackground = false
+            result.onSuccess { target ->
+                val previous = prefs.customBackgroundPath
+                prefs.customBackgroundPath = target.absolutePath
+                if (previous.isNotBlank() && previous != target.absolutePath) {
+                    withContext(Dispatchers.IO) { runCatching { File(previous).delete() } }
+                }
+                snackbar.show("背景图已更新")
+            }.onFailure { error ->
+                snackbar.showLong("背景图导入失败：${error.message ?: error.javaClass.simpleName}")
+            }
+        }
+    }
     SettingsPageColumn {
         SettingsCard {
             modes.forEachIndexed { index, entry ->
@@ -1593,6 +1625,36 @@ private fun AppearancePage(prefs: AppPrefs) {
                         )
                     }
                 }
+            }
+        }
+        SettingsCard {
+            ArrowPreference(
+                title = if (importingBackground) "正在导入背景图…" else "自定义背景图",
+                summary = if (prefs.customBackgroundPath.isBlank()) {
+                    "从相册选择一张图片作为全局背景"
+                } else {
+                    "已设置，点击更换图片"
+                },
+                onClick = {
+                    if (!importingBackground) backgroundPicker.launch(arrayOf("image/*"))
+                },
+            )
+            if (prefs.customBackgroundPath.isNotBlank()) {
+                RowDivider()
+                ArrowPreference(
+                    title = "恢复默认背景",
+                    summary = "改用跟随主题的淡强调色渐变",
+                    onClick = {
+                        val previous = prefs.customBackgroundPath
+                        prefs.customBackgroundPath = ""
+                        scope.launch {
+                            if (previous.isNotBlank()) {
+                                withContext(Dispatchers.IO) { runCatching { File(previous).delete() } }
+                            }
+                            snackbar.show("已恢复默认背景")
+                        }
+                    },
+                )
             }
         }
         HintText("深色模式下页面背景、卡片、文字与强调色都会跟随切换；小部件仍使用自身配色。")

@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 
 import androidx.compose.runtime.getValue
@@ -49,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -92,9 +94,13 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val listState = rememberLazyListState()
 
     val now = remember { Calendar.getInstance() }
-    val todayExpense = summary.todayExpense
     val monthExpense = summary.monthExpense
     val monthIncome = summary.monthIncome
+    val dayOfMonth = now.get(Calendar.DAY_OF_MONTH).coerceAtLeast(1)
+    val dailyAverageExpense = monthExpense / dayOfMonth
+    val autoRecordEnabled = prefs.smsEnabled || prefs.alipayEnabled || prefs.wechatEnabled || prefs.otherEnabled
+    val budgetAmount = prefs.budgetAmount.toDoubleOrNull() ?: 0.0
+    val showBudget = prefs.homeBudgetCard
 
     // 预算按「起始日」定义的周期算，与自然月分开：发薪日 25 号时，
     // 预算周期 = 25 号 ~ 次月 24 号，而首页月度收支仍按自然月展示。
@@ -103,10 +109,14 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     // 依赖「内容版本号」而不是 entries.size：翻页只让 entries 变长，账目内容没变，
     // 原先每翻一页都白跑一次预算汇总 SQL。现在只有新增/删除（count 变）
     // 或编辑（editTick 变）才重算。
-    LaunchedEffect(budgetStartDay, dataVersion) {
-        budgetSpent = runCatching {
-            LedgerRepository.budgetCycleExpense(context, budgetStartDay)
-        }.getOrNull()
+    LaunchedEffect(budgetStartDay, dataVersion, showBudget, budgetAmount) {
+        budgetSpent = if (showBudget && budgetAmount > 0.0) {
+            runCatching {
+                LedgerRepository.budgetCycleExpense(context, budgetStartDay)
+            }.getOrNull()
+        } else {
+            monthExpense
+        }
     }
     // 分组已迁到 ViewModel 增量维护：loadMore 追加时只合并新页，不再全量重算。
     // 原实现 remember(entries) 的 key 是整个 List，每次翻页都触发 O(n) 重分组 → 累计 O(n²)。
@@ -147,28 +157,28 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
 
     LazyColumn(
         state = listState,
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().background(Color.Transparent),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 82.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        item(key = "greeting") {
+            HomeGreeting(nowMillis = now.timeInMillis)
+        }
         item(key = "overview") {
-            OverviewCard(
-                todayExpense = todayExpense,
+            CoreAssetCard(
                 monthExpense = monthExpense,
                 monthIncome = monthIncome,
+                totalCount = billsState.totalCount,
+                dailyAverageExpense = dailyAverageExpense,
                 dateLabel = AppDateFormats.format(now.timeInMillis, AppDateFormats.monthDayChinese),
+                budget = budgetAmount,
+                budgetSpent = budgetSpent ?: monthExpense,
+                budgetStartDay = budgetStartDay,
+                showBudget = showBudget,
+                autoRecordEnabled = autoRecordEnabled,
                 visible = amountVisible,
                 onToggle = { amountVisible = !amountVisible },
             )
-        }
-        if (prefs.homeBudgetCard) {
-            item(key = "budget") {
-                BudgetCard(
-                    budget = prefs.budgetAmount.toDoubleOrNull() ?: 0.0,
-                    spent = budgetSpent ?: monthExpense,
-                    startDay = budgetStartDay,
-                )
-            }
         }
         item(key = "recent_header") {
             Row(
@@ -260,58 +270,6 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
 }
 
 @Composable
-private fun BudgetCard(budget: Double, spent: Double, startDay: Int = 1) {
-    val remaining = (budget - spent).coerceAtLeast(0.0)
-    val progress = if (budget > 0) (spent / budget).toFloat().coerceIn(0f, 1f) else 0f
-    // 起始日非 1 时标题点明周期口径，避免用户误以为和上方「本月支出」是同一个数
-    val title = if (startDay == 1) "本月预算" else "本期预算（$startDay 日起）"
-    val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, cardShape)
-            .padding(16.dp),
-    ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = title, style = MiuixTheme.textStyles.title4)
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = if (budget > 0) "剩余 ¥ %,.2f".format(remaining) else "未设置预算",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.primary,
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(MiuixTheme.colorScheme.onSurfaceContainerVariant.copy(alpha = 0.12f)),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress)
-                        .height(8.dp)
-                        .background(
-                            if (progress >= 0.9f) LedgerTheme.danger
-                            else MiuixTheme.colorScheme.primary,
-                        ),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = if (budget > 0) "已用 ¥ %,.2f / ¥ %,.2f".format(spent, budget)
-                else "去设置页配置预算金额与周期",
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-            )
-    }
-}
-
-@Composable
 private fun EmptyCard() {
     val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
     Column(
@@ -333,83 +291,200 @@ private fun EmptyCard() {
 }
 
 @Composable
-private fun OverviewCard(
-    todayExpense: Double,
+private fun CoreAssetCard(
     monthExpense: Double,
     monthIncome: Double,
+    totalCount: Int,
+    dailyAverageExpense: Double,
     dateLabel: String,
+    budget: Double,
+    budgetSpent: Double,
+    budgetStartDay: Int,
+    showBudget: Boolean,
+    autoRecordEnabled: Boolean,
     visible: Boolean,
     onToggle: () -> Unit,
 ) {
     val cardShape = RoundedCornerShape(LocalDimens.current.radiusCard)
+    val dimen = LocalDimens.current
+    val heroStart = LedgerTheme.heroStart.copy(alpha = 0.94f)
+    val heroEnd = LedgerTheme.heroEnd.copy(alpha = 0.86f)
+    val heroBrush = remember(heroStart, heroEnd) { Brush.linearGradient(listOf(heroStart, heroEnd)) }
+    val remaining = (budget - budgetSpent).coerceAtLeast(0.0)
+    val progress = if (visible && budget > 0.0) {
+        (budgetSpent / budget).toFloat().coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val budgetLabel = if (budgetStartDay == 1) "月预算" else "本期预算"
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(cardShape)
-            .background(LedgerTheme.surface)
-            .border(1.dp, LedgerTheme.borderSoft, cardShape)
-            .padding(horizontal = 24.dp, vertical = 16.dp),
+            .background(heroBrush)
+            .border(1.dp, LedgerTheme.onHero.copy(alpha = 0.2f), cardShape)
+            .padding(horizontal = dimen.cardPadding, vertical = dimen.gap),
     ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "今日支出",
-                    style = MiuixTheme.textStyles.body2,
-                    color = LedgerTheme.textSecondary,
-                    modifier = Modifier.weight(1f),
+                    text = dateLabel,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = LedgerTheme.onHero.copy(alpha = 0.78f),
                 )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "本月支出",
+                    style = MiuixTheme.textStyles.body2,
+                    color = LedgerTheme.onHero.copy(alpha = 0.86f),
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(LedgerTheme.onHero.copy(alpha = 0.14f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(LedgerTheme.inset)
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                ) {
-                    Text(text = dateLabel, style = MiuixTheme.textStyles.footnote2, color = LedgerTheme.textSecondary)
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (visible) "¥ %,.2f".format(todayExpense) else "¥ ****",
-                    style = MiuixTheme.textStyles.headline2,
-                    color = LedgerTheme.text,
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(if (autoRecordEnabled) LedgerTheme.onHero else LedgerTheme.onHero.copy(alpha = 0.45f)),
                 )
-                IconButton(onClick = onToggle) {
-                    Icon(
-                        imageVector = if (visible) MiuixIcons.Show else MiuixIcons.Hide,
-                        contentDescription = if (visible) "隐藏金额" else "显示金额",
-                        tint = LedgerTheme.textSecondary,
-                    )
-                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = if (autoRecordEnabled) "自动记账 ON" else "自动记账 OFF",
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = LedgerTheme.onHero,
+                )
             }
+        }
 
-            Spacer(Modifier.height(16.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(LedgerTheme.divider))
-            Spacer(Modifier.height(16.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("本月支出", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = if (visible) "¥ %,.2f".format(monthExpense) else "¥ ****",
-                        style = MiuixTheme.textStyles.title2,
-                        color = LedgerTheme.text,
-                    )
-                }
-                Box(modifier = Modifier.width(0.5.dp).height(30.dp).background(LedgerTheme.divider))
-                Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {
-                    Text("本月收入", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = if (visible) "¥ %,.2f".format(monthIncome) else "¥ ****",
-                        style = MiuixTheme.textStyles.title2,
-                        color = LedgerTheme.text,
-                    )
-                }
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = if (visible) "¥ %,.2f".format(monthExpense) else "¥ ****",
+                style = MiuixTheme.textStyles.headline1,
+                color = LedgerTheme.onHero,
+            )
+            IconButton(onClick = onToggle) {
+                Icon(
+                    imageVector = if (visible) MiuixIcons.Show else MiuixIcons.Hide,
+                    contentDescription = if (visible) "隐藏金额" else "显示金额",
+                    tint = LedgerTheme.onHero.copy(alpha = 0.82f),
+                )
             }
+        }
+
+        Spacer(Modifier.height(dimen.gap))
+        Row(horizontalArrangement = Arrangement.spacedBy(dimen.gap)) {
+            HeroMetric(
+                label = "本月收入",
+                value = if (visible) "¥ %,.2f".format(monthIncome) else "¥ ****",
+                modifier = Modifier.weight(1f),
+            )
+            HeroMetric(
+                label = "全部笔数",
+                value = "$totalCount 笔",
+                modifier = Modifier.weight(1f),
+            )
+            HeroMetric(
+                label = "日均支出",
+                value = if (visible) "¥ %,.2f".format(dailyAverageExpense) else "¥ ****",
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        if (showBudget) {
+            Spacer(Modifier.height(dimen.gap))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(0.5.dp)
+                    .background(LedgerTheme.onHero.copy(alpha = 0.2f)),
+            )
+            Spacer(Modifier.height(dimen.gapSmall))
+            Text(
+                text = when {
+                    budget <= 0.0 -> "$budgetLabel 未设置 · 可前往预算管理配置"
+                    visible -> "$budgetLabel ¥ %,.2f · 剩余 ¥ %,.2f".format(budget, remaining)
+                    else -> "$budgetLabel · 金额已隐藏"
+                },
+                style = MiuixTheme.textStyles.footnote1,
+                color = LedgerTheme.onHero.copy(alpha = 0.86f),
+            )
+            Spacer(Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(7.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(LedgerTheme.onHero.copy(alpha = 0.22f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .height(7.dp)
+                        .background(LedgerTheme.onHero),
+                )
+            }
+        }
     }
 }
+
+@Composable
+private fun HeroMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            style = MiuixTheme.textStyles.footnote2,
+            color = LedgerTheme.onHero.copy(alpha = 0.7f),
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = value,
+            style = MiuixTheme.textStyles.body2,
+            color = LedgerTheme.onHero,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun HomeGreeting(nowMillis: Long) {
+    val hour = remember(nowMillis) {
+        Calendar.getInstance().apply { timeInMillis = nowMillis }.get(Calendar.HOUR_OF_DAY)
+    }
+    val greeting = when (hour) {
+        in 5..11 -> "早上好，今天也要好好记账"
+        in 12..17 -> "下午好，今天的每一笔都值得记下"
+        else -> "晚上好，来复盘今天的收支吧"
+    }
+    val tip = rememberSaveable { HOME_TIPS.random() }
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp)) {
+        Text(
+            text = greeting,
+            style = MiuixTheme.textStyles.title2,
+            color = LedgerTheme.text,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = tip,
+            style = MiuixTheme.textStyles.body2,
+            color = LedgerTheme.textSecondary,
+        )
+    }
+}
+
+private val HOME_TIPS = listOf(
+    "把每一笔记清楚，月底会轻松很多。",
+    "预算不是限制，是给真正想做的事留空间。",
+    "小账也值得认真记录，长期趋势更有价值。",
+    "今天多看一眼，未来的自己少猜一次。",
+    "花得明白，才能存得踏实。",
+)
 
 @Composable
 private fun DayHeader(group: DayGroupUi) {

@@ -5,6 +5,8 @@ internal object AiPrompt {
 
     private const val CORE_LEAD = "你是一个无情的 JSON 提取机器"
     private const val CORE_CONTRACT_MARKER = "JSON 对象只能包含以下 6 个字段"
+    private const val VISION_LEAD = "直接输出结果，绝对不要包含任何思考过程或解释。"
+    private const val VISION_CONTRACT_MARKER = "顶层对象只能包含 transactions 数组"
 
     fun forVision(
         businessHint: String,
@@ -14,9 +16,9 @@ internal object AiPrompt {
         incomeCategories: List<String>,
     ): String {
         val hint = businessHint.trim()
-        if (hint.startsWith(CORE_LEAD) && hint.contains(CORE_CONTRACT_MARKER)) return hint
+        if (hint.startsWith(VISION_LEAD) && hint.contains(VISION_CONTRACT_MARKER)) return hint
         return buildString {
-            append(core(primaryCategories, subCategoryTree))
+            append(visionCore(primaryCategories, subCategoryTree))
             val allowed = primaryCategories.toSet()
             append("\n\n当前账单可匹配的一级分类（仍必须属于上面的固定枚举）：\n")
             append("- 支出：")
@@ -85,6 +87,63 @@ internal object AiPrompt {
 
         业务判定：
         - 关键词“向您支付”“向我支付”“给我支付”“给您打款”代表收入 income。
+        - 关键词“下单成功”“扣款”代表支出 expense。
+        - 资金划转、互相转钱、无礼金红包选择“转账”。
+        - 亲友随礼红包选择“人情社交”。
+        - 如果无法确认分类，选择“其他”。
+        - 如果未明确收支方向，默认支出 expense。
+    """.trimIndent().trim()
+
+    private fun visionCore(
+        primaryCategories: Collection<String>,
+        subCategoryTree: Map<String, List<String>>,
+    ): String = """
+        $VISION_LEAD
+        从以下账单截图中提取所有明确发生的交易记录，返回一个 JSON。
+
+        要求：
+        1. $VISION_CONTRACT_MARKER，不得输出其他顶层字段。
+        2. 每个 transaction 必须包含 amount、type、category、subCategory、time、note 六个字段。
+        3. 只输出合法 JSON，不要输出 Markdown 代码块、前后缀说明、问候或思考过程。
+        4. 图片里有几笔明确发生的交易，就返回几项；不要合并、去重或只返回第一笔。
+        5. 如果图里没有交易，返回 {"transactions": []}。
+
+        返回格式：
+        {
+          "transactions": [
+            {
+              "amount": 12.00,
+              "type": "expense",
+              "category": "餐饮",
+              "subCategory": "早中晚餐",
+              "time": "今天",
+              "note": "贵州牛羊肉粉面"
+            },
+            {
+              "amount": 3.00,
+              "type": "expense",
+              "category": "其他",
+              "subCategory": "",
+              "time": "昨天",
+              "note": "鑫艺"
+            }
+          ]
+        }
+
+        字段约束：
+        - amount 是大于 0 的浮点数，单位元。
+        - type 只能是 income 或 expense。
+        - category 必须且只能从以下固定枚举中选择一个：${promptList(primaryCategories)}。
+        - type=income 时 category 必须来自当前收入列表；type=expense 时 category 必须来自当前支出列表。
+        - subCategory 必须从该 category 对应的二级分类中选择。无法判断时输出空字符串。
+        - time 保留截图中的日期时间；未提及日期时写今天。
+        - note 是简短商户名或用途。
+
+        一级分类与可用二级分类：
+        ${renderTree(primaryCategories, subCategoryTree)}
+
+        业务判定：
+        - 关键词“向您支付”“给我支付”“给您打款”代表收入 income。
         - 关键词“下单成功”“扣款”代表支出 expense。
         - 资金划转、互相转钱、无礼金红包选择“转账”。
         - 亲友随礼红包选择“人情社交”。

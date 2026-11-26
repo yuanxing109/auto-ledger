@@ -193,7 +193,7 @@ class ScreenshotCaptureService : Service() {
         val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
 
         if (prefs.aiBaseUrl.isBlank() || prefs.aiModel.isBlank()) {
-            finishWithResult(null, "截屏成功，但还没有配置 AI 模型")
+            finishWithResult(emptyList(), "截屏成功，但还没有配置 AI 模型")
             return
         }
 
@@ -206,7 +206,7 @@ class ScreenshotCaptureService : Service() {
                 incomeCategories = CategoryStore.names(this@ScreenshotCaptureService, 1),
             )
         }.getOrElse {
-            finishWithResult(null, VisionHelper.userFacingError(it))
+            finishWithResult(emptyList(), VisionHelper.userFacingError(it))
             return
         }
         finishWithResult(parsed, null)
@@ -241,11 +241,11 @@ class ScreenshotCaptureService : Service() {
     }
 
     private fun finishWithError(message: String) {
-        notifyResult(null, message)
+        notifyResult(emptyList(), message)
     }
 
-    private fun finishWithResult(entry: ParsedEntry?, error: String?) {
-        notifyResult(entry, error)
+    private fun finishWithResult(entries: List<ParsedEntry>, error: String?) {
+        notifyResult(entries, error)
     }
 
     private fun claimCapture(startId: Int): Boolean = synchronized(taskLock) {
@@ -267,8 +267,8 @@ class ScreenshotCaptureService : Service() {
         stopSelfResult(stopId)
     }
 
-    private fun notifyResult(entry: ParsedEntry?, error: String?) {
-        VisionHelper.postResult(this, entry, error)
+    private fun notifyResult(entries: List<ParsedEntry>, error: String?) {
+        VisionHelper.postResult(this, entries, error)
     }
     private fun progressNotification(text: String) = NotificationCompat.Builder(this, CHANNEL_PROGRESS)
         .setSmallIcon(android.R.drawable.ic_menu_camera)

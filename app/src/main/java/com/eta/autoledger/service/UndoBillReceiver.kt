@@ -20,10 +20,17 @@ class UndoBillReceiver : BroadcastReceiver() {
 
         // 两条链路：
         //  1) 自动记账通知 —— 按 external_id 删（addImported 按单号去重，没有自增主键可用）
-        //  2) 截图记账通知 —— 按自增主键 entry_id 删（截图记账的 LedgerEntry 没有 externalId）
+        //  2) 截图记账通知 —— 按自增主键删除；批量识别时一次撤销整组记录。
+        val entryIds = intent.getLongArrayExtra(EXTRA_ENTRY_IDS)
+            ?.filter { it > 0L }
+            .orEmpty()
+        if (entryIds.isNotEmpty()) {
+            undoByEntryIds(context, intent, entryIds)
+            return
+        }
         val entryId = intent.getLongExtra(EXTRA_ENTRY_ID, -1L)
         if (entryId > 0L) {
-            undoByEntryId(context, intent, entryId)
+            undoByEntryIds(context, intent, listOf(entryId))
             return
         }
         val externalId = intent.getStringExtra(EXTRA_EXTERNAL_ID).orEmpty()
@@ -45,18 +52,19 @@ class UndoBillReceiver : BroadcastReceiver() {
         }
     }
 
-    /** 截图记账的撤销：按自增主键删，取消 [ConfirmEntryReceiver.CONFIRMED_ID] 那条通知。 */
-    private fun undoByEntryId(context: Context, intent: Intent, entryId: Long) {
+    /** 截图记账的撤销：按一个或多个自增主键删，并取消结果通知。 */
+    private fun undoByEntryIds(context: Context, intent: Intent, entryIds: List<Long>) {
         val pending = goAsync()
         scope.launch {
             try {
-                val removed = runCatching { LedgerRepository.delete(context, entryId) }
-                    .onFailure { Log.w(TAG, "撤销截图记账失败", it) }
-                    .getOrNull()
-                val ok = removed != null
+                val removed = entryIds.count { id ->
+                    runCatching { LedgerRepository.delete(context, id) }
+                        .onFailure { Log.w(TAG, "撤销批量截图记账失败", it) }
+                        .getOrNull() != null
+                }
                 context.getSystemService(NotificationManager::class.java)
                     ?.cancel(intent.getIntExtra(EXTRA_NOTIFY_ID, NOTIFY_ID))
-                val text = if (ok) "已撤销这笔截图记账" else "这笔账单已不存在"
+                val text = if (removed > 0) "已撤销 $removed 笔截图记账" else "这些账单已不存在"
                 Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
             } finally {
                 pending.finish()
@@ -68,8 +76,10 @@ class UndoBillReceiver : BroadcastReceiver() {
         private const val TAG = "AutoLedger"
         const val ACTION_UNDO = "com.eta.autoledger.action.UNDO_BILL"
         const val EXTRA_EXTERNAL_ID = "external_id"
-        /** 截图记账撤销用：自增主键（截图记账的 LedgerEntry 没有 externalId）。 */
+        /** 旧版单笔截图记账撤销用：单个自增主键。 */
         const val EXTRA_ENTRY_ID = "entry_id"
+        /** 截图批量记账撤销用：多个自增主键。 */
+        const val EXTRA_ENTRY_IDS = "entry_ids"
         const val EXTRA_NOTIFY_ID = "notify_id"
         /** 通知 id 的兜底常量（也用于 0 hash 冲突时）。 */
         const val NOTIFY_ID = 9100

@@ -188,7 +188,11 @@ class AppPrefs private constructor(context: Context) {
         set(value) { aiPromptState = value; prefs.edit { putString("ai_prompt", value) } }
 
     private fun normalizeAiPrompt(value: String?): String =
-        if (value.isNullOrBlank() || "\"confidence\"" in value) DEFAULT_PROMPT else value
+        if (value.isNullOrBlank() || "\"confidence\"" in value || value == LEGACY_DEFAULT_PROMPT) {
+            DEFAULT_PROMPT
+        } else {
+            value
+        }
 
     /** 主题：system / light / dark。默认跟随系统。 */
     private var themeState by mutableStateOf(prefs.getString("theme_mode", "system") ?: "system")
@@ -294,7 +298,10 @@ class AppPrefs private constructor(context: Context) {
             "已支付", "支付成功", "已扣款", "退款",
         )
 
-        const val DEFAULT_PROMPT =
+        private const val LEGACY_DEFAULT_PROMPT =
             "从账单截图中提取实际发生的一笔交易。优先使用清晰可见的商户、金额、时间和交易方向。"
+
+        const val DEFAULT_PROMPT =
+            "从账单截图中提取所有明确发生的交易。逐笔返回，不要合并或遗漏；优先使用清晰可见的商户、金额、时间和交易方向。"
     }
 }

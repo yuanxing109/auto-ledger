@@ -192,6 +192,7 @@ object ImportDedup {
             }
         }
         val added = if (keep.isEmpty()) 0 else LedgerRepository.addImported(context, keep)
+        LedgerRepository.releaseInvalidTransferPairs(context)
         return CommitResult(added = added, merged = merged, skipped = skipped)
     }
 

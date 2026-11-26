@@ -1414,7 +1414,7 @@ private fun CategoryDetailDialog(
             categories = listOf(slice.name),
             keyword = "",
             limit = 300,
-        ).collect { value = it }
+        ).collect { value = it.filterNot(LedgerEntry::isTransfer) }
     }
     val maxListHeight = with(LocalDensity.current) {
         LocalWindowInfo.current.containerSize.height.toDp() * 0.5f

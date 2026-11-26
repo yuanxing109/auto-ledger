@@ -8,6 +8,7 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -152,6 +153,7 @@ fun SearchScreen(onClose: () -> Unit) {
         var expense = 0.0
         var income = 0.0
         results.forEach { entry ->
+            if (entry.isTransfer) return@forEach
             when (entry.type) {
                 "expense" -> expense += entry.amount
                 "income" -> income += entry.amount
@@ -159,6 +161,7 @@ fun SearchScreen(onClose: () -> Unit) {
         }
         expense to income
     }
+    val transferCount = remember(results) { results.count { it.isTransfer } }
     val truncated = results.size >= SEARCH_LIMIT
     val groups = remember(results) { results.groupBy { dayStartOf(it) } }
 
@@ -276,6 +279,7 @@ fun SearchScreen(onClose: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
                 .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -292,6 +296,15 @@ fun SearchScreen(onClose: () -> Unit) {
                 Text("·", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.divider))
                 Spacer(Modifier.width(8.dp))
                 Text("收入 ¥${money(incomeSum)}", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.income))
+            }
+            if (transferCount > 0) {
+                Spacer(Modifier.width(8.dp))
+                Text("·", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.divider))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "内部转账 $transferCount 笔不计收支",
+                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
+                )
             }
         }
 
@@ -338,7 +351,9 @@ fun SearchScreen(onClose: () -> Unit) {
                 groups.forEach { (day, list) ->
                     // 当天支出也走单次遍历：原来是 filter 出一份新 list 再 sumOf，
                     // 每个日期分组都要多分配一个 List。
-                    val dayExpense = list.sumOf { if (it.type == "expense") it.amount else 0.0 }
+                    val dayExpense = list.sumOf {
+                        if (!it.isTransfer && it.type == "expense") it.amount else 0.0
+                    }
                     item(key = "h-$day", contentType = "header") {
                         DayHeader(
                             dayTitle = dayTitle(day),
@@ -355,9 +370,9 @@ fun SearchScreen(onClose: () -> Unit) {
                                 onLongClick = {
                                     // 长按即删，配「撤销」——比先进弹窗再点删除少两步
                                     scope.launch {
-                                        LedgerRepository.delete(context, entry.id)
+                                        val snapshot = LedgerRepository.delete(context, entry.id)
                                         if (snackbar.showUndo("已删除")) {
-                                            LedgerRepository.restore(context, entry)
+                                            LedgerRepository.restore(context, snapshot ?: entry)
                                         }
                                     }
                                 },
@@ -392,11 +407,30 @@ fun SearchScreen(onClose: () -> Unit) {
             entry = entry,
             onDismiss = { editingEntry = null },
             onSave = { amount, category, note ->
-                val updated = entry.copy(amount = amount, category = category, note = note)
+                val updated = entry.copy(
+                    amount = amount,
+                    category = category,
+                    note = note,
+                    isTransfer = false,
+                    transferPairId = null,
+                )
                 editingEntry = null
                 scope.launch {
                     LedgerRepository.update(context, updated)
                     snackbar.show("已更新")
+                }
+            },
+            onReleaseTransfer = entry.transferPairId?.let { pairId ->
+                {
+                    editingEntry = null
+                    scope.launch {
+                        val released = runCatching {
+                            LedgerRepository.releaseTransferPair(context, pairId)
+                        }.getOrNull()
+                        if (released != null && released > 0) {
+                            snackbar.show("已解除内部转账合并")
+                        }
+                    }
                 }
             },
             onDelete = {
@@ -404,9 +438,9 @@ fun SearchScreen(onClose: () -> Unit) {
                 editingEntry = null
                 scope.launch {
                     // 先等删除落库再弹撤销，否则撤销的 insert 会被 id 冲突 IGNORE 掉
-                    LedgerRepository.delete(context, removed.id)
+                    val snapshot = LedgerRepository.delete(context, removed.id)
                     if (snackbar.showUndo("已删除")) {
-                        LedgerRepository.restore(context, removed)
+                        LedgerRepository.restore(context, snapshot ?: removed)
                     }
                 }
             },
@@ -637,7 +671,7 @@ private fun ResultRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = entry.note.ifBlank { entry.category },
+                text = if (entry.isTransfer) "内部转账" else entry.note.ifBlank { entry.category },
                 style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.Medium),
                 color = LedgerTheme.text,
                 maxLines = 1,
@@ -645,7 +679,11 @@ private fun ResultRow(
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                text = "${formatCategoryLabel(entry.category, entry.subCategory)} · $stamp · ${entry.source}",
+                text = if (entry.isTransfer) {
+                    "${entry.note.ifBlank { entry.category }} · $stamp · ${entry.source}"
+                } else {
+                    "${formatCategoryLabel(entry.category, entry.subCategory)} · $stamp · ${entry.source}"
+                },
                 style = MiuixTheme.textStyles.footnote1,
                 color = LedgerTheme.textSecondary,
                 maxLines = 1,
@@ -657,6 +695,7 @@ private fun ResultRow(
             text = (if (income) "+" else if (other) "" else "-") + "¥" + money(entry.amount),
             style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold),
             color = when {
+                entry.isTransfer -> LedgerTheme.textSecondary
                 income -> LedgerTheme.income
                 other -> LedgerTheme.textSecondary
                 else -> LedgerTheme.text

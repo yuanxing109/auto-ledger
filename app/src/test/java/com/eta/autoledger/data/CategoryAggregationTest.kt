@@ -38,7 +38,9 @@ class CategoryAggregationTest {
                     `source` TEXT NOT NULL,
                     `external_id` TEXT,
                     `is_recurring` INTEGER NOT NULL DEFAULT 0,
-                    `recurring_rule` TEXT
+                    `recurring_rule` TEXT,
+                    `is_transfer` INTEGER NOT NULL DEFAULT 0,
+                    `transfer_pair_id` TEXT
                 )
                 """.trimIndent(),
             )
@@ -53,6 +55,14 @@ class CategoryAggregationTest {
         insert(amount = 12.0, category = "交通", subCategory = null, day = 5)
         // 收入账单不能污染支出聚合。
         insert(amount = 100.0, category = "餐饮", subCategory = "外卖", day = 6, type = "income")
+        insert(
+            amount = 500.0,
+            category = "转账",
+            subCategory = null,
+            day = 7,
+            type = "expense",
+            isTransfer = true,
+        )
     }
 
     @Test
@@ -78,6 +88,14 @@ class CategoryAggregationTest {
         assertEquals(20.0, transport.total, 0.001)
         assertEquals(2, transport.count)
         assertFalse(transport.hasSubCategories)
+    }
+
+    @Test
+    fun `内部转账不进入分类聚合`() {
+        val rows = queryCategoryRows()
+
+        assertNull(rows.firstOrNull { it.name == "转账" })
+        assertEquals(80.0, rows.sumOf { it.total }, 0.001)
     }
 
     @Test
@@ -141,11 +159,12 @@ class CategoryAggregationTest {
         day: Int,
         type: String = "expense",
         isRecurring: Boolean = false,
+        isTransfer: Boolean = false,
     ) {
         db.prepareStatement(
             "INSERT INTO Bill " +
-                "(amount,type,category,sub_category,time_text,timestamp,remark,source,external_id,is_recurring,recurring_rule) " +
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "(amount,type,category,sub_category,time_text,timestamp,remark,source,external_id,is_recurring,recurring_rule,is_transfer,transfer_pair_id) " +
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ).use { ps ->
             ps.setDouble(1, amount)
             ps.setString(2, type)
@@ -158,6 +177,8 @@ class CategoryAggregationTest {
             ps.setNull(9, java.sql.Types.VARCHAR)
             ps.setInt(10, if (isRecurring) 1 else 0)
             ps.setNull(11, java.sql.Types.VARCHAR)
+            ps.setInt(12, if (isTransfer) 1 else 0)
+            ps.setString(13, if (isTransfer) "pair-test" else null)
             ps.executeUpdate()
         }
     }

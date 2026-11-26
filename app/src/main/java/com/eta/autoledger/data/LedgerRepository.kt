@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Calendar
+import java.util.UUID
 
 /** 小部件汇总与近 7 日趋势，全部走区间聚合，不把全表读进内存。 */
 data class WidgetTotals(
@@ -28,11 +29,16 @@ data class RangeTotals(
 
 object LedgerRepository {
 
+    private val TRANSFER_TYPES = setOf("expense", "income")
+
     /** 强指纹候选查询窗口，围绕入账单的发生时间双向放宽 5 分钟。 */
     private const val STRONG_MERGE_WINDOW_MS = 5 * 60_000L
 
-    /** 自动记账的候选查询、来源合并和插入必须作为一个顺序队列执行。 */
+    /** 自动记账的候选查询和来源合并必须作为一个顺序队列执行。 */
     private val autoParsedMutex = Mutex()
+
+    /** 手动保存、导入与自动入账可能并发；进程内串行化后再由 DAO 事务做最终认领。 */
+    private val transferMutex = Mutex()
 
     fun dao(context: Context): LedgerDao = LedgerDatabase.get(context).ledgerDao()
 
@@ -156,38 +162,63 @@ object LedgerRepository {
      * 这里透传第一条即可。调用方需要「刚插入的那笔」时（如截图记账的撤销通知）
      * 用它定位；不关心的调用点忽略返回值不受影响。
      */
-    suspend fun add(context: Context, entry: LedgerEntry): Long = addAll(context, listOf(entry)).firstOrNull() ?: -1L
+    suspend fun add(context: Context, entry: LedgerEntry): Long = transferMutex.withLock {
+        val normalized = entry.normalized()
+        val id = dao(context).insertAll(listOf(normalized)).firstOrNull() ?: -1L
+        if (id > 0L && !normalized.isRecurring) {
+            mergeTransferLocked(context, normalized.copy(id = id))
+        }
+        LedgerWidgetProvider.requestUpdate(context)
+        id
+    }
 
     suspend fun addAll(context: Context, entries: List<LedgerEntry>): List<Long> {
         if (entries.isEmpty()) return emptyList()
-        val normalized = entries.map { it.normalized() }
-        val ids = dao(context).insertAll(normalized)
-        LedgerWidgetProvider.requestUpdate(context)
-        return ids
+        return transferMutex.withLock {
+            val dao = dao(context)
+            val normalized = entries.map { it.normalized() }
+            val ids = dao.insertAll(normalized)
+            val insertedRows = ids.mapNotNull { id ->
+                if (id <= 0L) null else dao.getById(id)
+            }.filter { !it.isTransfer && !it.isRecurring }
+            mergeTransferBatchLocked(context, dao, insertedRows)
+            LedgerWidgetProvider.requestUpdate(context)
+            ids
+        }
     }
 
     /** 导入去重：优先交易单号，其次「毫秒时间 + 金额 + 收支」指纹；返回实际新增数。 */
     suspend fun addImported(context: Context, entries: List<LedgerEntry>): Int {
         if (entries.isEmpty()) return 0
         val dao = dao(context)
-        val keys = mutableSetOf<String>()
-        dao.importRows().forEach { row ->
-            row.externalId?.takeIf { it.isNotBlank() }?.let(keys::add)
-            keys.add(fingerprint(row.timestamp, row.amount, row.type))
+        val rowIds = transferMutex.withLock {
+            // 去重快照与插入必须同一串行区，否则两个自动入口可能同时通过 keys 过滤。
+            val keys = mutableSetOf<String>()
+            dao.importRows().forEach { row ->
+                row.externalId?.takeIf { it.isNotBlank() }?.let(keys::add)
+                keys.add(fingerprint(row.timestamp, row.amount, row.type))
+            }
+            val normalized = entries.map { it.normalized() }
+            val toInsert = normalized
+                .filter { entry -> keys.add(entry.importKey()) }
+                .distinctBy { entry -> entry.importKey() }
+            if (toInsert.isEmpty()) return@withLock emptyList()
+            val inserted = dao.insertAll(toInsert)
+            val insertedRows = inserted.mapNotNull { id ->
+                if (id <= 0L) null else dao.getById(id)
+            }.filter { !it.isTransfer && !it.isRecurring }
+            // 同批内部先配对，避免第一条支出提前认领库里时间更近的旧收入。
+            mergeTransferBatchLocked(context, dao, insertedRows)
+            inserted
         }
-        val normalized = entries.map { it.normalized() }
-        val toInsert = normalized
-            .filter { entry -> keys.add(entry.importKey()) }
-            .distinctBy { entry -> entry.importKey() }
-        if (toInsert.isEmpty()) return 0
-        val rowIds = dao.insertAll(toInsert)
+        // 配对状态改变不影响新增计数，也不能把同批的第二条当成重复。
         LedgerWidgetProvider.requestUpdate(context)
         // 撞上 external_id 唯一索引（IGNORE）的位置返回 -1，不算新增。
         return rowIds.count { it != -1L }
     }
 
     /**
-     * 自动记账专用入库：先做跨来源强指纹合并，再交给 [addImported] 做单号/时间指纹去重。
+     * 自动记账专用入库：先做跨来源强指纹合并，再做单号/时间指纹去重与转账配对。
      *
      * 为什么数据库去重挡不住：`external_id` 由 `pkg|title|text|bigText|postTime` 算出，
      * 而 postTime 是**毫秒级**的。长短信被拆成多段、接收器被系统连调两次、或进程重启后
@@ -196,7 +227,8 @@ object LedgerRepository {
      *
      * 现有秒级内存指纹继续挡住重复投递。数据库侧再按“金额分 + 方向 + 分钟桶 + 卡尾”
      * 查询 ±5 分钟候选，强指纹命中时只合并来源，不再新增第二笔。
-     * 只用于短信 / 通知通道；手动记账、CSV 导入、云恢复走 [addImported] / [add]，行为不变。
+     * 只用于短信 / 通知通道；手动记账、CSV 导入、云恢复分别走 [add] / [addImported]，
+     * 同样在去重完成后触发转账配对。
      */
     suspend fun addAutoParsed(
         context: Context,
@@ -230,6 +262,7 @@ object LedgerRepository {
 
             val merchant = entry.note.ifBlank { entry.category }
             if (!ParseDedup.accept(ParseDedup.fingerprint(entry.amount, merchant, stamp), now)) continue
+            // 统一走导入入口，保持单号/毫秒指纹去重与转账配对共用同一条写路径。
             added += addImported(context, listOf(entry))
         }
         added
@@ -317,13 +350,108 @@ object LedgerRepository {
     }
 
     suspend fun update(context: Context, entry: LedgerEntry) {
-        dao(context).update(entry)
-        LedgerWidgetProvider.requestUpdate(context)
+        transferMutex.withLock {
+            val dao = dao(context)
+            val previous = dao.getById(entry.id)
+            previous?.transferPairId?.let { pairId ->
+                dao.releaseTransferPairAtomically(pairId)
+            }
+            val updated = entry.copy(isTransfer = false, transferPairId = null)
+            dao.update(updated)
+            // 编辑即视为用户明确纠正：不自动重新合并，避免刚改完又被系统锁住。
+            LedgerWidgetProvider.requestUpdate(context)
+        }
     }
 
-    suspend fun delete(context: Context, id: Long) {
-        dao(context).deleteById(id)
+    suspend fun delete(context: Context, id: Long): LedgerEntry? {
+        var snapshot: LedgerEntry? = null
+        transferMutex.withLock {
+            val dao = dao(context)
+            // 删除单边时先清空配对标记，让另一半立即恢复普通账单；撤销时再按快照恢复。
+            snapshot = dao.deleteEntryPreservingTransferSnapshot(id)
+            LedgerWidgetProvider.requestUpdate(context)
+        }
+        return snapshot
+    }
+
+    /**
+     * 去重完成后调用：在同一事务里认领一对方向相反、金额相同、时间相近且有转账语义的账单。
+     *
+     * 原始 category 不覆盖，列表展示时才映射为“内部转账”。这样用户解除合并后，
+     * 两条记录会恢复原有分类与统计语义。
+     */
+    suspend fun detectAndMergeTransfer(context: Context, entry: LedgerEntry): String? {
+        return transferMutex.withLock {
+            mergeTransferLocked(context, entry)
+        }
+    }
+
+    private suspend fun mergeTransferLocked(context: Context, entry: LedgerEntry): String? {
+        if (entry.id <= 0L || entry.isRecurring || entry.isTransfer || entry.transferPairId != null) return null
+        val dao = dao(context)
+        val current = dao.getById(entry.id)?.takeIf { !it.isTransfer } ?: return null
+        if (current.transferPairId != null) return null
+        val stamp = current.timeMillis.takeIf { it > 0L } ?: return null
+        // 只允许支出/收入参与转账；其他类型既不查也不配。
+        if (current.type !in TRANSFER_TYPES) return null
+        val candidates = dao.transferPairCandidates(
+            entryId = current.id,
+            oppositeType = if (current.type == "income") "expense" else "income",
+            amountCents = kotlin.math.abs(FingerprintCodec.amountFen(current.amount)),
+            since = stamp - TransferPairMatcher.WINDOW_MS,
+            until = stamp + TransferPairMatcher.WINDOW_MS,
+            centerTime = stamp,
+        )
+        val matched = TransferPairMatcher.chooseCandidate(current, candidates) ?: return null
+        val pairId = UUID.randomUUID().toString()
+        if (!dao.claimTransferPairAtomically(pairId, current.id, matched.id)) return null
         LedgerWidgetProvider.requestUpdate(context)
+        return pairId
+    }
+
+    /**
+     * 批量写入先在同批内部配对，再让剩余记录与库内旧记录配对。
+     * 这样新导入的转出不会先抢走旧收入，导致同批真正的转入被孤立。
+     */
+    private suspend fun mergeTransferBatchLocked(
+        context: Context,
+        dao: LedgerDao,
+        rows: List<LedgerEntry>,
+    ) {
+        val localPairs = TransferPairMatcher.chooseLocalPairs(rows)
+        val claimedIds = localPairs.flatMapTo(mutableSetOf()) { (first, second) ->
+            listOf(first.id, second.id)
+        }
+        localPairs.forEach { (first, local) ->
+            val pairId = UUID.randomUUID().toString()
+            if (dao.claimTransferPairAtomically(pairId, first.id, local.id)) {
+                LedgerWidgetProvider.requestUpdate(context)
+            }
+        }
+        rows.forEach { row ->
+            if (row.id in claimedIds) return@forEach
+            dao.getById(row.id)?.takeIf { !it.isTransfer && !it.isRecurring }?.let { remaining ->
+                mergeTransferLocked(context, remaining)
+            }
+        }
+    }
+
+    /** 成对解除合并，返回实际恢复的记录数。 */
+    suspend fun releaseTransferPair(context: Context, pairId: String): Int {
+        return transferMutex.withLock {
+            val released = dao(context).releaseTransferPairAtomically(pairId)
+            if (released > 0) LedgerWidgetProvider.requestUpdate(context)
+            released
+        }
+    }
+
+    /** 恢复后校验：不完整或条件已变化的配对降级为普通账单。 */
+    suspend fun releaseInvalidTransferPairs(context: Context): Int {
+        return transferMutex.withLock {
+            val released = dao(context).releaseInvalidTransferPairs()
+            if (released > 0) LedgerWidgetProvider.requestUpdate(context)
+            released
+        }
     }
 
     suspend fun countSubCategoryBills(
@@ -349,15 +477,29 @@ object LedgerRepository {
      * （极小概率）会静默跳过，不会产生脏数据。
      */
     suspend fun restore(context: Context, entry: LedgerEntry) {
-        dao(context).insertAll(listOf(entry))
-        LedgerWidgetProvider.requestUpdate(context)
+        transferMutex.withLock {
+            val dao = dao(context)
+            val pairId = entry.transferPairId
+            val restored = entry.copy(isTransfer = false, transferPairId = null)
+            dao.insertAll(listOf(restored))
+            if (pairId != null) dao.restoreTransferPairAtomically(entry)
+            LedgerWidgetProvider.requestUpdate(context)
+        }
     }
 
     /** 按 [LedgerEntry.externalId] 删除：自动记账的通知里只带了外部单号，没有自增主键。 */
     suspend fun deleteByExternalId(context: Context, externalId: String): Int {
-        val removed = dao(context).deleteByExternalId(externalId)
-        LedgerWidgetProvider.requestUpdate(context)
-        return removed
+        return transferMutex.withLock {
+            val dao = dao(context)
+            val removed = dao.deleteByExternalId(externalId)
+            if (removed > 0) {
+                // 该入口不带自增主键，无法精确定位另一半；清除悬空的成对标记，
+                // 避免统计继续隐藏一条已经不存在的转账。
+                dao.clearDanglingTransferPairs()
+            }
+            LedgerWidgetProvider.requestUpdate(context)
+            removed
+        }
     }
 
     suspend fun clear(context: Context) {

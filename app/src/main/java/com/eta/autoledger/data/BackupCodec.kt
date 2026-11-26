@@ -12,7 +12,7 @@ import org.json.JSONObject
  */
 object BackupCodec {
 
-    const val VERSION = 2
+    const val VERSION = 3
 
     fun encode(entries: List<LedgerEntry>, exportedAt: Long = System.currentTimeMillis()): ByteArray {
         val bills = JSONArray()
@@ -31,6 +31,11 @@ object BackupCodec {
                     if (e.isRecurring) {
                         put("isRecurring", true)
                         put("recurringRule", e.recurringRule)
+                    }
+                    if (e.subCategory != null) put("subCategory", e.subCategory)
+                    if (e.isTransfer && !e.transferPairId.isNullOrBlank()) {
+                        put("isTransfer", true)
+                        put("transferPairId", e.transferPairId)
                     }
                 },
             )
@@ -75,6 +80,9 @@ object BackupCodec {
                 externalId = o.optString("externalId", "").ifBlank { null },
                 isRecurring = o.optBoolean("isRecurring", false),
                 recurringRule = o.optString("recurringRule", "").ifBlank { null },
+                subCategory = o.optString("subCategory", "").ifBlank { null },
+                isTransfer = o.optBoolean("isTransfer", false),
+                transferPairId = o.optString("transferPairId", "").ifBlank { null },
             )
         }
         return out

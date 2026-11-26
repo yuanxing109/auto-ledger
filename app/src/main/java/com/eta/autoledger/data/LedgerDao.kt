@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 data class Bucket(val bucket: String, val total: Double)
@@ -26,7 +27,8 @@ internal object LedgerDaoSql {
         "SELECT category AS name, sub_category AS subCategory, " +
             "COALESCE(SUM(amount), 0.0) AS total, COUNT(*) AS count FROM Bill " +
             "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
-            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end " +
+            "AND is_recurring = 0 AND is_transfer = 0 " +
+            "AND timestamp >= :start AND timestamp < :end " +
             "GROUP BY category, sub_category ORDER BY category ASC, total DESC"
 
     const val COUNT_SUB_CATEGORY_BILLS =
@@ -36,6 +38,39 @@ internal object LedgerDaoSql {
     const val MOVE_SUB_CATEGORY_BILLS =
         "UPDATE Bill SET sub_category = :target WHERE type = :type AND category = :category " +
             "AND sub_category = :source"
+
+    /** 配对候选：只查真实账单、未合并、方向相反、金额精确到分且时间差不超过 5 分钟。 */
+    const val TRANSFER_PAIR_CANDIDATES =
+        "SELECT * FROM Bill WHERE is_recurring = 0 AND is_transfer = 0 " +
+            "AND id != :entryId AND type = :oppositeType " +
+            "AND ABS(CAST(ROUND(amount * 100) AS INTEGER)) = :amountCents " +
+            "AND timestamp BETWEEN :since AND :until " +
+            "ORDER BY ABS(timestamp - :centerTime) ASC, id ASC"
+
+    const val CLAIM_TRANSFER_PAIR =
+        "UPDATE Bill SET is_transfer = 1, transfer_pair_id = :pairId " +
+            "WHERE id IN (:firstId, :secondId) AND is_transfer = 0"
+
+    const val RELEASE_TRANSFER_PAIR =
+        "UPDATE Bill SET is_transfer = 0, transfer_pair_id = NULL " +
+            "WHERE transfer_pair_id = :pairId"
+
+    const val CLEAR_DANGLING_TRANSFER_PAIRS =
+        "UPDATE Bill SET is_transfer = 0, transfer_pair_id = NULL " +
+            "WHERE transfer_pair_id IS NOT NULL " +
+            "AND (SELECT COUNT(*) FROM Bill AS paired " +
+            "WHERE paired.transfer_pair_id = Bill.transfer_pair_id) < 2"
+
+    /** 备份恢复时，只认完整的一对同 pair、金额分相等、方向相反。 */
+    const val RELEASE_INVALID_TRANSFER_PAIRS =
+        "UPDATE Bill SET is_transfer = 0, transfer_pair_id = NULL " +
+            "WHERE transfer_pair_id IS NOT NULL AND transfer_pair_id IN (" +
+            "SELECT transfer_pair_id FROM Bill WHERE transfer_pair_id IS NOT NULL " +
+            "GROUP BY transfer_pair_id HAVING COUNT(*) != 2 " +
+            "OR SUM(CASE WHEN type = 'expense' THEN 1 ELSE 0 END) != 1 " +
+            "OR SUM(CASE WHEN type = 'income' THEN 1 ELSE 0 END) != 1 " +
+            "OR MIN(CAST(ROUND(amount * 100) AS INTEGER)) != " +
+            "MAX(CAST(ROUND(amount * 100) AS INTEGER)))"
 }
 
 /**
@@ -90,13 +125,15 @@ interface LedgerDao {
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type = 'expense' AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
+            "WHERE type = 'expense' AND is_recurring = 0 AND is_transfer = 0 " +
+            "AND timestamp >= :start AND timestamp < :end",
     )
     fun observeExpense(start: Long, end: Long): Flow<Double>
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type == 'income' AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
+            "WHERE type == 'income' AND is_recurring = 0 AND is_transfer = 0 " +
+            "AND timestamp >= :start AND timestamp < :end",
     )
     fun observeIncome(start: Long, end: Long): Flow<Double>
 
@@ -120,7 +157,7 @@ interface LedgerDao {
             "THEN amount END), 0.0) AS exp_amount, " +
             "COALESCE(SUM(CASE WHEN timestamp >= :cs AND timestamp < :ce AND type = 'income' " +
             "THEN amount END), 0.0) AS inc_amount " +
-            "FROM Bill WHERE is_recurring = 0 " +
+            "FROM Bill WHERE is_recurring = 0 AND is_transfer = 0 " +
             "AND timestamp >= :outerStart AND timestamp < :outerEnd",
     )
     fun observeTotals(
@@ -134,7 +171,8 @@ interface LedgerDao {
         "SELECT strftime(:format, timestamp / 1000, 'unixepoch', 'localtime') AS bucket, " +
             "COALESCE(SUM(amount), 0.0) AS total FROM Bill " +
             "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
-            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end GROUP BY bucket ORDER BY bucket",
+            "AND is_recurring = 0 AND is_transfer = 0 " +
+            "AND timestamp >= :start AND timestamp < :end GROUP BY bucket ORDER BY bucket",
     )
     fun observeBuckets(format: String, start: Long, end: Long, income: Int): Flow<List<Bucket>>
 
@@ -153,7 +191,8 @@ interface LedgerDao {
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type = 'expense' AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
+            "WHERE type = 'expense' AND is_recurring = 0 AND is_transfer = 0 " +
+            "AND timestamp >= :start AND timestamp < :end",
     )
     suspend fun sumExpenseOnce(start: Long, end: Long): Double
 
@@ -161,17 +200,22 @@ interface LedgerDao {
     @Query(
         "SELECT strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime') AS day, " +
             "COALESCE(SUM(amount), 0.0) AS total FROM Bill WHERE type = 'expense' " +
-            "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end GROUP BY day ORDER BY day",
+            "AND is_recurring = 0 AND is_transfer = 0 " +
+            "AND timestamp >= :start AND timestamp < :end GROUP BY day ORDER BY day",
     )
     suspend fun sumExpenseByDayOnce(start: Long, end: Long): List<DayAmount>
 
     @Query(
         "SELECT COALESCE(SUM(amount), 0.0) FROM Bill " +
-            "WHERE type == 'income' AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end",
+            "WHERE type == 'income' AND is_recurring = 0 AND is_transfer = 0 " +
+            "AND timestamp >= :start AND timestamp < :end",
     )
     suspend fun sumIncomeOnce(start: Long, end: Long): Double
 
-    @Query("SELECT COUNT(*) FROM Bill WHERE is_recurring = 0 AND timestamp >= :start AND timestamp < :end")
+    @Query(
+        "SELECT COUNT(*) FROM Bill WHERE is_recurring = 0 AND is_transfer = 0 " +
+            "AND timestamp >= :start AND timestamp < :end",
+    )
     suspend fun countRange(start: Long, end: Long): Int
 
     /** 全表（含周期模板）：仅供备份使用，恢复时模板要一起带走。 */
@@ -304,6 +348,81 @@ interface LedgerDao {
 
     @Query("SELECT * FROM Bill WHERE timestamp = 0")
     suspend fun getMissingTimestamp(): List<LedgerEntry>
+
+    @Query(LedgerDaoSql.TRANSFER_PAIR_CANDIDATES)
+    suspend fun transferPairCandidates(
+        entryId: Long,
+        oppositeType: String,
+        amountCents: Long,
+        since: Long,
+        until: Long,
+        centerTime: Long,
+    ): List<LedgerEntry>
+
+    @Query("SELECT * FROM Bill WHERE id = :id")
+    suspend fun getById(id: Long): LedgerEntry?
+
+    @Query("SELECT * FROM Bill WHERE transfer_pair_id = :pairId ORDER BY id ASC")
+    suspend fun getTransferPair(pairId: String): List<LedgerEntry>
+
+    @Query(LedgerDaoSql.CLAIM_TRANSFER_PAIR)
+    suspend fun claimTransferPair(pairId: String, firstId: Long, secondId: Long): Int
+
+    @Query(LedgerDaoSql.RELEASE_TRANSFER_PAIR)
+    suspend fun releaseTransferPair(pairId: String): Int
+
+    /** 撤销删除恢复原配对时，仅当另一半仍存在才重新认领。 */
+    @Transaction
+    suspend fun restoreTransferPairAtomically(entry: LedgerEntry): Boolean {
+        val pairId = entry.transferPairId ?: return false
+        val existing = getTransferPair(pairId)
+        val restored = entry.copy(isTransfer = false, transferPairId = null)
+        val other = if (existing.size == 1) {
+            existing.single()
+        } else if (existing.isEmpty()) {
+            val stamp = restored.timeMillis.takeIf { it > 0L } ?: return false
+            val candidates = transferPairCandidates(
+                entryId = restored.id,
+                oppositeType = if (restored.type == "income") "expense" else "income",
+                amountCents = kotlin.math.abs(FingerprintCodec.amountFen(restored.amount)),
+                since = stamp - TransferPairMatcher.WINDOW_MS,
+                until = stamp + TransferPairMatcher.WINDOW_MS,
+                centerTime = stamp,
+            )
+            TransferPairMatcher.chooseCandidate(restored, candidates) ?: return false
+        } else {
+            return false
+        }
+        if (!TransferPairMatcher.matches(restored, other)) return false
+        return claimTransferPair(pairId, entry.id, other.id) == 2
+    }
+
+    /** 清理已被单边删除的转账标记，保证不会长期隐藏幸存那一笔。 */
+    @Query(LedgerDaoSql.CLEAR_DANGLING_TRANSFER_PAIRS)
+    suspend fun clearDanglingTransferPairs(): Int
+
+    /** 只用于删除撤销快照：先记录配对，再释放，最后删单边。 */
+    @Transaction
+    suspend fun deleteEntryPreservingTransferSnapshot(id: Long): LedgerEntry? {
+        val entry = getById(id) ?: return null
+        entry.transferPairId?.let { releaseTransferPair(it) }
+        deleteById(id)
+        return entry
+    }
+
+    @Query(LedgerDaoSql.RELEASE_INVALID_TRANSFER_PAIRS)
+    suspend fun releaseInvalidTransferPairs(): Int
+
+    @Transaction
+    suspend fun claimTransferPairAtomically(pairId: String, firstId: Long, secondId: Long): Boolean {
+        val first = getById(firstId) ?: return false
+        val second = getById(secondId) ?: return false
+        if (first.isTransfer || second.isTransfer || first.isRecurring || second.isRecurring) return false
+        return claimTransferPair(pairId, firstId, secondId) == 2
+    }
+
+    @Transaction
+    suspend fun releaseTransferPairAtomically(pairId: String): Int = releaseTransferPair(pairId)
 
     @Query("UPDATE Bill SET timestamp = :millis WHERE id = :id")
     suspend fun setTimestamp(id: Long, millis: Long)

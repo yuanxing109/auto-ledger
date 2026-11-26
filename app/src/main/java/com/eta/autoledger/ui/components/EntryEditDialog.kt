@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,6 +59,7 @@ fun EntryEditDialog(
     onDismiss: () -> Unit,
     onSave: (Double, String, String) -> Unit,
     onDelete: () -> Unit,
+    onReleaseTransfer: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // 以 show 为 key：关掉再打开另一条账目时按新数据重建，不残留上一次的输入与报错态。
@@ -74,6 +76,8 @@ fun EntryEditDialog(
     val options = remember(entry.type) {
         (CategoryStore.names(context, typeIdx) + entry.category).distinct()
     }
+    val transferLocked = entry.isTransfer
+    var releaseConfirm by remember(show, entry.id) { mutableStateOf(false) }
 
     AppDialog(
         show = show,
@@ -81,23 +85,40 @@ fun EntryEditDialog(
         maxWidth = 560.dp,
         onDismissRequest = onDismiss,
     ) {
+        if (transferLocked) {
+            Text(
+                "这笔记录已参与内部转账配对。解除合并后才能修改金额、分类和备注。",
+                style = MiuixTheme.textStyles.footnote1,
+                color = LedgerTheme.textSecondary,
+            )
+            Spacer(Modifier.height(8.dp))
+        }
         Text(
             "金额",
             style = MiuixTheme.textStyles.footnote1,
-            color = if (amountError) LedgerTheme.danger else LedgerTheme.textSecondary,
+            color = if (amountError && !transferLocked) LedgerTheme.danger else LedgerTheme.textSecondary,
         )
         Spacer(Modifier.height(8.dp))
-        TextField(
-            value = amount,
-            onValueChange = { input ->
-                amount = input.filter { it.isDigit() || it == '.' }
-                if (amountError) amountError = false
-            },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
-        )
-        if (amountError) {
+        if (transferLocked) {
+            Text(
+                text = "¥ %.2f".format(entry.amount),
+                style = MiuixTheme.textStyles.title2,
+                color = LedgerTheme.text,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            TextField(
+                value = amount,
+                onValueChange = { input ->
+                    amount = input.filter { it.isDigit() || it == '.' }
+                    if (amountError) amountError = false
+                },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+            )
+        }
+        if (amountError && !transferLocked) {
             Spacer(Modifier.height(4.dp))
             Text(
                 "金额格式不正确，请输入大于 0 的数字，如 12.50",
@@ -109,19 +130,27 @@ fun EntryEditDialog(
         Spacer(Modifier.height(14.dp))
         Text("分类", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
         Spacer(Modifier.height(8.dp))
-        Column(modifier = Modifier.heightIn(max = 190.dp).verticalScroll(rememberScrollState())) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                options.forEach { name ->
-                    // selected 用纯分类名比较（不用带 emoji 的展示串），图标与文字分开传
-                    CategoryChip(
-                        text = name,
-                        icon = CategoryStore.emoji(name),
-                        selected = name == category,
-                        onClick = { category = name },
-                    )
+        if (transferLocked) {
+            Text(
+                text = "原始分类：$category",
+                style = MiuixTheme.textStyles.body2,
+                color = LedgerTheme.textSecondary,
+            )
+        } else {
+            Column(modifier = Modifier.heightIn(max = 190.dp).verticalScroll(rememberScrollState())) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    options.forEach { name ->
+                        // selected 用纯分类名比较（不用带 emoji 的展示串），图标与文字分开传
+                        CategoryChip(
+                            text = name,
+                            icon = CategoryStore.emoji(name),
+                            selected = name == category,
+                            onClick = { category = name },
+                        )
+                    }
                 }
             }
         }
@@ -129,13 +158,44 @@ fun EntryEditDialog(
         Spacer(Modifier.height(14.dp))
         Text("备注", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
         Spacer(Modifier.height(8.dp))
-        TextField(
-            value = note,
-            onValueChange = { note = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = false,
-            maxLines = 3,
-        )
+        if (transferLocked) {
+            Text(
+                text = note.ifBlank { "无备注" },
+                style = MiuixTheme.textStyles.body2,
+                color = LedgerTheme.textSecondary,
+            )
+        } else {
+            TextField(
+                value = note,
+                onValueChange = { note = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 3,
+            )
+        }
+
+        if (transferLocked && onReleaseTransfer != null) {
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("内部转账", style = MiuixTheme.textStyles.body2, color = LedgerTheme.text)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "两笔资金划转不计入日常收支",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = LedgerTheme.textSecondary,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                TextButton(
+                    text = "解除合并",
+                    onClick = { releaseConfirm = true },
+                )
+            }
+        }
 
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -149,34 +209,65 @@ fun EntryEditDialog(
                 ),
             )
             TextButton(
-                text = "取消",
+                text = if (transferLocked) "关闭" else "取消",
                 onClick = onDismiss,
                 modifier = Modifier.weight(1f),
             )
             val saveInteraction = remember { MutableInteractionSource() }
             val savePressed by saveInteraction.collectIsPressedAsState()
             val buttonShape = RoundedCornerShape(LocalDimens.current.radiusCapsule)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .clip(buttonShape)
-                    .background(if (savePressed) LedgerTheme.accentPressed else LedgerTheme.accent)
-                    .clickable(
-                        interactionSource = saveInteraction,
-                        indication = LocalIndication.current,
-                        onClick = {
-                            val parsed = amount.toDoubleOrNull()
-                            if (parsed == null || parsed <= 0.0) {
-                                amountError = true
-                                return@clickable
-                            }
-                            onSave(parsed, category, note)
-                        },
+            if (!transferLocked) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(buttonShape)
+                        .background(if (savePressed) LedgerTheme.accentPressed else LedgerTheme.accent)
+                        .clickable(
+                            interactionSource = saveInteraction,
+                            indication = LocalIndication.current,
+                            onClick = {
+                                val parsed = amount.toDoubleOrNull()
+                                if (parsed == null || parsed <= 0.0) {
+                                    amountError = true
+                                    return@clickable
+                                }
+                                onSave(parsed, category, note)
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("保存", color = LedgerTheme.onAccent)
+                }
+            }
+        }
+    }
+
+    if (releaseConfirm) {
+        AppDialog(
+            show = releaseConfirm,
+            title = "解除内部转账合并？",
+            summary = "两笔记录会恢复原有分类，并重新计入日常收支统计。",
+            onDismissRequest = { releaseConfirm = false },
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(
+                    text = "取消",
+                    onClick = { releaseConfirm = false },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "解除合并",
+                    onClick = {
+                        releaseConfirm = false
+                        onReleaseTransfer?.invoke()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColors(
+                        color = LedgerTheme.danger,
+                        textColor = LedgerTheme.onAccent,
                     ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("保存", color = LedgerTheme.onAccent)
+                )
             }
         }
     }

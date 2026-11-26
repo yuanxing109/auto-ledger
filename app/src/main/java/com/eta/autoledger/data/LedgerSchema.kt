@@ -25,6 +25,17 @@ internal object LedgerSchema {
     const val V5_ADD_SUB_CATEGORY = "ALTER TABLE Bill ADD COLUMN sub_category TEXT"
 
     /**
+     * v5 → v6：追加内部转账标记与配对标识。
+     *
+     * 历史行保持非转账。pair id 不能唯一：一笔转账由两条 Bill 共享同一个 id。
+     */
+    val V6_ADD_TRANSFER_FIELDS: List<String> = listOf(
+        "ALTER TABLE Bill ADD COLUMN is_transfer INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE Bill ADD COLUMN transfer_pair_id TEXT",
+        "CREATE INDEX IF NOT EXISTS index_Bill_transfer_pair_id ON Bill(transfer_pair_id)",
+    )
+
+    /**
      * v4 新增的两张表。
      *
      * 全部用 `IF NOT EXISTS`：迁移在极端情况下可能被重入（用户清数据后回滚、

@@ -50,9 +50,10 @@ class UndoBillReceiver : BroadcastReceiver() {
         val pending = goAsync()
         scope.launch {
             try {
-                val ok = runCatching { LedgerRepository.delete(context, entryId) }
+                val removed = runCatching { LedgerRepository.delete(context, entryId) }
                     .onFailure { Log.w(TAG, "撤销截图记账失败", it) }
-                    .isSuccess
+                    .getOrNull()
+                val ok = removed != null
                 context.getSystemService(NotificationManager::class.java)
                     ?.cancel(intent.getIntExtra(EXTRA_NOTIFY_ID, NOTIFY_ID))
                 val text = if (ok) "已撤销这笔截图记账" else "这笔账单已不存在"

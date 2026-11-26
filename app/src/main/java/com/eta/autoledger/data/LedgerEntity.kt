@@ -7,7 +7,11 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "Bill",
-    indices = [Index(value = ["timestamp"]), Index(value = ["external_id"], unique = true)],
+    indices = [
+        Index(value = ["timestamp"]),
+        Index(value = ["external_id"], unique = true),
+        Index(value = ["transfer_pair_id"]),
+    ],
 )
 data class LedgerEntry(
     /**
@@ -53,4 +57,18 @@ data class LedgerEntry(
      */
     @ColumnInfo(name = "sub_category")
     val subCategory: String? = null,
+
+    /**
+     * 内部资金转移标记。
+     *
+     * 信用卡还款、跨卡转账会在两个账户各产生一笔方向相反、金额相同的流水。
+     * 列表仍保留两行方便对账，但所有收支统计都会排除这些行。
+     * 原始 [category] 保持不变，解除合并后可直接恢复原分类语义。
+     */
+    @ColumnInfo(name = "is_transfer", defaultValue = "0")
+    val isTransfer: Boolean = false,
+
+    /** 成对转账共享的标识；非转账或用户解除合并后为 NULL。 */
+    @ColumnInfo(name = "transfer_pair_id")
+    val transferPairId: String? = null,
 )

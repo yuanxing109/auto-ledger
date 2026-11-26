@@ -212,9 +212,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
      * `OnConflictStrategy.IGNORE` 静默丢弃（记录还在，id 冲突），
      * 随后 delete 完成又把这条删掉——用户点了撤销却什么都没恢复。
      */
-    fun deleteEntry(id: Long): Deferred<Unit> = viewModelScope.async(Dispatchers.IO) {
-        LedgerRepository.delete(context, id)
+    fun deleteEntry(id: Long): Deferred<LedgerEntry?> = viewModelScope.async(Dispatchers.IO) {
+        val snapshot = LedgerRepository.delete(context, id)
         extraPages.update { list -> list.filterNot { it.id == id } }
+        snapshot
+    }
+
+    /** 解除合并会同时改动两行；清空追加页缓存，避免另一行继续显示旧转账状态。 */
+    fun releaseTransferPair(pairId: String): Deferred<Int> = viewModelScope.async(Dispatchers.IO) {
+        val released = LedgerRepository.releaseTransferPair(context, pairId)
+        if (released > 0) {
+            extraPages.value = emptyList()
+            exhausted.value = false
+            editTick.update { it + 1 }
+        }
+        released
     }
 
     /**

@@ -113,7 +113,9 @@ fun mergeIntoTail(
         var addExpense = 0.0
         var addIncome = 0.0
         addUi.forEach { ui ->
-            if (ui.signedAmount < 0) addExpense += -ui.signedAmount else addIncome += ui.signedAmount
+            if (!ui.ledger.isTransfer) {
+                if (ui.signedAmount < 0) addExpense += -ui.signedAmount else addIncome += ui.signedAmount
+            }
         }
         result[result.lastIndex] = last.copy(
             // 用 addAll 构造新的 ImmutableList：`last.entries + addUi` 会退化成普通 List，
@@ -137,7 +139,9 @@ private fun buildGroup(key: String, list: List<LedgerEntry>): DayGroupUi {
     var income = 0.0
     // 单次遍历替代原来的两次 filter + 两次 sumOf
     ui.forEach { item ->
-        if (item.signedAmount < 0) expense += -item.signedAmount else income += item.signedAmount
+        if (!item.ledger.isTransfer) {
+            if (item.signedAmount < 0) expense += -item.signedAmount else income += item.signedAmount
+        }
     }
     val cal = list.firstOrNull()?.let { entryCalendar(it) } ?: Calendar.getInstance()
     return DayGroupUi(
@@ -155,9 +159,9 @@ fun LedgerEntry.toEntryUi(): EntryUi {
     val timeText = clockOf(cal.timeInMillis)
     return EntryUi(
         ledger = this,
-        category = category.ifBlank { "其他" },
-        emoji = categoryEmoji(category),
-        categoryColor = categoryColor(category),
+        category = if (isTransfer) "转账" else category.ifBlank { "其他" },
+        emoji = if (isTransfer) "💸" else categoryEmoji(category),
+        categoryColor = if (isTransfer) LedgerTheme.accent else categoryColor(category),
         source = source.ifBlank { "自动记账" },
         sourceColor = sourceColor(source),
         time = timeText,

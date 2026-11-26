@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [LedgerEntry::class, SeenKeyEntity::class, RuleEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class LedgerDatabase : RoomDatabase() {
@@ -35,7 +35,7 @@ abstract class LedgerDatabase : RoomDatabase() {
                         LedgerDatabase::class.java,
                         "auto_ledger.db",
                     )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                         .addCallback(SeedCallback)
                         .build()
                     if (isNew) migrateLegacy(context, db)
@@ -104,6 +104,13 @@ abstract class LedgerDatabase : RoomDatabase() {
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(LedgerSchema.V5_ADD_SUB_CATEGORY)
+            }
+        }
+
+        /** v5 → v6：保留所有历史账单，新增内部转账状态；老数据默认非转账。 */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                LedgerSchema.V6_ADD_TRANSFER_FIELDS.forEach { db.execSQL(it) }
             }
         }
 

@@ -240,9 +240,28 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
             entry = entry,
             onDismiss = { editingEntry = null },
             onSave = { amount, category, note ->
-                vm.updateEntry(entry.copy(amount = amount, category = category, note = note))
+                vm.updateEntry(
+                    entry.copy(
+                        amount = amount,
+                        category = category,
+                        note = note,
+                        isTransfer = false,
+                        transferPairId = null,
+                    ),
+                )
                 editingEntry = null
                 scope.launch { snackbar.show("已更新") }
+            },
+            onReleaseTransfer = entry.transferPairId?.let { pairId ->
+                {
+                    editingEntry = null
+                    scope.launch {
+                        val released = runCatching { vm.releaseTransferPair(pairId).await() }.getOrNull()
+                        if (released != null && released > 0) {
+                            snackbar.show("已解除内部转账合并")
+                        }
+                    }
+                }
             },
             onDelete = {
                 val removed = entry
@@ -250,9 +269,9 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                 scope.launch {
                     // 先等删除真正落库，再弹撤销——否则用户可能在 delete 未完成时点撤销，
                     // restoreEntry 的 insert 会因 id 冲突被 IGNORE 丢弃，随后 delete 又把记录删掉。
-                    vm.deleteEntry(removed.id).await()
+                    val snapshot = vm.deleteEntry(removed.id).await()
                     val undone = snackbar.showUndo("已删除")
-                    if (undone) vm.restoreEntry(removed)
+                    if (undone) vm.restoreEntry(snapshot ?: removed)
                 }
             },
         )
@@ -475,6 +494,10 @@ private fun DayHeader(group: DayGroupUi) {
         if (group.expense > 0) append("支出 %,.2f".format(group.expense))
         if (group.expense > 0 && group.income > 0) append(" · ")
         if (group.income > 0) append("收入 %,.2f".format(group.income))
+        if (group.entries.any { it.ledger.isTransfer }) {
+            if (isNotEmpty()) append(" · ")
+            append("含内部转账")
+        }
     }
     Row(
         modifier = Modifier
@@ -507,7 +530,11 @@ private fun EntryRow(entry: EntryUi) {
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = formatCategoryLabel(entry.category, entry.ledger.subCategory),
+                    text = if (entry.ledger.isTransfer) {
+                        "内部转账"
+                    } else {
+                        formatCategoryLabel(entry.category, entry.ledger.subCategory)
+                    },
                     style = MiuixTheme.textStyles.title3,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -537,7 +564,11 @@ private fun EntryRow(entry: EntryUi) {
         Text(
             text = entry.amountText,
             style = MiuixTheme.textStyles.title2,
-            color = if (entry.signedAmount > 0) LedgerTheme.income else LedgerTheme.expense,
+            color = when {
+                entry.ledger.isTransfer -> LedgerTheme.textSecondary
+                entry.signedAmount > 0 -> LedgerTheme.income
+                else -> LedgerTheme.expense
+            },
         )
     }
 }

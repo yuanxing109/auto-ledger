@@ -266,7 +266,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                             recurringRule = rule.raw,
                         ),
                     )
-                    LedgerRepository.add(
+                    val newId = LedgerRepository.add(
                         context,
                         LedgerEntry(
                             id = 0L,
@@ -281,8 +281,11 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                             isRecurring = false,
                         ),
                     )
+                    if (newId > 0L) {
+                        snackbar.show("已记录 ${selectedCategory} ¥ %.2f".format(raw))
+                    }
                 } else {
-                    LedgerRepository.add(
+                    val newId = LedgerRepository.add(
                         context,
                         LedgerEntry(
                             id = 0L,
@@ -295,13 +298,17 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                             source = "手动记账",
                         ),
                     )
+                    if (newId > 0L) {
+                        snackbar.show(
+                            "已记录 ${selectedCategory} ¥ %.2f".format(raw),
+                        )
+                    }
                 }
                 categoryRevision++
             }.onFailure {
                 scope.launch { snackbar.showLong("保存失败：${it.message}") }
             }
         }
-        scope.launch { snackbar.show("已记录 ${selectedCategory} ¥ %.2f".format(raw)) }
         amountInput = ""
         negative = false
         note = ""

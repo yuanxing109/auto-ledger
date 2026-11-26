@@ -76,6 +76,9 @@ object BackupRunner {
     ): Result = withContext(Dispatchers.IO) {
         runCatching {
             val r = ImportDedup.commit(context, plan, decisions)
+            // 云恢复可能只保留同一 pair 的一条；不完整的配对一律降级为普通账单，
+            // 避免恢复后长期从统计中隐藏单边流水。
+            LedgerRepository.releaseInvalidTransferPairs(context)
             prefs.davLastResult = "恢复 · 新增 " + r.added + " 笔"
             val extra = buildString {
                 if (r.merged > 0) append("，合并 ").append(r.merged).append(" 笔")

@@ -6,8 +6,8 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
-val defaultVersionCode = 6
-val defaultVersionName = "0.5.0"
+val defaultVersionCode = 1000
+val defaultVersionName = "1.0.0"
 val autoLedgerVersionCode = providers.gradleProperty("autoLedgerVersionCode")
     .orElse(providers.environmentVariable("AUTO_LEDGER_VERSION_CODE"))
     .map { value -> value.toIntOrNull() ?: error("autoLedgerVersionCode 必须是整数") }

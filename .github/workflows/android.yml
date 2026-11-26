@@ -142,6 +142,11 @@ jobs:
           else
             echo "tag=v${{ steps.version.outputs.name }}" >> "$GITHUB_OUTPUT"
           fi
+          if [[ "${{ steps.version.outputs.name }}" == "1.0.0" ]]; then
+            echo "title=AutoLedger v1.0.0 正式版" >> "$GITHUB_OUTPUT"
+          else
+            echo "title=AutoLedger v${{ steps.version.outputs.name }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
@@ -149,7 +154,7 @@ jobs:
         with:
           tag_name: ${{ steps.release_meta.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: AutoLedger ${{ steps.version.outputs.name }}
+          name: ${{ steps.release_meta.outputs.title }}
           files: dist/*.apk
           generate_release_notes: true
           make_latest: true

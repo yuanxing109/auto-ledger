@@ -31,9 +31,6 @@ object LedgerRepository {
 
     private val TRANSFER_TYPES = setOf("expense", "income")
 
-    /** 强指纹候选查询窗口，围绕入账单的发生时间双向放宽 5 分钟。 */
-    private const val STRONG_MERGE_WINDOW_MS = 5 * 60_000L
-
     /** 自动记账的候选查询和来源合并必须作为一个顺序队列执行。 */
     private val autoParsedMutex = Mutex()
 
@@ -218,15 +215,15 @@ object LedgerRepository {
     }
 
     /**
-     * 自动记账专用入库：先做跨来源强指纹合并，再做单号/时间指纹去重与转账配对。
+     * 自动记账专用入库：先做时间窗跨源合并，再做单号/时间指纹去重与转账配对。
      *
      * 为什么数据库去重挡不住：`external_id` 由 `pkg|title|text|bigText|postTime` 算出，
      * 而 postTime 是**毫秒级**的。长短信被拆成多段、接收器被系统连调两次、或进程重启后
      * 补发时，同一笔账的 postTime 会差几毫秒 → external_id 与「毫秒+金额+收支」指纹
      * 双双失配 → 同一条短信写出两行。截图里 15:11 的两条 46.94 就是这么来的。
      *
-     * 现有秒级内存指纹继续挡住重复投递。数据库侧再按“金额分 + 方向 + 分钟桶 + 卡尾”
-     * 查询 ±5 分钟候选，强指纹命中时只合并来源，不再新增第二笔。
+     * 数据库按“金额分 + 方向 + ±5 分钟”只取候选，再由 [ParseDedup.shouldMerge]
+     * 执行跨钱包/银行来源合并或 1 分钟内的同额快速合并。
      * 只用于短信 / 通知通道；手动记账、CSV 导入、云恢复分别走 [add] / [addImported]，
      * 同样在去重完成后触发转账配对。
      */
@@ -242,19 +239,17 @@ object LedgerRepository {
         for (raw in entries) {
             val entry = raw.normalized()
             val stamp = entry.timeMillis.takeIf { it > 0 } ?: now
-            val tail = ParseDedup.accountTailFromText(entry.note)
-            val strong = ParseDedup.strongFingerprint(entry.amount, entry.type, stamp, tail)
-            val candidates = dao.strongMergeCandidates(
+            val candidates = dao.timedMergeCandidates(
                 amountCents = ParseDedup.amountFen(entry.amount),
                 type = entry.type,
-                since = stamp - STRONG_MERGE_WINDOW_MS,
-                until = stamp + STRONG_MERGE_WINDOW_MS,
+                since = stamp - ParseDedup.MERGE_WINDOW_MS,
+                until = stamp + ParseDedup.MERGE_WINDOW_MS,
             )
-            val matched = findStrongMergeTarget(entry, candidates, strong)
+            val matched = ParseDedup.chooseMergeTarget(entry, candidates)
             if (matched != null) {
-                val mergedSource = ParseDedup.mergeSources(matched.source, entry.source)
-                if (mergedSource != matched.source) {
-                    dao.updateSource(matched.id, mergedSource)
+                val merged = ParseDedup.mergeRecords(matched, entry)
+                if (merged != matched) {
+                    dao.update(merged)
                     LedgerWidgetProvider.requestUpdate(context)
                 }
                 continue
@@ -272,29 +267,6 @@ object LedgerRepository {
         if (timeMillis > 0) this else copy(
             timeMillis = parseTime(time)?.timeInMillis ?: System.currentTimeMillis(),
         )
-
-    private fun sourcesOf(source: String): Set<String> =
-        source.split(" + ").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-
-    /** 供数据层测试复用：仅跨来源、强指纹完全一致时才允许合并。 */
-    internal fun findStrongMergeTarget(
-        incoming: LedgerEntry,
-        candidates: List<LedgerEntry>,
-        incomingStrongFingerprint: String = ParseDedup.strongFingerprint(
-            incoming.amount,
-            incoming.type,
-            incoming.timeMillis,
-            ParseDedup.accountTailFromText(incoming.note),
-        ),
-    ): LedgerEntry? = candidates.firstOrNull { candidate ->
-        sourcesOf(candidate.source).intersect(sourcesOf(incoming.source)).isEmpty() &&
-            ParseDedup.strongFingerprint(
-                amount = candidate.amount,
-                type = candidate.type,
-                timeMillis = candidate.timeMillis,
-                accountTail = ParseDedup.accountTailFromText(candidate.note),
-            ) == incomingStrongFingerprint
-    }
 
     /** 指纹用毫秒时间与金额分：避免 Locale 和 Double 文本改变身份键。 */
     private fun fingerprint(timeMillis: Long, amount: Double, type: String): String =

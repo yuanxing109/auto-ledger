@@ -1,6 +1,7 @@
 package com.eta.autoledger.data
 
-import java.security.MessageDigest
+import java.util.Locale
+import kotlin.math.abs
 
 /**
  * 解析结果的短时内存去重。
@@ -23,6 +24,12 @@ import java.security.MessageDigest
  */
 object ParseDedup {
 
+    /** 跨源合并候选的最大时间窗。 */
+    const val MERGE_WINDOW_MS = 5 * 60_000L
+
+    /** 同金额、同方向时直接合并的短窗口。 */
+    const val FAST_MERGE_WINDOW_MS = 60_000L
+
     /** 指纹有效期。短信/通知的重复投递几乎都发生在秒级，5 分钟已经非常宽松。 */
     private const val WINDOW_MS = 5 * 60_000L
 
@@ -40,7 +47,7 @@ object ParseDedup {
     /** 「金额|商户」-> 最近一次放行时刻，用于跨秒边界的促发判重。 */
     private val bursts = LinkedHashMap<String, Long>()
 
-    /** 金额统一换算为“分”，消除 Double 尾差对强指纹的影响。 */
+    /** 金额统一换算为“分”，消除 Double 尾差对精确金额匹配的影响。 */
     fun amountFen(amount: Double): Long = FingerprintCodec.amountFen(amount)
 
     /**
@@ -59,30 +66,82 @@ object ParseDedup {
         return (labeled ?: masked)?.uppercase()
     }
 
+    /** 按金额分、方向、时间窗和来源语义判断两条自动账单是否为同一笔。 */
+    fun shouldMerge(existing: LedgerEntry, incoming: LedgerEntry): Boolean {
+        if (existing.id == incoming.id) return false
+        if (existing.isRecurring || incoming.isRecurring) return false
+        if (existing.isTransfer || incoming.isTransfer) return false
+        if (existing.type != incoming.type) return false
+        if (amountFen(existing.amount) != amountFen(incoming.amount)) return false
+        if (existing.timeMillis <= 0L || incoming.timeMillis <= 0L) return false
+        val gap = abs(existing.timeMillis - incoming.timeMillis)
+        if (gap > MERGE_WINDOW_MS) return false
+        if (gap <= FAST_MERGE_WINDOW_MS) return true
+        return isWalletBankPair(existing, incoming)
+    }
+
+    /** 在候选里选时间差最小的一条；并列时取较小 id，保证结果稳定。 */
+    fun chooseMergeTarget(incoming: LedgerEntry, candidates: List<LedgerEntry>): LedgerEntry? =
+        candidates
+            .asSequence()
+            .filter { shouldMerge(it, incoming) }
+            .sortedWith(
+                compareBy<LedgerEntry> { abs(it.timeMillis - incoming.timeMillis) }.thenBy { it.id },
+            )
+            .firstOrNull()
+
     /**
-     * 跨来源强指纹：金额分、方向、分钟桶、卡号后四位。
+     * 合并两条记录并保留信息更丰富的一侧。
      *
-     * 使用分钟桶而不是秒桶，是为了允许短信与通知到达时间相差几十秒。候选查询仍限制
-     * ±5 分钟，真正合并前必须逐条重新计算该指纹，避免只凭金额和时间窗误合并。
+     * 保留已有行的主键和 externalId，避免更新后破坏撤销、通知和唯一索引语义。
      */
-    fun strongFingerprint(
-        amount: Double,
-        type: String,
-        timeMillis: Long,
-        accountTail: String?,
-    ): String {
-        val material = buildString {
-            append(amountFen(amount))
-            append('|')
-            append(type.trim().lowercase())
-            append('|')
-            append(timeMillis / 60_000L)
-            append('|')
-            append(accountTail?.trim()?.takeLast(4)?.uppercase().orEmpty())
+    fun mergeRecords(existing: LedgerEntry, incoming: LedgerEntry): LedgerEntry {
+        val sources = mergeSources(existing.source, incoming.source)
+        val richer = if (richness(incoming) > richness(existing)) incoming else existing
+        val category = when {
+            richer.category.isNotBlank() && richer.category != "其他" -> richer.category
+            existing.category.isNotBlank() && existing.category != "其他" -> existing.category
+            incoming.category.isNotBlank() && incoming.category != "其他" -> incoming.category
+            else -> richer.category.ifBlank { "其他" }
         }
-        return MessageDigest.getInstance("SHA-1")
-            .digest(material.toByteArray(Charsets.UTF_8))
-            .let(FingerprintCodec::hex)
+        val subCategory = sequenceOf(
+            richer.subCategory.takeIf { richer.category == category },
+            existing.takeIf { it.category == category }?.subCategory,
+            incoming.takeIf { it.category == category }?.subCategory,
+        ).filterNotNull().firstOrNull { it.isNotBlank() }
+        return richer.copy(
+            id = existing.id,
+            category = category,
+            subCategory = subCategory,
+            source = sources,
+            externalId = existing.externalId ?: incoming.externalId,
+        )
+    }
+
+    private fun richness(entry: LedgerEntry): Int =
+        entry.note.length +
+            (if (accountTailFromText(entry.note) != null) 80 else 0) +
+            (if (entry.category.isNotBlank() && entry.category != "其他") 20 else 0) +
+            (if (!entry.subCategory.isNullOrBlank()) 10 else 0) +
+            (if (isBankSource(entry.source)) 8 else 0)
+
+    private fun isWalletBankPair(first: LedgerEntry, second: LedgerEntry): Boolean =
+        (isWalletSource(first.source) && isBankEntry(second)) ||
+            (isBankEntry(first) && isWalletSource(second.source))
+
+    private fun isBankEntry(entry: LedgerEntry): Boolean =
+        isBankSource(entry.source) ||
+            (entry.source.contains("短信") && isBankSource(entry.note))
+
+    fun isWalletSource(source: String): Boolean {
+        val value = source.lowercase(Locale.ROOT)
+        return value.contains("微信") || value.contains("支付宝") ||
+            value.contains("wechat") || value.contains("alipay")
+    }
+
+    fun isBankSource(source: String): Boolean {
+        val value = source.lowercase(Locale.ROOT)
+        return value.contains("银行") || value.contains("bank")
     }
 
     /** 合并来源标签，使用“ + ”追加并对空白项和重复项去重。 */

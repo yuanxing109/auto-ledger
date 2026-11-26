@@ -161,6 +161,23 @@ class ParsePipelineTest {
         assertNotNull(bill)
     }
 
+    @Test
+    fun 全局强制认账词压过下月拦截词并标记强确信() = runBlocking {
+        val bill = ParsePipeline.parseSms(
+            sender = "95555",
+            body = "您尾号0306的卡于11月26日消费人民币22.00元，已支付，下月账单将展示",
+            postTime = 1_700_000_000_000,
+            cats = cats(),
+            ignoreKeywords = setOf("下月"),
+            forceKeywords = setOf("已支付"),
+            dao = null,
+        )
+
+        assertNotNull(bill)
+        assertEquals(22.00, bill!!.amount, 0.001)
+        assertEquals(1f, bill.confidence, 0.0001f)
+    }
+
     // ── 自动记账开关 ──────────────────────────────────────────────────
 
     @Test
@@ -191,6 +208,31 @@ class ParsePipelineTest {
         )
         assertNotNull(bill)
         assertEquals(100.00, bill!!.amount, 0.001)
+        assertTrue(bill.externalId.startsWith("ruls"))
+    }
+
+    @Test
+    fun 我的规则与系统规则同时命中时我的规则优先() = runBlocking {
+        val system = smsRule(
+            name = "系统银行规则",
+            creator = RuleEntity.CREATOR_SYSTEM,
+            category = "消费",
+        )
+        val user = smsRule(
+            name = "我的银行规则",
+            creator = RuleEntity.CREATOR_USER,
+            category = "转账",
+        )
+        val bill = ParsePipeline.parseSms(
+            sender = "95555",
+            body = "您尾号1234的卡消费人民币100.00元",
+            postTime = 1_700_000_000_000,
+            cats = cats(),
+            dao = FakeRuleDao(listOf(system, user)),
+        )
+
+        assertNotNull(bill)
+        assertEquals("转账", bill!!.category)
         assertTrue(bill.externalId.startsWith("ruls"))
     }
 
@@ -416,6 +458,8 @@ class ParsePipelineTest {
         body: String,
         postTime: Long,
         cats: Triple<List<String>, List<String>, List<String>>,
+        ignoreKeywords: Set<String> = emptySet(),
+        forceKeywords: Set<String> = emptySet(),
         dao: RuleDao? = null,
     ): NotifyBill? = runBlocking {
         parseSms(
@@ -425,6 +469,8 @@ class ParsePipelineTest {
             expenseCats = cats.first,
             incomeCats = cats.second,
             otherCats = cats.third,
+            ignoreKeywords = ignoreKeywords,
+            forceKeywords = forceKeywords,
             dao = dao,
         )
     }
@@ -459,17 +505,21 @@ class ParsePipelineTest {
         updatedAt = 0L,
     )
 
-    private fun smsRule(name: String): RuleEntity = RuleEntity(
+    private fun smsRule(
+        name: String,
+        creator: String = RuleEntity.CREATOR_USER,
+        category: String = "消费",
+    ): RuleEntity = RuleEntity(
         id = RuleEntity.makeId(RuleType.SMS, null, name),
         app = null,
         type = RuleType.SMS,
         name = name,
-        creator = RuleEntity.CREATOR_USER,
+        creator = creator,
         patternJson = """
             {"v":1,"type":"sms","app":null,
              "amount":["消费人民币\\s*(\\d+(?:\\.\\d{1,2})?)"],
              "expense":["消费"],"income":["入账"],"block":["验证码"],
-             "cats":{"消费":["消费"]}}
+             "cats":{"$category":["消费"]}}
         """.trimIndent(),
         enabled = true,
         autoRecord = true,

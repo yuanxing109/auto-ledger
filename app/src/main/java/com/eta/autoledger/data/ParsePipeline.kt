@@ -4,14 +4,13 @@ import android.util.Log
 import com.eta.autoledger.util.AppDateFormats
 
 /**
- * 解析总入口：**动态规则优先，内置规则兜底**。
+ * 解析总入口：**全局词库 -> 我的规则 -> 系统规则 -> 内置兜底**。
  *
- * 为什么是这个顺序而不是反过来：内置规则是编译期常量，覆盖的是「微信/支付宝/常见银行短信」
- * 这类高频模板；动态规则是用户在设置页按自己银行的措辞写的，命中率与准确率都更高。
- * 让用户规则先跑，才能在用户明确知道某家银行的措辞时压过内置的粗判。
+ * 全局词库直接决定“是否允许继续解析”：认账词先于拦截词，命中后把置信度抬到 1.0；
+ * 未命中则先跑用户规则，再跑系统规则，最后由编译期内置模板兜底。
  *
  * 为什么兜底不能去掉：`rule` 表是 v4 才建的，老版本升上来的库可能因为迁移异常、用户误删、
- * 或规则 JSON 写坏而一条都不可用。这时如果只走动态规则，自动记账会**整体静默失效** ——
+ * 或规则 JSON 写坏而一条都不可用。这时如果只走数据库规则，自动记账会**整体静默失效** ——
  * 用户看到的是「以前能记，现在一条都不记了」，且没有任何报错。保留内置兜底是最低成本的保险。
  *
  * 这个 object 只做编排，不含任何正则与词表：
@@ -22,6 +21,12 @@ import com.eta.autoledger.util.AppDateFormats
 object ParsePipeline {
 
     private const val TAG = "AutoLedger"
+
+    private enum class GlobalVocabularyDecision {
+        FORCE,
+        PASS,
+        BLOCK,
+    }
 
     /** 动态规则产出的账单用这个前缀，与内置规则的 `ntf` / `sms` 区分开，便于排查。 */
     private const val PREFIX_RULE = "rul"
@@ -44,10 +49,15 @@ object ParsePipeline {
         val channel = NotificationRules.channelOf(raw.pkg) ?: return null
         val body = NotificationRules.normalize(NotificationRules.bodyForParsing(raw))
         if (body.isBlank()) return null
-        val pendingOnly = NotificationRules.isPendingOrder(body)
+        val vocabulary = evaluateGlobalVocabulary(body, ignoreKeywords, forceKeywords)
+        if (vocabulary == GlobalVocabularyDecision.BLOCK) return null
+        val pendingOnly = NotificationRules.isPendingOrder(body) &&
+            vocabulary != GlobalVocabularyDecision.FORCE
         val bill = parseNoticeBill(
             raw, channel, body, expenseCats, incomeCats, otherCats,
-            context, ignoreKeywords, forceKeywords, dao, allowPending = pendingOnly,
+            context, ignoreKeywords, forceKeywords, dao,
+            allowPending = pendingOnly,
+            forcedByVocabulary = vocabulary == GlobalVocabularyDecision.FORCE,
         )
         return settlePending(raw.pkg, body, pendingOnly, bill)
     }
@@ -73,8 +83,12 @@ object ParsePipeline {
     ): NotifyBill? {
         val text = NotificationRules.normalize(body).trim()
         if (text.isEmpty()) return null
+        // 漏斗第一层：全局词库在发送方闸门、自定义规则和系统规则之前执行。
+        val vocabulary = evaluateGlobalVocabulary(text, ignoreKeywords, forceKeywords)
+        if (vocabulary == GlobalVocabularyDecision.BLOCK) return null
         if (!NotificationRules.isPlausibleSender(sender, text)) return null
-        val pendingOnly = NotificationRules.isPendingOrder(text)
+        val pendingOnly = NotificationRules.isPendingOrder(text) &&
+            vocabulary != GlobalVocabularyDecision.FORCE
         val raw = NotifyRaw(
             pkg = sender,
             title = sender,
@@ -82,9 +96,13 @@ object ParsePipeline {
             bigText = "",
             postTime = postTime,
         )
-        val hit = matchDynamic(RuleType.SMS, sender, text, ignoreKeywords, forceKeywords, dao)
+        val hit = matchUserRule(RuleType.SMS, sender, text, dao)
+            ?: matchSystemRule(RuleType.SMS, sender, text, dao)
         val bill = if (hit != null) {
-            toBill(hit, NotifyChannel.SMS, raw, text, expenseCats, incomeCats, otherCats, context)
+            toBill(
+                hit, NotifyChannel.SMS, raw, text, expenseCats, incomeCats, otherCats, context,
+                forcedByVocabulary = vocabulary == GlobalVocabularyDecision.FORCE,
+            )
         } else {
             NotificationRules.parseSms(
                 sender = sender,
@@ -97,7 +115,7 @@ object ParsePipeline {
                 ignoreKeywords = ignoreKeywords,
                 forceKeywords = forceKeywords,
                 allowPending = pendingOnly,
-            )
+            ).let { applyVocabularyConfidence(it, vocabulary == GlobalVocabularyDecision.FORCE) }
         }
         return settlePending(sender, text, pendingOnly, bill)
     }
@@ -114,10 +132,15 @@ object ParsePipeline {
         forceKeywords: Set<String>,
         dao: RuleDao?,
         allowPending: Boolean,
+        forcedByVocabulary: Boolean,
     ): NotifyBill? {
-        val hit = matchDynamic(RuleType.NOTICE, raw.pkg, body, ignoreKeywords, forceKeywords, dao)
+        val hit = matchUserRule(RuleType.NOTICE, raw.pkg, body, dao)
+            ?: matchSystemRule(RuleType.NOTICE, raw.pkg, body, dao)
         if (hit != null) {
-            return toBill(hit, channel, raw, body, expenseCats, incomeCats, otherCats, context)
+            return toBill(
+                hit, channel, raw, body, expenseCats, incomeCats, otherCats, context,
+                forcedByVocabulary = forcedByVocabulary,
+            )
         }
         return NotificationRules.parse(
             raw = raw,
@@ -128,7 +151,7 @@ object ParsePipeline {
             ignoreKeywords = ignoreKeywords,
             forceKeywords = forceKeywords,
             allowPending = allowPending,
-        )
+        ).let { applyVocabularyConfidence(it, forcedByVocabulary) }
     }
 
     /**
@@ -182,30 +205,53 @@ object ParsePipeline {
         )
     }
 
-    /**
-     * 动态规则匹配。任何异常都吞掉并返回 null —— 规则引擎出错不该让内置兜底也跑不到。
-     */
-    private suspend fun matchDynamic(
-        type: String,
-        app: String?,
+    /** 全局词库必须先于所有规则执行；强制认账词对忽略词拥有一票否决权。 */
+    private fun evaluateGlobalVocabulary(
         body: String,
         ignoreKeywords: Set<String>,
         forceKeywords: Set<String>,
+    ): GlobalVocabularyDecision {
+        val forced = forceKeywords.any { it.isNotBlank() && body.contains(it) }
+        if (forced) return GlobalVocabularyDecision.FORCE
+        val ignored = ignoreKeywords.any { it.isNotBlank() && body.contains(it) }
+        return if (ignored) GlobalVocabularyDecision.BLOCK else GlobalVocabularyDecision.PASS
+    }
+
+    /** 漏斗第二层：只运行用户自建规则。 */
+    private suspend fun matchUserRule(
+        type: String,
+        app: String?,
+        body: String,
         dao: RuleDao?,
+    ): RuleHit? = matchRuleLayer(type, app, body, dao, RuleEntity.CREATOR_USER)
+
+    /** 漏斗第三层：只运行系统规则。 */
+    private suspend fun matchSystemRule(
+        type: String,
+        app: String?,
+        body: String,
+        dao: RuleDao?,
+    ): RuleHit? = matchRuleLayer(type, app, body, dao, RuleEntity.CREATOR_SYSTEM)
+
+    private suspend fun matchRuleLayer(
+        type: String,
+        app: String?,
+        body: String,
+        dao: RuleDao?,
+        creator: String,
     ): RuleHit? {
         if (dao == null) return null
-        // 用户词库的「强制记账」优先级最高：它代表「这条一定是账，别管规则说什么」。
-        // 反过来「忽略词」不能直接短路动态规则 —— 那是内置内核的语义，规则作者有自己的 block 表。
-        val forced = forceKeywords.any { body.contains(it) }
-        if (!forced && ignoreKeywords.any { body.contains(it) }) return null
         return runCatching {
             RuleEngine.ensureLoaded(dao)
-            RuleEngine.match(type, app, body)
+            RuleEngine.match(type, app, body, creator)
         }.getOrElse {
-            Log.w(TAG, "动态规则匹配失败，回退内置规则", it)
+            Log.w(TAG, "$creator 规则匹配失败，继续下一层", it)
             null
         }
     }
+
+    private fun applyVocabularyConfidence(bill: NotifyBill?, forced: Boolean): NotifyBill? =
+        if (forced && bill != null) bill.copy(confidence = 1f) else bill
 
     /** 把规则命中结果翻译成可落库的 [NotifyBill]。分类要按当前分类表校验一遍。 */
     private fun toBill(
@@ -217,6 +263,7 @@ object ParsePipeline {
         incomeCats: List<String>,
         otherCats: List<String>,
         context: android.content.Context?,
+        forcedByVocabulary: Boolean,
     ): NotifyBill? {
         if (hit.amount <= 0.0 || hit.amount > 1_000_000.0) return null
         val cats = when (hit.type) {
@@ -246,7 +293,7 @@ object ParsePipeline {
             source = NotificationRules.sourceOf(channel),
             externalId = externalId(hit, raw, channel),
             channel = channel,
-            confidence = hit.confidence,
+            confidence = if (forcedByVocabulary) 1f else hit.confidence,
             autoRecord = hit.autoRecord,
             accountTail = ParseDedup.accountTailFromText(body),
         )

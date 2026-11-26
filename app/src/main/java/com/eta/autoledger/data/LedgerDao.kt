@@ -71,6 +71,12 @@ internal object LedgerDaoSql {
             "OR SUM(CASE WHEN type = 'income' THEN 1 ELSE 0 END) != 1 " +
             "OR MIN(CAST(ROUND(amount * 100) AS INTEGER)) != " +
             "MAX(CAST(ROUND(amount * 100) AS INTEGER)))"
+
+    /** 自动记账跨源合并候选：精确金额、同方向、时间窗最多 5 分钟。 */
+    const val TIMED_MERGE_CANDIDATES =
+        "SELECT * FROM Bill WHERE is_recurring = 0 AND is_transfer = 0 " +
+            "AND CAST(ROUND(amount * 100) AS INTEGER) = :amountCents AND type = :type " +
+            "AND timestamp BETWEEN :since AND :until ORDER BY timestamp ASC, id ASC"
 }
 
 /**
@@ -318,22 +324,13 @@ interface LedgerDao {
         until: Long,
     ): List<LedgerEntry>
 
-    /** 自动记账强指纹的候选集：精确金额、方向、发生时间 ±5 分钟。 */
-    @Query(
-        "SELECT * FROM Bill WHERE is_recurring = 0 " +
-            "AND CAST(ROUND(amount * 100) AS INTEGER) = :amountCents AND type = :type " +
-            "AND timestamp BETWEEN :since AND :until ORDER BY timestamp ASC, id ASC",
-    )
-    suspend fun strongMergeCandidates(
+    @Query(LedgerDaoSql.TIMED_MERGE_CANDIDATES)
+    suspend fun timedMergeCandidates(
         amountCents: Long,
         type: String,
         since: Long,
         until: Long,
     ): List<LedgerEntry>
-
-    /** 只更新来源标签，供跨渠道强指纹命中后合并来源。 */
-    @Query("UPDATE Bill SET source = :source WHERE id = :id")
-    suspend fun updateSource(id: Long, source: String): Int
 
     /**
      * IGNORE 而不是 REPLACE：主键交给 SQLite 自增后，撞键只可能是 external_id 唯一索引，

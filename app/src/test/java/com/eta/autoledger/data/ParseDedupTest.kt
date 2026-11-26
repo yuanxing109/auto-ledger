@@ -3,7 +3,6 @@ package com.eta.autoledger.data
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -76,19 +75,65 @@ class ParseDedupTest {
     }
 
     @Test
-    fun 强指纹使用分钟桶并且金额精度稳定() {
-        val a = ParseDedup.strongFingerprint(19.40, "expense", 1_700_000_000_000, "1234")
-        val b = ParseDedup.strongFingerprint(19.4, "expense", 1_700_000_020_000, "1234")
-        assertEquals(a, b)
-        assertEquals(40, a.length)
+    fun `微信和银行一分钟内同额同向合并并保留银行详情`() {
+        val bank = mergeEntry(
+            id = 1L,
+            timeMillis = 1_700_000_000_000L,
+            source = "招商银行通知",
+            note = "招商银行 您账户0306于17:50在财付通-微信支付-商户 消费22.00元",
+            category = "其他",
+        )
+        val wechat = mergeEntry(
+            id = 0L,
+            timeMillis = bank.timeMillis + 60_000L,
+            source = "微信通知",
+            note = "微信支付：已支付¥22.00",
+        )
+
+        assertTrue(ParseDedup.shouldMerge(bank, wechat))
+        val merged = ParseDedup.mergeRecords(bank, wechat)
+        assertEquals(bank.id, merged.id)
+        assertTrue(merged.note.contains("账户0306"))
+        assertTrue(merged.source.contains("招商银行通知"))
+        assertTrue(merged.source.contains("微信通知"))
+        assertEquals("消费", merged.category)
     }
 
     @Test
-    fun 强指纹区分方向卡尾和分钟() {
-        val base = ParseDedup.strongFingerprint(19.40, "expense", 1_700_000_000_000, "1234")
-        assertNotEquals(base, ParseDedup.strongFingerprint(19.40, "income", 1_700_000_000_000, "1234"))
-        assertNotEquals(base, ParseDedup.strongFingerprint(19.40, "expense", 1_700_000_000_000, "5678"))
-        assertNotEquals(base, ParseDedup.strongFingerprint(19.40, "expense", 1_700_000_060_000, "1234"))
+    fun `钱包和银行五分钟内同额同向也可合并`() {
+        val bank = mergeEntry(1L, 1_700_000_000_000L, "银行通知")
+        val wallet = mergeEntry(2L, bank.timeMillis + 4 * 60_000L, "支付宝通知")
+
+        assertTrue(ParseDedup.shouldMerge(bank, wallet))
+    }
+
+    @Test
+    fun `银行短信来源即使只写短信记账也能按正文识别银行`() {
+        val bank = mergeEntry(
+            id = 1L,
+            timeMillis = 1_700_000_000_000L,
+            source = "短信记账",
+            note = "招商银行 您账户0306于17:50消费22.00元",
+        )
+        val wallet = mergeEntry(2L, bank.timeMillis + 3 * 60_000L, "微信通知")
+
+        assertTrue(ParseDedup.shouldMerge(bank, wallet))
+    }
+
+    @Test
+    fun `同源同额超过一分钟不合并`() {
+        val first = mergeEntry(1L, 1_700_000_000_000L, "微信通知")
+        val second = mergeEntry(2L, first.timeMillis + 61_000L, "微信通知")
+
+        assertFalse(ParseDedup.shouldMerge(first, second))
+    }
+
+    @Test
+    fun `超过五分钟即使钱包和银行也不合并`() {
+        val bank = mergeEntry(1L, 1_700_000_000_000L, "银行通知")
+        val wallet = mergeEntry(2L, bank.timeMillis + 5 * 60_000L + 1, "微信通知")
+
+        assertFalse(ParseDedup.shouldMerge(bank, wallet))
     }
 
     @Test
@@ -109,34 +154,22 @@ class ParseDedupTest {
         assertEquals("微信通知", ParseDedup.mergeSources("微信通知", "   "))
     }
 
-    @Test
-    fun 强指纹只合并不同来源且同分钟同卡尾的账单() {
-        val existing = LedgerEntry(
-            id = 1L,
-            amount = 19.40,
-            type = "expense",
-            category = "餐饮",
-            time = "2023-11-14 22:13",
-            timeMillis = 1_700_000_000_000L,
-            note = "尾号1234消费19.40元",
-            source = "银行通知",
-        )
-        val incoming = existing.copy(
-            id = 0L,
-            timeMillis = existing.timeMillis + 30_000L,
-            source = "短信记账",
-        )
-        assertNotNull(LedgerRepository.findStrongMergeTarget(incoming, listOf(existing)))
-
-        val sameSource = incoming.copy(source = "银行通知")
-        assertNull(LedgerRepository.findStrongMergeTarget(sameSource, listOf(existing)))
-
-        val differentMinute = incoming.copy(timeMillis = existing.timeMillis + 60_000L)
-        assertNull(LedgerRepository.findStrongMergeTarget(differentMinute, listOf(existing)))
-
-        val differentTail = incoming.copy(note = "尾号5678消费19.40元")
-        assertNull(LedgerRepository.findStrongMergeTarget(differentTail, listOf(existing)))
-    }
+    private fun mergeEntry(
+        id: Long,
+        timeMillis: Long,
+        source: String,
+        note: String = "消费22.00元",
+        category: String = "消费",
+    ): LedgerEntry = LedgerEntry(
+        id = id,
+        amount = 22.0,
+        type = "expense",
+        category = category,
+        time = "2026-11-26 17:50",
+        timeMillis = timeMillis,
+        note = note,
+        source = source,
+    )
 
     // ── 促发窗口 ──────────────────────────────────────────────────────
 

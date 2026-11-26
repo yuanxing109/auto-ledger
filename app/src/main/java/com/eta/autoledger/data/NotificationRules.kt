@@ -39,7 +39,7 @@ data class NotifyBill(
     val externalId: String,
     val channel: NotifyChannel,
     val confidence: Float,
-    /** 正文中识别到的银行卡/账户后四位，供跨源强指纹使用。 */
+    /** 正文中识别到的银行卡/账户后四位，供转账识别与信息丰富度比较使用。 */
     val accountTail: String? = null,
     /** 动态规则或手工录入产生的子分类。 */
     val subCategory: String? = null,

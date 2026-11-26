@@ -113,14 +113,21 @@ object RuleEngine {
      * @param type  [RuleType.NOTICE] / [RuleType.SMS] / [RuleType.OCR]
      * @param app   包名；短信传发送方号码（规则里 `app` 为 null 时代表任意来源）
      * @param body  已经归一化（NFKC）并压过空白的正文
+     * @param creator 非空时只匹配该层规则；[ParsePipeline] 用它显式落实用户规则优先
      * @return 第一条命中的规则结果；全部未命中返回 null，调用方回退到内置规则
      */
-    suspend fun match(type: String, app: String?, body: String): RuleHit? {
+    suspend fun match(
+        type: String,
+        app: String?,
+        body: String,
+        creator: String? = null,
+    ): RuleHit? {
         if (body.isBlank()) return null
         val rules = cached
         if (rules.isEmpty()) return null
         for (rule in rules) {
             if (rule.type != type) continue
+            if (creator != null && rule.creator != creator) continue
             if (rule.app != null && rule.app != app) continue
             if (rule.id in poisoned) continue
             val hit = runCatching { rule.match(body) }.getOrElse {
@@ -196,6 +203,7 @@ object RuleEngine {
         return CompiledRule(
             id = entity.id,
             name = entity.name,
+            creator = entity.creator,
             app = entity.app,
             type = entity.type,
             autoRecord = entity.autoRecord,
@@ -212,6 +220,7 @@ object RuleEngine {
     private class CompiledRule(
         val id: String,
         val name: String,
+        val creator: String,
         val app: String?,
         val type: String,
         val autoRecord: Boolean,

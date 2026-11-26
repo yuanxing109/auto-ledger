@@ -36,6 +36,7 @@ object ParsePipeline {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        context: android.content.Context? = null,
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
         dao: RuleDao? = null,
@@ -46,7 +47,7 @@ object ParsePipeline {
         val pendingOnly = NotificationRules.isPendingOrder(body)
         val bill = parseNoticeBill(
             raw, channel, body, expenseCats, incomeCats, otherCats,
-            ignoreKeywords, forceKeywords, dao, allowPending = pendingOnly,
+            context, ignoreKeywords, forceKeywords, dao, allowPending = pendingOnly,
         )
         return settlePending(raw.pkg, body, pendingOnly, bill)
     }
@@ -65,6 +66,7 @@ object ParsePipeline {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        context: android.content.Context? = null,
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
         dao: RuleDao? = null,
@@ -82,7 +84,7 @@ object ParsePipeline {
         )
         val hit = matchDynamic(RuleType.SMS, sender, text, ignoreKeywords, forceKeywords, dao)
         val bill = if (hit != null) {
-            toBill(hit, NotifyChannel.SMS, raw, text, expenseCats, incomeCats, otherCats)
+            toBill(hit, NotifyChannel.SMS, raw, text, expenseCats, incomeCats, otherCats, context)
         } else {
             NotificationRules.parseSms(
                 sender = sender,
@@ -91,6 +93,7 @@ object ParsePipeline {
                 expenseCats = expenseCats,
                 incomeCats = incomeCats,
                 otherCats = otherCats,
+                context = context,
                 ignoreKeywords = ignoreKeywords,
                 forceKeywords = forceKeywords,
                 allowPending = pendingOnly,
@@ -106,6 +109,7 @@ object ParsePipeline {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        context: android.content.Context?,
         ignoreKeywords: Set<String>,
         forceKeywords: Set<String>,
         dao: RuleDao?,
@@ -113,13 +117,14 @@ object ParsePipeline {
     ): NotifyBill? {
         val hit = matchDynamic(RuleType.NOTICE, raw.pkg, body, ignoreKeywords, forceKeywords, dao)
         if (hit != null) {
-            return toBill(hit, channel, raw, body, expenseCats, incomeCats, otherCats)
+            return toBill(hit, channel, raw, body, expenseCats, incomeCats, otherCats, context)
         }
         return NotificationRules.parse(
             raw = raw,
             expenseCats = expenseCats,
             incomeCats = incomeCats,
             otherCats = otherCats,
+            context = context,
             ignoreKeywords = ignoreKeywords,
             forceKeywords = forceKeywords,
             allowPending = allowPending,
@@ -211,6 +216,7 @@ object ParsePipeline {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        context: android.content.Context?,
     ): NotifyBill? {
         if (hit.amount <= 0.0 || hit.amount > 1_000_000.0) return null
         val cats = when (hit.type) {
@@ -220,7 +226,11 @@ object ParsePipeline {
         }.ifEmpty { listOf(FALLBACK) }
         // 规则里写的分类可能已经被用户在设置页删掉了。规则命中代表金额与方向可信，
         // 失效分类仍按既有契约回退“其他”；只有规则分类有效且与推断主分类一致时才带子分类。
-        val inferred = CategoryInference.infer(body, cats)
+        val inferred = CategoryInference.infer(
+            text = body,
+            allowedCategories = cats,
+            customSubCategoryOwners = dynamicSubCategoryOwners(cats, hit.type, context),
+        )
         val category = hit.category?.takeIf { cats.contains(it) }
             ?: if (cats.contains(FALLBACK)) FALLBACK else cats.first()
         val subCategory = inferred.subCategory.takeIf { inferred.category == category }
@@ -258,6 +268,22 @@ object ParsePipeline {
     /** 备注：与内置规则同样的策略 —— 超过 60 字截断，避免整段营销文塞进备注。 */
     private fun noteOf(body: String): String =
         if (body.length <= 60) body else body.take(60) + "…"
+
+    /** 把当前收支组已配置的子分类纳入动态层，并保留其所属主分类。 */
+    private fun dynamicSubCategoryOwners(
+        allowedCategories: List<String>,
+        typeValue: String,
+        context: android.content.Context?,
+    ): Map<String, Set<String>> = if (context == null) {
+        emptyMap()
+    } else {
+        val type = when (typeValue) {
+            "income" -> 1
+            "other" -> 2
+            else -> 0
+        }
+        CategoryStore.customSubCategoryOwners(context, type, allowedCategories)
+    }
 
     private fun formatTime(millis: Long): String =
         AppDateFormats.format(millis, AppDateFormats.dateTime)

@@ -2,9 +2,21 @@ package com.eta.autoledger.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 
 class CategoryInferenceTest {
+
+    @Before
+    fun resetCustomCategories() {
+        CategoryStore.resetForTest()
+    }
+
+    @After
+    fun clearCustomCategories() {
+        CategoryStore.resetForTest()
+    }
 
     @Test
     fun `美团外卖推断餐饮外卖`() {
@@ -168,5 +180,56 @@ class CategoryInferenceTest {
 
         assertEquals("提现", withdrawal.category)
         assertNull(withdrawal.subCategory)
+    }
+
+    @Test
+    fun `用户自定义子分类在文本命中时覆盖默认子分类`() {
+        val hit = CategoryInference.infer(
+            text = "瑞幸咖啡 夜宵 32元",
+            allowedCategories = listOf("其他", "餐饮"),
+            customSubCategoryOwners = mapOf("夜宵" to setOf("餐饮")),
+        )
+
+        assertEquals("餐饮", hit.category)
+        assertEquals("夜宵", hit.subCategory)
+        assertEquals(MatchSource.MERCHANT, hit.source)
+        assertEquals(100, hit.weight)
+    }
+
+    @Test
+    fun `用户自定义分类名可细化任意已命中主分类`() {
+        val hit = CategoryInference.infer(
+            text = "美团外卖 夜宵 32元",
+            allowedCategories = listOf("其他", "餐饮"),
+            customSubCategoryOwners = mapOf("夜宵" to setOf("餐饮")),
+        )
+
+        assertEquals("餐饮", hit.category)
+        assertEquals("夜宵", hit.subCategory)
+    }
+
+    @Test
+    fun `用户自定义子分类不能把主分类带到其他分类`() {
+        val hit = CategoryInference.infer(
+            text = "夜宵 32元",
+            allowedCategories = listOf("其他", "餐饮"),
+            customSubCategoryOwners = mapOf("夜宵" to setOf("餐饮")),
+        )
+
+        assertEquals("其他", hit.category)
+        assertNull(hit.subCategory)
+        assertEquals(MatchSource.FALLBACK, hit.source)
+    }
+
+    @Test
+    fun `用户自定义子分类只在其归属主分类命中时生效`() {
+        val hit = CategoryInference.infer(
+            text = "瑞幸咖啡 夜宵 32元",
+            allowedCategories = listOf("其他", "餐饮"),
+            customSubCategoryOwners = mapOf("夜宵" to setOf("交通")),
+        )
+
+        assertEquals("餐饮", hit.category)
+        assertEquals("奶茶咖啡", hit.subCategory)
     }
 }

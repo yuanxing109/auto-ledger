@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -131,6 +132,10 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
     // 原来写在组合体里，按一次数字键（amountInput 变化 → 整页重组）就重跑一遍。
     // 键用 type 而不是空：切到「收入/其他」时分类表本来就不同，必须重新取。
     val currentCategories = remember(type) { categoriesFor(context, type) }
+    var categoryRevision by remember { mutableIntStateOf(0) }
+    val subCategorySuggestions = remember(type, selectedCategory, categoryRevision) {
+        CategoryStore.subCategories(context, type, selectedCategory)
+    }
 
     fun displayAmount(): String {
         val value = amountInput.ifEmpty { "0.00" }
@@ -213,9 +218,22 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             else -> "expense"
         }
         val timeTextNow = AppDateFormats.format(calendar, AppDateFormats.dateTime)
-        val normalizedSubCategory = subCategory.trim().ifBlank { null }
+        val normalizedSubCategory = CategoryStore.normalizeSubCategoryName(subCategory)
         scope.launch {
             runCatching {
+                if (normalizedSubCategory != null) {
+                    val added = CategoryStore.addSubCategory(
+                        context,
+                        type,
+                        selectedCategory,
+                        normalizedSubCategory,
+                    )
+                    if (!added && CategoryStore.subCategories(context, type, selectedCategory)
+                            .none { it == normalizedSubCategory }
+                    ) {
+                        error("子分类未能保存，请检查名称")
+                    }
+                }
                 if (recurring) {
                     // 周期账单 = 一条模板 + 当期一笔实账。
                     //
@@ -278,6 +296,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                         ),
                     )
                 }
+                categoryRevision++
             }.onFailure {
                 scope.launch { snackbar.showLong("保存失败：${it.message}") }
             }
@@ -327,6 +346,7 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
             SubCategoryField(
                 value = subCategory,
                 onValueChange = { subCategory = it },
+                suggestions = subCategorySuggestions,
             )
             Spacer(Modifier.height(dimens.gap))
             RecurringCard(
@@ -377,8 +397,11 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
 private fun SubCategoryField(
     value: String,
     onValueChange: (String) -> Unit,
+    suggestions: List<String>,
 ) {
     val dimens = LocalDimens.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
     ThemeSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = "子分类（可选）",
@@ -390,6 +413,7 @@ private fun SubCategoryField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
+            interactionSource = interactionSource,
             singleLine = true,
             textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
             cursorBrush = SolidColor(AccentBlue),
@@ -405,6 +429,35 @@ private fun SubCategoryField(
                 }
             },
         )
+        if (focused && suggestions.isNotEmpty()) {
+            Spacer(Modifier.height(dimens.gapSmall))
+            Column(verticalArrangement = Arrangement.spacedBy(dimens.gapSmall)) {
+                suggestions.chunked(3).forEach { rowItems ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(dimens.gapSmall)) {
+                        rowItems.forEach { suggestion ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(dimens.radiusCapsule))
+                                    .background(if (suggestion == value) LedgerTheme.accent else LedgerTheme.inset)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = LocalIndication.current,
+                                        onClick = { onValueChange(suggestion) },
+                                    )
+                                    .padding(horizontal = dimens.gap, vertical = dimens.gapSmall),
+                            ) {
+                                Text(
+                                    text = suggestion,
+                                    style = MiuixTheme.textStyles.footnote1,
+                                    color = if (suggestion == value) LedgerTheme.onAccent else LedgerTheme.textSecondary,
+                                )
+                            }
+                        }
+                        repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
     }
 }
 

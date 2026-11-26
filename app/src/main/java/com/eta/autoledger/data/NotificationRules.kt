@@ -314,6 +314,7 @@ object NotificationRules {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        context: android.content.Context? = null,
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
         allowPending: Boolean = false,
@@ -321,6 +322,7 @@ object NotificationRules {
         val channel = channelOf(raw.pkg) ?: return null
         return parseAs(
             channel, raw, expenseCats, incomeCats, otherCats,
+            context = context,
             ignoreKeywords = ignoreKeywords,
             forceKeywords = forceKeywords,
             allowPending = allowPending,
@@ -341,6 +343,7 @@ object NotificationRules {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        context: android.content.Context? = null,
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
         allowPending: Boolean = false,
@@ -359,6 +362,7 @@ object NotificationRules {
         )
         return parseAs(
             NotifyChannel.SMS, raw, expenseCats, incomeCats, otherCats,
+            context = context,
             ignoreKeywords = ignoreKeywords,
             forceKeywords = forceKeywords,
             allowPending = allowPending,
@@ -374,6 +378,7 @@ object NotificationRules {
         expenseCats: List<String>,
         incomeCats: List<String>,
         otherCats: List<String>,
+        context: android.content.Context? = null,
         ignoreKeywords: Set<String> = emptySet(),
         forceKeywords: Set<String> = emptySet(),
         allowPending: Boolean = false,
@@ -408,7 +413,20 @@ object NotificationRules {
             "other" -> otherCats
             else -> expenseCats
         }.ifEmpty { listOf(FALLBACK_CATEGORY) }
-        val inferred = CategoryInference.infer(body, cats)
+        val inferred = CategoryInference.infer(
+            text = body,
+            allowedCategories = cats,
+            customSubCategoryOwners = if (context == null) {
+                emptyMap()
+            } else {
+                val type = when (direction.type) {
+                    "income" -> 1
+                    "other" -> 2
+                    else -> 0
+                }
+                CategoryStore.customSubCategoryOwners(context, type, cats)
+            },
+        )
         val category = inferred.category.takeIf(cats::contains)
             ?: if (cats.contains(FALLBACK_CATEGORY)) FALLBACK_CATEGORY else cats.first()
         val millis = raw.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()

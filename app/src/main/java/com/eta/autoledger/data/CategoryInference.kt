@@ -575,6 +575,56 @@ object CategoryInference {
     fun infer(text: String): CategoryMatchResult =
         infer(text, CategoryStore.expense + CategoryStore.income + CategoryStore.other)
 
+    /** 动态层只感知调用方提供的分类树，不改变内置商户、关键词和权重。 */
+    fun infer(
+        text: String,
+        allowedCategories: Collection<String>,
+        customSubCategoryOwners: Map<String, Set<String>>,
+    ): CategoryMatchResult {
+        val base = infer(text, allowedCategories)
+        val body = normalizeForMatching(text)
+        val category = base.category
+        if (body.isEmpty() || customSubCategoryOwners.isEmpty() ||
+            category !in allowedCategories || category == FALLBACK_CATEGORY
+        ) return base
+
+        val normalizedCustom = customSubCategoryOwners.entries
+            .filter { (_, owner) -> owner.contains(category) }
+            .mapNotNull { (name, _) -> normalizedOrNull(name) }
+            .distinct()
+            .sortedByDescending(String::length)
+        val customHits = normalizedCustom
+            .filter(body::contains)
+            .filter { token -> customSubCategoryOwners[token]?.contains(category) == true }
+        if (customHits.isEmpty()) return base
+        val longest = customHits.first().length
+        val best = customHits.filter { it.length == longest }
+        if (best.size != 1) return base
+
+        // 子类词只负责细化分类，不能单独把未知文本提升成某个主分类。
+        // 先移除子类词，剩余正文必须还能由内置规则命中同一主分类。
+        val allCustomTokens = customSubCategoryOwners.keys.mapNotNull(::normalizedOrNull)
+            .sortedByDescending(String::length)
+        val categoryAnchor = normalizeForMatching(
+            allCustomTokens.fold(body) { current, token -> current.replace(token, " ") },
+        )
+        val anchorHit = infer(categoryAnchor, allowedCategories)
+        if (categoryAnchor.isNotEmpty() && anchorHit.source == MatchSource.FALLBACK) return base
+        if (anchorHit.category != category) return base
+        return refinedResult(category, best.single(), base)
+    }
+
+    private fun refinedResult(
+        category: String,
+        subCategory: String,
+        base: CategoryMatchResult,
+    ): CategoryMatchResult = CategoryMatchResult(
+        category = category,
+        subCategory = subCategory,
+        source = base.source,
+        weight = base.weight,
+    )
+
     /**
      * 按用户当前启用的一级分类推断。
      *
@@ -675,6 +725,9 @@ object CategoryInference {
         .replace('—', '-')
         .replace(whitespace, " ")
         .trim()
+
+    private fun normalizedOrNull(text: String): String? =
+        normalized(text).takeIf { it.isNotEmpty() }
 
     /** 从 CategoryStore 的真实分类树选第一个合法子类，禁止推断内核另建词表。 */
     private fun child(category: String, vararg candidates: String): String? =

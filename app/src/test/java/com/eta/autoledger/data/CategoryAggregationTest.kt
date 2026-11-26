@@ -93,12 +93,54 @@ class CategoryAggregationTest {
         assertEquals(100.0, food.subCategories.sumOf { it.percent.toDouble() }, 0.01)
     }
 
+    @Test
+    fun `子分类计数与迁移使用同一分类关系`() {
+        insert(
+            amount = 20.0,
+            category = "餐饮",
+            subCategory = "外卖",
+            day = 7,
+            isRecurring = true,
+        )
+        val count = db.prepareStatement(LedgerDaoSql.COUNT_SUB_CATEGORY_BILLS).use { ps ->
+            ps.setString(1, "expense")
+            ps.setString(2, "餐饮")
+            ps.setString(3, "外卖")
+            ps.executeQuery().use { rs ->
+                rs.next()
+                rs.getInt(1)
+            }
+        }
+        assertEquals(3, count)
+
+        val moved = db.prepareStatement(LedgerDaoSql.MOVE_SUB_CATEGORY_BILLS).use { ps ->
+            ps.setString(1, "到店餐饮")
+            ps.setString(2, "expense")
+            ps.setString(3, "餐饮")
+            ps.setString(4, "外卖")
+            ps.executeUpdate()
+        }
+        assertEquals(3, moved)
+
+        val rows = queryCategoryRows()
+        assertRow(rows, category = "餐饮", subCategory = "到店餐饮", total = 50.0, count = 2)
+        assertNull(rows.firstOrNull { it.subCategory == "外卖" })
+        assertRow(
+            queryCategoryRows(income = 1),
+            category = "餐饮",
+            subCategory = "外卖",
+            total = 100.0,
+            count = 1,
+        )
+    }
+
     private fun insert(
         amount: Double,
         category: String,
         subCategory: String?,
         day: Int,
         type: String = "expense",
+        isRecurring: Boolean = false,
     ) {
         db.prepareStatement(
             "INSERT INTO Bill " +
@@ -114,16 +156,16 @@ class CategoryAggregationTest {
             ps.setString(7, category)
             ps.setString(8, "test")
             ps.setNull(9, java.sql.Types.VARCHAR)
-            ps.setInt(10, 0)
+            ps.setInt(10, if (isRecurring) 1 else 0)
             ps.setNull(11, java.sql.Types.VARCHAR)
             ps.executeUpdate()
         }
     }
 
-    private fun queryCategoryRows(): List<CategoryAgg> {
+    private fun queryCategoryRows(income: Int = 0): List<CategoryAgg> {
         val rows = mutableListOf<CategoryAgg>()
         db.prepareStatement(LedgerDaoSql.DUAL_CATEGORY_AGGREGATION).use { ps ->
-            ps.setInt(1, 0)
+            ps.setInt(1, income)
             ps.setLong(2, 1_700_000_000_000L)
             ps.setLong(3, 1_700_000_000_000L + 10L * 86_400_000L)
             ps.executeQuery().use { rs ->

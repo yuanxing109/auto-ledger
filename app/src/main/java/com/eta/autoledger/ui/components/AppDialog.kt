@@ -85,12 +85,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  *
  * 另：用 [MutableTransitionState] 而不是 `AnimatedVisibility(visible = show)`，
  * 是因为后者在首次组合时若 visible 已为 true 会直接呈现、不播进场 —— 弹窗会「闪」出来。
+ *
+ * 执行异步写入时传 `dismissEnabled = false`，返回键和遮罩都不会触发退场，
+ * 避免父级拒绝关闭后窗口状态与 `show` 脱节。
  */
 @Composable
 fun AppDialog(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     show: Boolean = true,
+    dismissEnabled: Boolean = true,
     title: String? = null,
     maxWidth: Dp = 560.dp,
     summary: String? = null,
@@ -106,6 +110,7 @@ fun AppDialog(
 ) {
     val enterMillis = rememberMotionDuration(150)
     val exitMillis = rememberMotionDuration(100)
+    val scrimInteraction = remember { MutableInteractionSource() }
 
     var closing by remember { mutableStateOf(false) }
     // 父级重新打开时（同一实例被复用）复位，否则第二次打开会立刻又走退场。
@@ -134,7 +139,7 @@ fun AppDialog(
     if (settled && (!show || closing)) return
 
     Dialog(
-        onDismissRequest = { if (!closing) closing = true },
+        onDismissRequest = { if (dismissEnabled && !closing) closing = true },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = align) {
@@ -147,10 +152,16 @@ fun AppDialog(
                         .fillMaxSize()
                         .graphicsLayer { alpha = scrimAlpha }
                         .background(LedgerTheme.scrim)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) { if (!closing) closing = true },
+                        .then(
+                            if (dismissEnabled) {
+                                Modifier.clickable(
+                                    interactionSource = scrimInteraction,
+                                    indication = null,
+                                ) { if (!closing) closing = true }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 )
             }
 

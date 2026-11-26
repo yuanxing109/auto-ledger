@@ -326,6 +326,21 @@ object LedgerRepository {
         LedgerWidgetProvider.requestUpdate(context)
     }
 
+    suspend fun countSubCategoryBills(
+        context: Context,
+        type: String,
+        category: String,
+        subCategory: String,
+    ): Int = dao(context).countSubCategoryBills(type, category, subCategory)
+
+    suspend fun moveSubCategoryBills(
+        context: Context,
+        type: String,
+        category: String,
+        source: String,
+        target: String?,
+    ): Int = dao(context).moveSubCategoryBills(type, category, source, target)
+
     /**
      * 撤销删除：把被删账目按原 id 写回。
      *

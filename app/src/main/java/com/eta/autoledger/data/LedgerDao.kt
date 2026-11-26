@@ -28,6 +28,14 @@ internal object LedgerDaoSql {
             "WHERE ((:income = 1 AND type = 'income') OR (:income = 0 AND type = 'expense')) " +
             "AND is_recurring = 0 AND timestamp >= :start AND timestamp < :end " +
             "GROUP BY category, sub_category ORDER BY category ASC, total DESC"
+
+    const val COUNT_SUB_CATEGORY_BILLS =
+        "SELECT COUNT(*) FROM Bill WHERE type = :type AND category = :category " +
+            "AND sub_category = :subCategory"
+
+    const val MOVE_SUB_CATEGORY_BILLS =
+        "UPDATE Bill SET sub_category = :target WHERE type = :type AND category = :category " +
+            "AND sub_category = :source"
 }
 
 /**
@@ -132,6 +140,14 @@ interface LedgerDao {
 
     @Query(LedgerDaoSql.DUAL_CATEGORY_AGGREGATION)
     fun observeCategories(start: Long, end: Long, income: Int): Flow<List<CategoryAgg>>
+
+    /** 删除子分类前统计引用数；周期模板虽不出现在账目中，也会影响未来自动入账。 */
+    @Query(LedgerDaoSql.COUNT_SUB_CATEGORY_BILLS)
+    suspend fun countSubCategoryBills(type: String, category: String, subCategory: String): Int
+
+    /** 重命名或迁移子分类。周期模板也同步更新，避免下期自动入账写回旧名称。 */
+    @Query(LedgerDaoSql.MOVE_SUB_CATEGORY_BILLS)
+    suspend fun moveSubCategoryBills(type: String, category: String, source: String, target: String?): Int
 
     // ---- 一次性聚合：给桌面小部件与提醒用，避免把全表读进内存再 filter/sum ----
 

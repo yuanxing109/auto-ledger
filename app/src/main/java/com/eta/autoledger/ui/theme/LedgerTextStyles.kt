@@ -25,7 +25,7 @@ import top.yukonga.miuix.kmp.theme.defaultTextStyles
  * `internal`（库内部可见），外部模块无法 `apply { main = … }`；工厂函数 14 个参数都带默认值，
  * 传几个覆盖几个，其余继承 Miuix 默认值。
  *
- * 字体族暂用系统默认。LXGW 文楷的接入点就是这里各槽的 `fontFamily`（见 `docs/08` §1.4）：
+ * 字体族暂用系统默认。未来如需统一替换字体，入口应放在这里各槽的 `fontFamily`：
  * 子集化产物落地后逐槽补 `fontFamily = AppFont`，数字组**永不换字体**（楷体的 0/6/8 在 34sp
  * 上难分辨，记账金额不能有歧义）。
  */

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UI 一致性门禁 —— 与 docs/08-A方案-Miuix单源与图表迁移.md §1.6 的规则一一对应
+# UI 一致性门禁 —— 规则说明见 docs/ui-design-system.md 的“UI 一致性门禁”章节
 #
 # 用法：bash tools/check-ui-consistency.sh
 # 退出码：0 = 通过（warn 不影响退出码），1 = 有 error 级违规。
@@ -79,7 +79,7 @@ check "R7 不再新增 Toast.makeText" \
   'zzz-never-matches' 0
 
 if [ "$fail" = "1" ]; then
-  printf '\n%s门禁未通过%s：修掉上面标 ✘ 的项，或按 docs/08 §1.6 说明加豁免。\n' "$red" "$reset"
+  printf '\n%s门禁未通过%s：修掉上面标 ✘ 的项，或按 docs/ui-design-system.md 的“UI 一致性门禁”章节加豁免。\n' "$red" "$reset"
   exit 1
 fi
 printf '\n%s门禁通过%s（warn 项按阶段推进）\n' "$green" "$reset"

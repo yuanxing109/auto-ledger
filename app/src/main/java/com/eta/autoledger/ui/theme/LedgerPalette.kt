@@ -7,7 +7,7 @@ import androidx.compose.ui.graphics.Color
  * 一套完整的语义色（浅色或深色）。
  *
  * 这是全项目**唯一的色值真源**：`LedgerPalette.light` / `LedgerPalette.dark` 就是
- * `docs/06-UI统一改造方案.md` §2.1 两张色值表的代码化。任何地方要新增颜色，
+ * `docs/ui-design-system.md` 中的语义色规范。任何地方要新增颜色，
  * 先加字段到这里，再在 `LedgerPalette` 两组实例里给值。
  *
  * 命名对应关系（与 Miuix 53 个槽位的映射见 `LedgerMiuixColors.kt`）：

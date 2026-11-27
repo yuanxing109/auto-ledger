@@ -27,6 +27,7 @@
 | `ImportSafetyTest` | 导入去重、AI 多笔和安全边界 |
 | `AiClientTest` | Markdown、废话、数组、对象和多代码块 |
 | `AiQuickEntryHelperTest` | 文本 AI 字段兼容 |
+| `ReportShareExportTest` | GraphicsLayer 非空截图与 FileProvider URI 可读性 |
 | `AppDateFormatsTest` | 统一日期格式 |
 | `CategoryDisplayTest` | 分类展示映射 |
 

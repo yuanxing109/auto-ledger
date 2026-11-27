@@ -76,6 +76,9 @@ object LedgerTheme {
     /** 自定义全局背景图上的主题可读性遮罩。 */
     val backgroundOverlay: Color get() = colors.backgroundOverlay
 
+    /** 报表截图分享使用的纯白/纯黑底。 */
+    val captureBackground: Color get() = colors.captureBackground
+
     /** 卡片统一柔和阴影色。 */
     val cardShadow: Color get() = colors.cardShadow
 

@@ -21,6 +21,7 @@ AutoLedger 不提供自有服务器，不要求账号。
 | AI Key | EncryptedSharedPreferences `auto_ledger_secure` |
 | WebDAV 用户名/密码 | EncryptedSharedPreferences `auto_ledger_secure` |
 | 自定义背景 | 应用私有文件路径 |
+| 报表分享图片 | 应用 cache/report-shares，每次使用唯一文件名，10 分钟后清理，Activity 创建/销毁时补清理过期文件 |
 
 敏感字段迁移：
 
@@ -122,6 +123,7 @@ WebDAV JSON 备份是明文账目文件。它依赖 WebDAV 服务端的安全、
 - 没有提交本地配置或签名文件。
 - release 仍禁止明文流量。
 - 敏感字段仍通过 `SecurePrefs`。
+- FileProvider 只映射 `cache/photos`、`cache/exports` 和 `cache/report-shares` 三个专用目录。
 - 新日志不含凭据。
 - AI 输出原文不进入用户界面。
 - APK 只包含预期资源。

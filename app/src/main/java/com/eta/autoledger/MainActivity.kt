@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import com.eta.autoledger.service.HealthJobService
 import com.eta.autoledger.ui.LedgerApp
 import com.eta.autoledger.ui.AppRoot
+import com.eta.autoledger.ui.share.ReportShareExporter
 
 class MainActivity : ComponentActivity() {
 
@@ -27,6 +28,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 清理上次进程异常结束时遗留的过期分享图片。
+        ReportShareExporter.cleanup(this)
         // 加密存储（AI Key / WebDAV 密码）首次初始化要走 Android Keystore，
         // 提前在后台线程预热，避免用户点进设置页时才在主线程付这笔开销。
         SecurePrefs.warmUp(this)
@@ -56,6 +59,11 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         consumeOpenAdd(intent)
+    }
+
+    override fun onDestroy() {
+        ReportShareExporter.cleanup(this)
+        super.onDestroy()
     }
 
     private fun consumeOpenAdd(intent: Intent?) {

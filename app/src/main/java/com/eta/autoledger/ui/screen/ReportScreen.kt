@@ -1,5 +1,6 @@
 package com.eta.autoledger.ui.screen
 
+import android.util.Log
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.util.AppDateFormats
@@ -52,22 +53,30 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -94,7 +103,14 @@ import com.eta.autoledger.data.ReportRepository
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.SubCategoryShare
+import com.eta.autoledger.ui.share.ReportShareExporter
+import com.eta.autoledger.ui.window.LocalSnackbar
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -150,6 +166,8 @@ private data class LoadedReport(
  * 首次进页面不等这个时间。
  */
 private const val QUERY_DEBOUNCE_MS = 120L
+private const val MAX_SHARE_DIMENSION = 8_192
+private const val MAX_SHARE_PIXELS = 20_000_000L
 
 private data class TrendPoint(val label: String, val value: Double)
 
@@ -187,8 +205,17 @@ private data class ReportData(
     val categories: List<CategorySlice>,
 )
 
+private enum class ReportShareMode {
+    CHARTS,
+    FULL,
+}
+
 @Composable
-fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
+fun ReportScreen(
+    modifier: Modifier = Modifier,
+    tab: Int = 1,
+    shareRequests: Flow<Unit> = emptyFlow(),
+) {
     var offset by rememberSaveable { mutableIntStateOf(0) }
     var income by rememberSaveable { mutableStateOf(false) }
     var subCategory by rememberSaveable { mutableStateOf(false) }
@@ -241,6 +268,60 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
     // 滚动位置放在 AnimatedContent 外面：放里面的话每次切周期都会新建一个
     // ScrollState，用户滚到一半换个月就弹回顶部。
     val reportScroll = rememberScrollState()
+    var shareDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var shareBusy by remember { mutableStateOf(false) }
+    var captureMode by remember { mutableStateOf<ReportShareMode?>(null) }
+    var captureReady by remember { mutableStateOf(false) }
+    val reportShareLayer = rememberGraphicsLayer()
+    val chartsShareLayer = rememberGraphicsLayer()
+    val scope = rememberCoroutineScope()
+    val snackbar = LocalSnackbar.current
+
+    LaunchedEffect(shareRequests) {
+        shareRequests.collect {
+            if (loaded == null) {
+                snackbar.showLong("报表还在统计，请稍后再分享")
+            } else {
+                shareDialogVisible = true
+            }
+        }
+    }
+
+    fun shareReport(mode: ReportShareMode) {
+        if (shareBusy) return
+        captureMode = mode
+        captureReady = false
+        shareBusy = true
+        scope.launch {
+            try {
+                // 等待目标分支完成布局，再跨一帧让背景、标题和水印完成绘制。
+                checkNotNull(
+                    withTimeoutOrNull(2_000L) {
+                        snapshotFlow { captureReady }.first { it }
+                    },
+                ) { "报表分享图层准备超时" }
+                withFrameNanos { }
+                val image = when (mode) {
+                    ReportShareMode.CHARTS -> chartsShareLayer
+                    ReportShareMode.FULL -> reportShareLayer
+                }.let { layer ->
+                    requireShareCaptureSize(layer)
+                    layer.toImageBitmap()
+                }
+                ReportShareExporter.share(context, image)
+            } catch (error: Throwable) {
+                Log.e("AutoLedger", "报表分享图片生成失败", error)
+                snackbar.showLong("分享图片生成失败，请重试")
+            } finally {
+                captureMode = null
+                shareBusy = false
+                shareDialogVisible = false
+            }
+        }
+    }
+
+    val reportCaptureActive = captureMode == ReportShareMode.FULL
+    val chartsCaptureActive = captureMode == ReportShareMode.CHARTS
 
     Box(modifier = modifier.fillMaxSize().background(Color.Transparent)) {
         AnimatedContent(
@@ -273,27 +354,86 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
                     .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 82.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                PeriodRow(
-                    periodLabel = frameData.periodLabel,
-                    income = snapshot.income,
-                    onPrev = { offset += 1 },
-                    onNext = { if (offset > 0) offset -= 1 },
-                    onMode = { income = it },
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .captureGraphicsLayer(reportShareLayer, reportCaptureActive)
+                        .onGloballyPositioned {
+                            if (reportCaptureActive) captureReady = true
+                        }
+                        .then(
+                            if (reportCaptureActive) {
+                                Modifier
+                                    .background(LedgerTheme.captureBackground)
+                                    .padding(12.dp)
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (reportCaptureActive) {
+                        ShareReportHeader(
+                            data = frameData,
+                            income = snapshot.income,
+                            title = "收支报表",
+                        )
+                    } else {
+                        PeriodRow(
+                            periodLabel = frameData.periodLabel,
+                            income = snapshot.income,
+                            onPrev = { offset += 1 },
+                            onNext = { if (offset > 0) offset -= 1 },
+                            onMode = { income = it },
+                        )
+                    }
 
-                SummaryCard(data = frameData, tab = snapshot.tab, income = snapshot.income)
+                    SummaryCard(data = frameData, tab = snapshot.tab, income = snapshot.income)
 
-                LineCard(data = frameData, income = snapshot.income)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .captureGraphicsLayer(chartsShareLayer, chartsCaptureActive)
+                            .onGloballyPositioned {
+                                if (chartsCaptureActive) captureReady = true
+                            }
+                            .then(
+                                if (chartsCaptureActive) {
+                                    Modifier
+                                        .background(LedgerTheme.captureBackground)
+                                        .padding(12.dp)
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        if (chartsCaptureActive) {
+                            ShareReportHeader(
+                                data = frameData,
+                                income = snapshot.income,
+                                title = "趋势图表",
+                            )
+                        }
+                        LineCard(data = frameData, income = snapshot.income)
+                        BarCard(data = frameData, income = snapshot.income)
+                        if (chartsCaptureActive) ShareWatermark()
+                    }
 
-                BarCard(data = frameData, income = snapshot.income)
+                    if (reportCaptureActive) {
+                        ShareDonutCard(data = frameData, income = snapshot.income)
+                    } else {
+                        DonutCard(
+                            data = frameData,
+                            income = snapshot.income,
+                            subCategory = subCategory,
+                            onSubCategory = { subCategory = it },
+                            onOpenSlice = { detailSlice = it },
+                        )
+                    }
 
-                DonutCard(
-                    data = frameData,
-                    income = snapshot.income,
-                    subCategory = subCategory,
-                    onSubCategory = { subCategory = it },
-                    onOpenSlice = { detailSlice = it },
-                )
+                    if (reportCaptureActive) ShareWatermark()
+                }
 
                 Spacer(Modifier.height(12.dp))
             }
@@ -309,6 +449,179 @@ fun ReportScreen(modifier: Modifier = Modifier, tab: Int = 1) {
             endMillis = range.second,
             onDismiss = { detailSlice = null },
         )
+    }
+
+    ReportShareDialog(
+        show = shareDialogVisible,
+        busy = shareBusy,
+        onDismiss = { if (!shareBusy) shareDialogVisible = false },
+        onSelect = ::shareReport,
+    )
+}
+
+private fun Modifier.captureGraphicsLayer(
+    layer: GraphicsLayer,
+    enabled: Boolean,
+): Modifier = drawWithContent {
+    if (!enabled) {
+        drawContent()
+        return@drawWithContent
+    }
+    layer.record {
+        this@drawWithContent.drawContent()
+    }
+    drawLayer(layer)
+}
+
+private fun requireShareCaptureSize(layer: GraphicsLayer) {
+    val width = layer.size.width
+    val height = layer.size.height
+    require(width > 0 && height > 0) { "报表分享图层没有有效尺寸" }
+    require(width <= MAX_SHARE_DIMENSION && height <= MAX_SHARE_DIMENSION) {
+        "报表图片尺寸超过安全上限"
+    }
+    require(width.toLong() * height.toLong() <= MAX_SHARE_PIXELS) {
+        "报表图片像素数量超过安全上限"
+    }
+}
+
+@Composable
+private fun ShareReportHeader(
+    data: ReportData,
+    income: Boolean,
+    title: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "AutoLedger",
+                style = MiuixTheme.textStyles.footnote1,
+                color = LedgerTheme.accent,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = title + " · " + (if (income) "收入" else "支出"),
+                style = MiuixTheme.textStyles.title3,
+                color = LedgerTheme.text,
+            )
+        }
+        Text(
+            text = data.periodLabel,
+            style = MiuixTheme.textStyles.body2,
+            color = LedgerTheme.textSecondary,
+        )
+    }
+}
+
+@Composable
+private fun ShareWatermark() {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 2.dp, end = 4.dp),
+        horizontalArrangement = Arrangement.End,
+    ) {
+        Text(
+            text = "由 AutoLedger 生成",
+            style = MiuixTheme.textStyles.footnote2,
+            color = LedgerTheme.textTertiary.copy(alpha = 0.5f),
+        )
+    }
+}
+
+@Composable
+private fun ShareDonutCard(data: ReportData, income: Boolean) {
+    ReportCard {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Sparkle()
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = (if (income) "收入" else "支出") + "分类占比",
+                    style = MiuixTheme.textStyles.body1.copy(color = TextPrimary),
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            DonutChart(slices = data.categories, income = income)
+        }
+    }
+}
+
+@Composable
+private fun ReportShareDialog(
+    show: Boolean,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onSelect: (ReportShareMode) -> Unit,
+) {
+    AppDialog(
+        show = show,
+        dismissEnabled = !busy,
+        title = "分享报表",
+        summary = "选择图片范围，导出时会自动使用纯白或纯黑底色。",
+        onDismissRequest = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ReportShareOption(
+                title = "当前图表",
+                summary = "仅包含当前折线图与柱状图",
+                enabled = !busy,
+                onClick = { onSelect(ReportShareMode.CHARTS) },
+            )
+            ReportShareOption(
+                title = "完整报表",
+                summary = "包含收支总览、趋势图与分类占比",
+                enabled = !busy,
+                onClick = { onSelect(ReportShareMode.FULL) },
+            )
+            if (busy) {
+                Text(
+                    text = "正在生成分享图片…",
+                    style = MiuixTheme.textStyles.body2,
+                    color = LedgerTheme.textSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportShareOption(
+    title: String,
+    summary: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val onClickOrNull = if (enabled) onClick else null
+    ThemeSurfaceCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClickOrNull,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MiuixTheme.textStyles.body1,
+                    color = if (enabled) LedgerTheme.text else LedgerTheme.textTertiary,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = summary,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = LedgerTheme.textSecondary,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Icon(
+                imageVector = MiuixIcons.ChevronForward,
+                contentDescription = null,
+                tint = if (enabled) LedgerTheme.textSecondary else LedgerTheme.textTertiary,
+            )
+        }
     }
 }
 

@@ -29,6 +29,7 @@ android {
         targetSdk = 37
         versionCode = autoLedgerVersionCode.orNull ?: defaultVersionCode
         versionName = autoLedgerVersionName.orNull ?: defaultVersionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -122,6 +123,12 @@ dependencies {
     // null/0），JSONObject().toString() 会返回 null。补一份真实现，让规则 JSON 的
     // 拼装与解析在 JVM 上真的跑起来。只在测试配置里，不进 APK。
     testImplementation("org.json:json:20260814")
+
+    // Compose 图形层截图与 FileProvider URI 的仪器测试。
+    androidTestImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:1.13.0-rc01")
 
     compileOnly("io.github.libxposed:api:102.0.0")
 }

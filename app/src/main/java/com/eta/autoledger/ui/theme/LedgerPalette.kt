@@ -44,6 +44,8 @@ data class LedgerColors(
     val scrim: Color,
     /** 自定义首页背景上的可读性遮罩。 */
     val backgroundOverlay: Color,
+    /** 截图分享时使用的纯白/纯黑底，避免自定义背景影响图片可读性。 */
+    val captureBackground: Color,
     /** 卡片柔和投影色，必须使用带透明度的语义色。 */
     val cardShadow: Color,
     // ---- 文字 ----
@@ -102,6 +104,7 @@ object LedgerPalette {
         chartMuted = Color(0xFFA1A1AA),
         scrim = Color(0x99000000),
         backgroundOverlay = Color(0x80FFFFFF),
+        captureBackground = Color(0xFFFFFFFF),
         cardShadow = Color(0x0D000000),
         text = Color(0xFF09090B),
         textSecondary = Color(0xFF71717A),
@@ -140,6 +143,7 @@ object LedgerPalette {
         chartMuted = Color(0xFF52525B),
         scrim = Color(0xB3000000),
         backgroundOverlay = Color(0xB3000000),
+        captureBackground = Color(0xFF000000),
         cardShadow = Color(0x0D000000),
         text = Color(0xFFFAFAFA),
         textSecondary = Color(0xFFA1A1AA),

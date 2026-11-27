@@ -10,6 +10,7 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableSharedFlow
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -177,7 +178,8 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
         }
         fun captureVision() {
             showAiSheet = false
-            val file = File(context.cacheDir, "photo_${System.currentTimeMillis()}.jpg")
+            val photos = File(context.cacheDir, "photos").apply { mkdirs() }
+            val file = File(photos, "photo_${System.currentTimeMillis()}.jpg")
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             cameraUri = uri
             cameraLauncher.launch(uri)
@@ -185,6 +187,7 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
         BackHandler(enabled = selected != 0) { selected = 0 }
 
         var reportTab by rememberSaveable { mutableIntStateOf(1) }
+        val reportShareRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
         val tabs = listOf(
             Tab("记账", MiuixIcons.Home),
             Tab("记一笔", MiuixIcons.Add),
@@ -225,6 +228,7 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
                                     ReportTopBar(
                                         tab = reportTab,
                                         onTab = { reportTab = it },
+                                        onShare = { reportShareRequests.tryEmit(Unit) },
                                     )
                                 } else {
                                     LedgerTopBar(
@@ -269,7 +273,11 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
                                 when (tab) {
                                     0 -> HomeScreen(Modifier.padding(padding), onSearch = { showSearch = true })
                                     1 -> AddScreen(Modifier.padding(padding), onDone = { selected = 0 })
-                                    else -> ReportScreen(modifier = Modifier.padding(padding), tab = reportTab)
+                                    else -> ReportScreen(
+                                        modifier = Modifier.padding(padding),
+                                        tab = reportTab,
+                                        shareRequests = reportShareRequests,
+                                    )
                                 }
                             }
                         }
@@ -499,7 +507,11 @@ private fun LedgerTopBar(
 }
 
 @Composable
-private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
+private fun ReportTopBar(
+    tab: Int,
+    onTab: (Int) -> Unit,
+    onShare: () -> Unit,
+) {
     val barShape = RoundedCornerShape(LocalDimens.current.radiusCard)
     Column(
         modifier = Modifier
@@ -525,6 +537,20 @@ private fun ReportTopBar(tab: Int, onTab: (Int) -> Unit) {
                     style = MiuixTheme.textStyles.title3,
                     modifier = Modifier.align(Alignment.Center),
                 )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(LedgerDimens.minTouch)
+                        .clip(CircleShape)
+                        .clickable(onClick = onShare),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = ReportShareIcon,
+                        contentDescription = "分享报表",
+                        tint = LedgerTheme.textSecondary,
+                    )
+                }
             }
 
             Row(

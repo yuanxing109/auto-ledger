@@ -70,7 +70,7 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
             VERSION_NAME="${GITHUB_REF_NAME#v}"
           else
-            VERSION_NAME="${DEFAULT_NAME%.*}.${GITHUB_RUN_NUMBER}"
+            VERSION_NAME="$DEFAULT_NAME"
           fi
           VERSION_CODE="$((DEFAULT_CODE + GITHUB_RUN_NUMBER))"
 

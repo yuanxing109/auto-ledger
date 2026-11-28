@@ -122,8 +122,19 @@ jobs:
         if: always()
         run: find app/build/outputs -name '*.apk' -exec ls -lh {} \; || true
 
+      - name: Upload CI APK
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoLedger-${{ steps.version.outputs.name }}-ci-${{ github.run_number }}
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Stage release APK
-        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           set -euo pipefail
@@ -133,7 +144,7 @@ jobs:
           sha256sum dist/*.apk
 
       - name: Prepare GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
+        if: startsWith(github.ref, 'refs/tags/v')
         id: release_meta
         shell: bash
         run: |
@@ -149,7 +160,7 @@ jobs:
           fi
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_meta.outputs.tag }}

@@ -1,5 +1,7 @@
 package com.eta.autoledger.ui.components
 
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.components.OilText
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,8 +32,6 @@ import androidx.compose.ui.unit.dp
 import com.eta.autoledger.data.ImportDedup
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.ui.LedgerTheme
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 导入预览：解析完先给用户看清楚「多少条新的、多少条疑似重复」，再决定怎么写库。
@@ -54,7 +54,7 @@ fun ImportPreviewDialog(
     var expanded by remember(plan) { mutableStateOf(false) }
     val pending = plan.fresh.size + actions.count { it != ImportDedup.Action.SKIP }
 
-    AppDialog(
+    OilDialog(
         show = show,
         title = "导入预览",
         summary = plan.summary,
@@ -66,7 +66,7 @@ fun ImportPreviewDialog(
     ) {
         if (plan.suspects.isEmpty()) {
             Spacer(Modifier.height(12.dp))
-            Text(
+            OilText(
                 // 全部是老数据时，「没有发现重复」会让人误以为文件是空的，
                 // 这种情况要明确说是「这份账单之前已经导过了」。
                 text = if (plan.fresh.isEmpty() && plan.skipped > 0) {
@@ -74,7 +74,7 @@ fun ImportPreviewDialog(
                 } else {
                     "没有发现重复，直接写入即可。"
                 },
-                style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
+                style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary),
             )
         } else {
             Spacer(Modifier.height(8.dp))
@@ -87,14 +87,14 @@ fun ImportPreviewDialog(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
+                OilText(
                     text = if (expanded) "收起疑似重复列表" else "展开查看疑似重复（" + plan.suspects.size + " 条）",
-                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.accent),
+                    style = OilTheme.typography.caption.copy(color = LedgerTheme.accent),
                     modifier = Modifier.weight(1f),
                 )
-                Text(
+                OilText(
                     text = if (expanded) "︿" else "﹀",
-                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
+                    style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary),
                 )
             }
             if (expanded) {
@@ -147,7 +147,7 @@ fun ImportPreviewDialog(
                     .clickable(enabled = !busy) { onDismiss() },
                 contentAlignment = Alignment.Center,
             ) {
-                Text("取消", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary))
+                OilText("取消", style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary))
             }
             Box(
                 modifier = Modifier
@@ -158,9 +158,9 @@ fun ImportPreviewDialog(
                     .clickable(enabled = !busy && pending > 0) { onCommit(actions.toList()) },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
+                OilText(
                     text = if (busy) "正在写入…" else "导入 " + pending + " 条",
-                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.onAccent),
+                    style = OilTheme.typography.caption.copy(color = LedgerTheme.onAccent),
                 )
             }
         }
@@ -184,9 +184,9 @@ private fun SuspectCard(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
+            OilText(
                 text = "#" + (index + 1) + " · 相差 " + suspect.minutesApart + " 分钟",
-                style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
+                style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary),
                 modifier = Modifier.weight(1f),
             )
             val label = when (action) {
@@ -199,9 +199,9 @@ private fun SuspectCard(
                 ImportDedup.Action.SKIP -> LedgerTheme.textSecondary
                 ImportDedup.Action.MERGE -> LedgerTheme.accent
             }
-            Text(
+            OilText(
                 text = label + " · 点击切换",
-                style = MiuixTheme.textStyles.footnote1.copy(color = tint),
+                style = OilTheme.typography.caption.copy(color = tint),
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .clickable(onClick = onCycle)
@@ -212,9 +212,9 @@ private fun SuspectCard(
         CompareLine("待导入", suspect.incoming)
         val verdict = suspect.aiVerdict
         if (verdict != null) {
-            Text(
+            OilText(
                 text = if (verdict) "AI 判断：同一笔消费" else "AI 判断：不是同一笔",
-                style = MiuixTheme.textStyles.footnote1.copy(
+                style = OilTheme.typography.caption.copy(
                     color = if (verdict) LedgerTheme.accent else LedgerTheme.textSecondary,
                 ),
             )
@@ -225,20 +225,20 @@ private fun SuspectCard(
 @Composable
 private fun CompareLine(label: String, entry: LedgerEntry) {
     Row(verticalAlignment = Alignment.Top) {
-        Text(
+        OilText(
             text = label,
-            style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
+            style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary),
             modifier = Modifier.width(48.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
-            Text(
+            OilText(
                 text = entry.note.ifBlank { entry.category },
-                style = MiuixTheme.textStyles.body1.copy(color = LedgerTheme.text),
+                style = OilTheme.typography.body.copy(color = LedgerTheme.text),
             )
-            Text(
+            OilText(
                 text = entry.time + " · " + entry.category + " · " +
                     "%.2f".format(entry.amount) + " 元 · " + entry.source,
-                style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
+                style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary),
             )
         }
     }
@@ -254,6 +254,6 @@ private fun QuickAction(text: String, modifier: Modifier, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.text))
+        OilText(text, style = OilTheme.typography.caption.copy(color = LedgerTheme.text))
     }
 }

@@ -5,7 +5,7 @@
 # 退出码：0 = 通过（warn 不影响退出码），1 = 有 error 级违规。
 #
 # 阶段说明（P0 只把 R1–R3 设为 error）：
-#   P0 已完成：R1 主题单源、R2 色值单一来源、R3 命名色清零
+#   P0 已完成：R1 Oil 主题单源、R2 色值单一来源、R3 命名色清零
 #   P1 目标（现为 warn）：R4 字号、R5 字重、R6 圆角/间距魔法数
 #   P2 目标（现为 warn）：R7 Toast → Snackbar
 set -uo pipefail
@@ -36,9 +36,9 @@ check() {
 
 printf '%sUI 一致性门禁%s（源码目录 %s）\n' "$bold" "$reset" "$SRC"
 
-# R1：全站只允许 AppTheme 创建 MiuixTheme（否则深色出现两套色，CompositionLocal 被覆盖）
-check "R1 主题只在 ui/theme/AppTheme.kt 里创建" \
-  '^[[:space:]]*(MiuixTheme|MaterialTheme)\(' \
+# R1：全站只允许 AppTheme 建立 Oil UI 主题（否则 CompositionLocal 会被局部覆盖）
+check "R1 Oil 主题只在 ui/theme/AppTheme.kt 里创建" \
+  '^[[:space:]]*(OilThemeProvider|MiuixTheme|MaterialTheme)\(' \
   'ui/theme/AppTheme.kt' 1
 
 # R2：色值只能住在 LedgerPalette（CategoryStore 的分类调色板 P1 再迁）
@@ -52,12 +52,12 @@ check "R3 不写 Color.White/Black 等命名色" \
   'ui/theme/|ui/AiScanIcon.kt|com/kyant/backdrop/catalog/' 1
 
 # R4：字号必须来自 textStyles.xxx，不许就地写 sp
-check "R4 字号只走 MiuixTheme.textStyles" \
+check "R4 字号只走 OilTypography" \
   'fontSize[[:space:]]*=[[:space:]]*[0-9]+(\.[0-9]+)?\.sp' \
   'ui/theme/' 0
 
 # R5：字重同理
-check "R5 字重只走 textStyles" \
+check "R5 字重只走 OilTypography" \
   'fontWeight[[:space:]]*=[[:space:]]*FontWeight\.' \
   'ui/theme/' 0
 

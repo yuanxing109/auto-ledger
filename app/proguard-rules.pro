@@ -32,7 +32,6 @@
 
 # 第三方 UI 库若未自带 consumer 规则时的兜底
 -dontwarn io.github.kyant0.**
--dontwarn top.yukonga.miuix.**
 
 # androidx.security:security-crypto → tink-android。
 # tink 的编译期注解依赖（errorprone / jsr305）不在运行时 classpath 上，

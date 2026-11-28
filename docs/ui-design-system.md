@@ -2,282 +2,178 @@
 
 ## 1. 设计方向
 
-AutoLedger 使用 Miuix 作为组件与主题基础。界面目标是让金额、分类和周期数据保持高对比、低干扰和稳定布局，避免装饰效果压过内容。
+AutoLedger 使用自有的 Oil UI。界面以“数字化账本”为核心，突出金额、分类和周期数据。视觉语言由暖纸色画布、深墨文字、石油蓝强调色和实色表面组成。
 
 核心规则：
 
-- 数字优先。
-- 语义颜色明确。
-- 页面层级依靠表面色和细边框。
-- 全局背景可以存在，但内容层必须保持可读。
-- 不使用实时高斯模糊。
-- 通用容器、间距和文字样式必须使用共享 Token。
+- 数字优先，金额和统计值使用等宽数字。
+- 页面表面保持不透明，不使用玻璃拟物和实时高斯模糊。
+- 分组优先依靠空间和字号，线条只用于真正的边界。
+- 普通卡片不叠加多套边框、阴影和强调色。
+- 所有视觉值来自 `ui/theme/OilTokens.kt`。
 
 ## 2. 应用骨架
 
-### 2.1 三页签
-
-主界面固定三个底部页签：
+主界面包含三个底部页签。
 
 | 索引 | 页面 | 顶栏 | 底栏 |
 | --- | --- | --- | --- |
-| 0 | 记账 | `LedgerTopBar` | 显示 |
-| 1 | 记一笔 | `LedgerTopBar` | 隐藏 |
-| 2 | 报表 | `ReportTopBar` | 显示 |
+| 0 | 记账 | `OilTopBar` | `OilBottomBar` |
+| 1 | 记一笔 | `OilTopBar` | 隐藏 |
+| 2 | 报表 | `OilTopBar` + `OilTabBar` | `OilBottomBar` |
 
-页签切换使用约 180ms 的小幅横向位移和淡入淡出。
+设置页和搜索页作为全屏覆盖层。页面切换继续使用 `rememberMotionDuration`，系统关闭动画时时长归零。
 
-设置页与搜索页是全屏覆盖层，使用约 200ms 淡入淡出。三页签结构不随功能扩展改变。
+## 3. Oil 主题
 
-### 2.2 根层
+`ui/theme/AppTheme.kt` 是唯一主题根。它解析 `system / light / dark`，然后调用 `OilThemeProvider` 注入：
 
-`LedgerApp` 根层包含：
+- `LocalOilColors`
+- `LocalOilDimens`
+- `LocalOilTypography`
+- `LocalOilShapes`
 
-- `LedgerBackdrop`：背景图或默认页面背景。
-- `LedgerSnackbarHost`：全局提示。
-- `AiActionSheet`：统一 AI 入口。
-- 主页面或覆盖层内容。
-
-页面根容器使用透明背景，不得再铺一层独立全屏背景。
-
-## 3. 主题入口
-
-`ui/theme/AppTheme.kt` 是唯一主题根：
-
-- 支持 `system / light / dark`。
-- 向 `MiuixTheme` 注入色板、`ledgerTextStyles()` 和主题控制器。
-- 页面不得在内部另建 `MiuixTheme` 或 `MaterialTheme`。
+页面和组件不得自行建立第二套主题。`LedgerTheme` 仅作为 Canvas、图表和非 Composable 绘制代码的兼容读取入口。
 
 ## 4. 颜色
 
-`ui/theme/LedgerPalette.kt` 是唯一色值源。
-
-### 4.1 主要语义
+色值唯一来源是 `ui/theme/OilTokens.kt`。
 
 | Token | 浅色 | 深色 | 用途 |
 | --- | --- | --- | --- |
-| `page` | `#FAFAFA` | `#09090B` | 页面背景 |
-| `surface` | `#FFFFFF` | `#18181B` | 卡片与列表表面 |
-| `captureBackground` | `#FFFFFF` | `#000000` | 报表分享图片的纯色底 |
-| `surfaceVariant` | `#F4F4F5` | `#27272A` | 次级表面 |
-| `inset` | `#F4F4F5` | `#202023` | 输入框与内凹区域 |
-| `surfacePressed` | `#EFEFF1` | `#27272A` | 按压态 |
-| `border` | `#E4E4E7` | `#27272A` | 控件边界 |
-| `divider` | `#E4E4E7` | `#3F3F46` | 分割线 |
-| `text` | `#09090B` | `#FAFAFA` | 主文字与金额 |
-| `textSecondary` | `#71717A` | `#A1A1AA` | 次级说明 |
-| `textTertiary` | `#A1A1AA` | `#71717A` | 占位与弱提示 |
-| `accent` | `#2563EB` | `#60A5FA` | 主操作、焦点、图表主色 |
-| `accentPressed` | `#1D4FD7` | `#3B82F6` | 主色按压态 |
-| `income` | `#399E75` | `#70C39D` | 收入与正结余 |
-| `expense` | `#D16158` | `#E18B83` | 支出与负向金额 |
-| `danger` | `#C6534D` | `#D97870` | 删除与危险操作 |
-| `warning` | `#B7791F` | `#D7A94E` | 警告与预算临界 |
+| `canvas` | `#F1EEE5` | `#0F1412` | 页面底色 |
+| `surface` | `#FFFCF5` | `#171D1A` | 标准卡片与导航 |
+| `surfaceRaised` | `#FFFFFF` | `#202823` | 弹窗与浮层 |
+| `surfaceMuted` | `#E8E2D6` | `#252E29` | 输入框与键帽 |
+| `line` | `#D7D0C3` | `#323C36` | 控件边界 |
+| `ink` | `#17201D` | `#F4F0E7` | 主文字 |
+| `inkMuted` | `#5B655F` | `#B2B8B1` | 次级文字 |
+| `accent` | `#0E5C63` | `#70C8CD` | 主操作与图表 |
+| `heroSurface` | `#0E5C63` | `#12383A` | 核心资产卡 |
+| `onHero` | `#FFFCF5` | `#F4F0E7` | Hero 卡文字 |
+| `income` | `#237A57` | `#7BC7A4` | 收入与正结余 |
+| `expense` | `#B74332` | `#F18A78` | 支出 |
+| `warning` | `#996515` | `#E1B15B` | 预算临界 |
 
-### 4.2 使用规则
-
-- `income` 只表示收入或正结余。
-- `expense` 表示普通支出或负结余。
-- `danger` 表示删除、错误和危险操作。
-- 绿色不得表示预算充足。
-- 支出、收入和预算状态不能只靠颜色区分。
-- 卡片阴影使用带透明度的 `cardShadow`。
-- 页面代码不得写 `Color(0x...)` 或命名色。
+内容表面必须使用实色。透明度只允许用于弹窗遮罩和阴影 Token。深浅模式不能依赖透明度表达层级。
+自定义壁纸开启时，正文放在不透明 Oil 账页上，仅让壁纸从页面两侧露出。
 
 ## 5. 字体
 
-`ui/theme/LedgerTextStyles.kt` 定义 Miuix 文本槽。
+`OilTypography` 定义固定文字角色：
 
-| 场景 | 样式 |
+| 场景 | Token |
 | --- | --- |
-| 首页核心金额 | `heroAmountStyle()`，32sp / Bold / `tnum` |
-| 账目大金额 | `amountDisplayStyle()`，34sp / Bold / `tnum`/ 右对齐 |
-| 页面标题 | `title1` |
-| 区块标题 | `title2` |
-| 列表标题 | `title3` |
-| 正文 | `body1` |
-| 次要正文 | `body2` |
-| 辅助说明 | `footnote1` |
+| 核心金额 | `heroAmount` |
+| 统计金额 | `amount` |
+| 页面标题 | `pageTitle` |
+| 区块标题 | `sectionTitle` |
+| 正文 | `body` |
+| 强调正文 | `bodyStrong` |
+| 辅助说明 | `caption` |
+| 标签 | `label` |
 
-`headline1` 保持 Miuix 默认值，因为设置页偏好标题内部依赖该槽。大金额使用专用函数，不占用 `headline1`。
+金额、百分比、日期和图表刻度使用等宽字体与 `tnum`。不要在本文件外写一次性 `fontSize`。
 
-金额和统计数字启用等宽数字，避免跳动与逐列错位。
+## 6. 尺寸与形状
 
-## 6. 间距与圆角
-
-`ui/theme/LedgerDimens.kt` 定义：
+尺寸阶梯为 `4 / 8 / 12 / 16 / 24 / 32dp`，最小触控区为 `48dp`。
 
 | Token | 值 | 用途 |
 | --- | ---: | --- |
-| `xs` | 4dp | 图标与文字 |
-| `sm` | 8dp | 紧凑间距 |
-| `md` | 12dp | 标准行内间距 |
-| `lg` | 16dp | 卡片内边距、页面边距 |
-| `xl` | 24dp | 区块间距 |
-| `xxl` | 32dp | 大分区间距 |
-| `minTouch` | 48dp | Android 最小触控区 |
-| `radiusSm` | 8dp | 小标签、键帽、小按钮 |
-| `radiusMd` | 12dp | 输入框、小卡片 |
-| `radiusLg` | 16dp | 标准卡片 |
-| `radiusXl` | 24dp | 特殊容器 |
-| `radiusDialog` | 28dp | 对话框 |
-| `radiusCapsule` | 50dp | 胶囊按钮 |
+| `control` | 16dp | 输入框与键帽 |
+| `card` | 24dp | 标准卡片 |
+| `dialog` | 32dp | 弹窗 |
+| `capsule` | 50dp | 按钮与标签 |
 
-`radiusSmall` 是 `LedgerDimens` 实例字段，值为 12dp。`radiusSm` 是 companion 常量，值为 8dp。两者语义不同。
+标准卡片使用 1dp `line` 边界。只有 `Raised` 卡片允许柔和阴影，`Hero` 卡片使用实色石油蓝表面。
 
-## 7. 统一卡片
+## 7. 基础组件
 
-`ui/components/ThemeSurfaceCard.kt` 是通用卡片容器：
+组件位于 `ui/components/`：
 
-- 默认圆角 16dp。
-- 实色 `surface`。
-- 1dp `borderSoft` 边框。
-- 填充与边框合并绘制。
-- 默认不添加阴影。
+- `OilCard`
+- `OilButton`
+- `OilIconButton`
+- `OilTextField`
+- `OilTopBar`
+- `OilBottomBar`
+- `OilTabBar`
+- `OilDialog`
+- `OilSwitch`
+- `OilChoiceChip`
+- `OilIconBadge`
+- `OilScaffold`
+- `OilSettingsGroup` / `OilSettingsRow` / `OilSwitchSettingsRow`
 
-需要阴影时由调用方使用 `shadow` 并传入语义化透明色。
+Oil 组件只使用 Compose Foundation、Runtime、UI 和 Animation，不依赖第三方 UI 组件库。
 
-页面新增卡片前应先复用 `ThemeSurfaceCard`；只有图表、特殊交互或布局确实不匹配时才单独实现。
+设置页分组不拆成多个独立卡片。组内行使用 60dp 最小高度，主标题为 `ink`，说明为 `inkMuted`，右侧只保留轻量箭头或状态值。
 
 ## 8. 页面模式
 
-### 8.1 首页
+### 首页
 
-`HomeScreen` 内容顺序：
+页面顺序为问候语、Hero 资产卡、最近账目标题和账目列表。Hero 卡集中展示本月支出、收入、笔数、日均和预算。每条账目使用 `OilCard(Base)`，卡片间距 16dp。
 
-1. 问候语。
-2. 核心资产卡。
-3. 最近账目标题与搜索入口。
-4. 按天分组列表。
+### 记一笔
 
-核心资产卡集中展示本月支出、收入、笔数、日均、预算进度和自动记账状态。
+页面包含收支类型、记录时间、Hero 金额卡、分类宫格、子分类、周期设置和数字键盘。
 
-### 8.2 记一笔
+数字键盘使用实色键帽，按下时下移 1dp 并切换 `surfacePressed`。系统文字 IME 可见时隐藏自定义数字键区，避免双键盘堆叠。
 
-`AddScreen` 包含：
+分类宫格使用低饱和圆底，不给每个分类添加粗边框。AI 快捷入口和保存操作使用 `OilButton`。
 
-- 金额输入卡。
-- 分类宫格。
-- 二级分类联想输入。
-- 周期设置。
-- 自绘数字键盘。
-- 文本 AI 快捷入口。
+### 报表
 
-AI 识图入口统一放在顶栏或全局 AI 面板，页面主体不再重复放相机/相册图标。
+周、月、年切换使用 `OilTabBar`。总览和图表容器使用 `OilCard(Base)`。图表颜色来自 Oil 色板：
 
-### 8.3 报表
+- 支出使用 `expense`
+- 收入使用 `income`
+- 主趋势使用 `accent`
+- 分类构成使用稳定顺序的 `chart1..chart6`
 
-`ReportScreen` 支持周、月、年：
+没有数据时显示紧凑 `暂无数据` 状态，不保留空图表高度。
 
-- 总览卡。
-- 折线趋势。
-- 柱状对比。
-- 环形分类构成。
-- 分类排行和子分类明细。
+报表分享提供“分享当前图表”和“分享完整报表”两种范围。导出的 PNG 始终铺设不透明的 `page` 背景，并在底部使用 `inkMuted` 水印“由 AutoLedger 生成”。临时图片放在专用缓存子目录，通过 FileProvider 只读分享并延迟清理。
 
-图表使用 Compose Canvas 自绘。
+### 搜索与弹窗
 
-报表顶栏提供“分享报表”图标按钮。弹窗包含两个模式：
+搜索页使用 `OilTopBar` 和 `OilTextField`。业务弹窗使用 `OilDialog`，操作按钮使用 `OilButton`。
 
-- 当前图表：折线图和柱状图。
-- 完整报表：静态报表头、收支概览、趋势图和分类占比。
+## 9. 键盘与无障碍
 
-分享图片通过 Compose `GraphicsLayer` 捕获，不使用屏幕 View 截屏。导出期间临时切换为 `captureBackground`，即浅色纯白、深色纯黑，并在右下角显示“由 AutoLedger 生成”浅水印。图片保存到 cache 后通过 FileProvider 交给系统分享面板。
+- 页面根节点使用 `OilKeyboardInsetContainer`，通过 `imePadding()` 缩短可用区域。
+- `OilTextField` 聚焦后请求滚入视口。
+- 自定义数字键盘在系统 IME 可见时自动隐藏。
+- 所有可点击元素至少 48dp。
+- 纯图标按钮必须有 `contentDescription`。
+- 关键金额不依赖透明度传达状态。
+- 状态必须来自 `AppPrefs`、`CategoryStore`、Repository 或 ViewModel。
 
-完整报表使用固定高度的分类环图，不复制分类排行列表。捕获前会检查图层尺寸，单边超过 `8192px` 或总像素超过 `20000000` 时停止导出并提示，避免生成超大位图。
+## 10. UI 一致性门禁
 
-分享入口不修改统计数据与图表口径。普通页面背景和自定义壁纸在非导出状态保持不变。
-
-### 8.4 搜索
-
-`SearchScreen` 使用全屏覆盖层：
-
-- 顶部返回与搜索框。
-- 快捷筛选 Chip。
-- 重型筛选 BottomSheet。
-- 按天分组结果。
-- 编辑入口复用 `EntryEditDialog`。
-
-## 9. 设置页
-
-设置页根据 `SettingsPage.parent` 管理层级，不维护重复返回栈。
-
-`SettingsPageColumn` 统一提供：
-
-- 页面水平 16dp 边距。
-- 卡片间距 16dp。
-- 纵向滚动。
-- 底部 82dp 留白。
-
-设置主页由两张大组卡组成：
-
-第一组：
-
-- 自动记账
-- 记账设置
-- 通知与提醒
-- 数据与备份
-- 外观与小部件
-
-第二组：
-
-- AI 与高级功能
-- 权限与后台
-- 关于
-
-组内使用细分割线。复杂配置进入独立子页面，设置主页不再平铺全部字段。
-
-## 10. 交互与无障碍
-
-- 触控目标不小于 48dp。
-- 可点击元素必须有按压反馈。
-- 图标按钮必须有有意义的 `contentDescription`。
-- 装饰图标使用空描述。
-- 覆盖层出现时，背景不得继续接收焦点或触控。
-- 支持系统字体缩放。
-- 关键金额允许换行，不截断。
-- 键盘和底栏不得遮挡当前输入项。
-- 动画时长通过共享 Motion API 获取。
-- 状态必须来自 `AppPrefs`、`CategoryStore` 或 ViewModel，不能保留只改 UI 的假开关。
-
-## 11. UI 一致性门禁
-
-CI 首先运行：
+CI 运行：
 
 ```bash
 bash tools/check-ui-consistency.sh
 ```
 
-| 规则 | 级别 | 当前约束 |
+| 规则 | 级别 | 约束 |
 | --- | --- | --- |
-| R1 | error | 只允许 `AppTheme` 创建主题 |
-| R2 | error | 颜色字面量只允许在设计 Token |
+| R1 | error | Oil 主题只在 `AppTheme.kt` 创建 |
+| R2 | error | 颜色字面量只允许出现在 `ui/theme/` |
 | R3 | error | 禁止命名色直接用于页面 |
-| R4 | warn | 字号优先使用文本槽 |
-| R5 | warn | 字重优先使用文本槽 |
-| R6 | warn | `RoundedCornerShape` 使用合法阶梯值 |
-| R7 | warn | Composable 页面优先使用全局 Snackbar |
+| R4 | warn | 字号优先使用 OilTypography |
+| R5 | warn | 字重优先使用 OilTypography |
+| R6 | warn | 圆角使用合法阶梯值 |
+| R7 | warn | 页面提示优先使用全局 Snackbar |
 
-R1 至 R3 会阻断 CI。R4 至 R7 当前只提示，不代表问题已经全部清零。
+## 11. 性能与禁止模式
 
-非 Composable 宿主，例如 BroadcastReceiver、TileService 和部分前台服务，仍可能使用 Toast。页面级提示应优先使用 `LocalSnackbar`。
-
-## 12. 性能约束
-
-- 禁止实时模糊。
-- 自定义背景只解码一次并复用。
-- 列表背景保持透明，不重复绘制全屏 Bitmap。
-- 不在滚动列表中创建高频 Formatter。
-- 图表使用 Compose Canvas，不为单个点引入重型 View 互操作。
-- 页面状态提升后避免整页无关重组。
-
-## 13. 禁止模式
-
-- 页面内新建第二套主题。
-- 整块高饱和品牌色铺底掩盖金额。
-- 每个设置项单独占一张卡片。
-- 纯黑硬阴影。
-- 金额使用非等宽或手写字体。
-- 用绿色表示预算充足。
-- 为装饰加入持续动画。
-- 通过半透明文字降低关键信息对比度。
+- 禁止实时模糊和玻璃拟物。
+- 禁止页面内建立第二套主题。
+- 禁止给每个普通卡片叠加粗边框和重阴影。
+- 禁止用绿色表示预算充足。
+- 禁止用透明文字降低关键信息对比度。
+- 禁止为装饰加入持续动画。

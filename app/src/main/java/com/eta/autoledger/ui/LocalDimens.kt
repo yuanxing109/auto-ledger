@@ -1,6 +1,6 @@
 package com.eta.autoledger.ui
 
-import com.eta.autoledger.ui.theme.LedgerDimens
+import com.eta.autoledger.ui.theme.OilDimens
 
 /**
  * 尺寸令牌的 CompositionLocal 入口。
@@ -12,4 +12,4 @@ import com.eta.autoledger.ui.theme.LedgerDimens
  * 目前只有一套（浅深色不改变尺寸），但入口先留出来 —— 以后要做「大屏放大」「紧凑模式」，
  * 只要换 CompositionLocal 的提供方，不用改任何页面代码。
  */
-val LocalDimens = androidx.compose.runtime.staticCompositionLocalOf { LedgerDimens.default }
+val LocalDimens = androidx.compose.runtime.staticCompositionLocalOf { OilDimens.default }

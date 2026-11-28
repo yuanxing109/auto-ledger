@@ -1,18 +1,23 @@
 package com.eta.autoledger.ui.screen
 
 import android.util.Log
-import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.ui.OilIcons
 import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.util.AppDateFormats
 import com.eta.autoledger.ui.rememberMotionDuration
-import com.eta.autoledger.ui.components.AppDialog
-import com.eta.autoledger.ui.components.ThemeSurfaceCard
-import com.eta.autoledger.ui.components.ThemeIconBadge
+import com.eta.autoledger.ui.components.OilDialog
+import com.eta.autoledger.ui.components.OilCard
+import com.eta.autoledger.ui.components.OilIconBadge
+import com.eta.autoledger.ui.components.OilButton
+import com.eta.autoledger.ui.components.OilText
+import com.eta.autoledger.ui.theme.OilPalette
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.theme.oilPageSurface
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -42,7 +47,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -53,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -68,6 +73,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -85,16 +91,16 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.eta.autoledger.data.CategoryAgg
 import com.eta.autoledger.data.CategoryBreakdown
 import com.eta.autoledger.data.ReportAggregate
@@ -105,6 +111,7 @@ import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.SubCategoryShare
 import com.eta.autoledger.ui.share.ReportShareExporter
 import com.eta.autoledger.ui.window.LocalSnackbar
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -114,20 +121,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
-import top.yukonga.miuix.kmp.icon.extended.ChevronForward
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-
-private val CardBorder: Color get() = LedgerTheme.borderSoft
-private val TextPrimary: Color get() = LedgerTheme.text
-private val TextSecondary: Color get() = LedgerTheme.textSecondary
-private val AccentBlue: Color get() = LedgerTheme.accent
-private val AccentSoft: Color get() = LedgerTheme.inset
-private val TrackGray: Color get() = LedgerTheme.divider
+private val CurrentColors get() = OilPalette.of(OilTheme.dark)
+private val TextPrimary: Color get() = CurrentColors.ink
+private val TextSecondary: Color get() = CurrentColors.inkMuted
+private val AccentBlue: Color get() = CurrentColors.accent
+private val AccentSoft: Color get() = CurrentColors.surfaceMuted
+private val TrackGray: Color get() = CurrentColors.divider
 
 /**
  * 一次「周期 key + 渲染数据」的快照。
@@ -171,7 +170,7 @@ private const val MAX_SHARE_PIXELS = 20_000_000L
 
 private data class TrendPoint(val label: String, val value: Double)
 
-private val DonutPalette: List<Color> get() = LedgerTheme.chartSeries
+private val DonutPalette: List<Color> get() = CurrentColors.charts
 
 private data class CategorySlice(
     val name: String,
@@ -210,6 +209,16 @@ private enum class ReportShareMode {
     FULL,
 }
 
+internal fun ReportAggregate.hasShareableData(): Boolean =
+    expense > 0.0 ||
+        income > 0.0 ||
+        trend.any { it.total > 0.0 } ||
+        bars.any { it.total > 0.0 } ||
+        categories.any { it.total > 0.0 }
+
+internal fun ReportAggregate.hasShareableChartData(): Boolean =
+    trend.any { it.total > 0.0 } || bars.any { it.total > 0.0 }
+
 @Composable
 fun ReportScreen(
     modifier: Modifier = Modifier,
@@ -221,7 +230,7 @@ fun ReportScreen(
     var subCategory by rememberSaveable { mutableStateOf(false) }
     var detailSlice by remember { mutableStateOf<CategorySlice?>(null) }
     // 常驻组合、只切 show：外面用 detailSlice?.let { } 包起来的话，一关闭组件就被移出组合，
-    // AppDialog 接管的退场动画播不出来。留一份最后一次的切片给退场帧渲染。
+    // OilDialog 接管的退场动画播不出来。留一份最后一次的切片给退场帧渲染。
     var lastDetailSlice by remember { mutableStateOf<CategorySlice?>(null) }
     LaunchedEffect(detailSlice) { if (detailSlice != null) lastDetailSlice = detailSlice }
 
@@ -276,19 +285,34 @@ fun ReportScreen(
     val chartsShareLayer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
     val snackbar = LocalSnackbar.current
+    val shareBackground = OilTheme.colors.canvas
+    val hasShareableChartData = loaded?.aggregate?.hasShareableChartData() == true
+    val latestLoaded by rememberUpdatedState(loaded)
 
     LaunchedEffect(shareRequests) {
         shareRequests.collect {
-            if (loaded == null) {
-                snackbar.showLong("报表还在统计，请稍后再分享")
-            } else {
-                shareDialogVisible = true
+            val aggregate = latestLoaded?.aggregate
+            when {
+                latestLoaded == null -> snackbar.showLong("报表还在统计，请稍后再分享")
+                aggregate == null || !aggregate.hasShareableData() -> snackbar.show("暂无数据可分享")
+                else -> shareDialogVisible = true
             }
         }
     }
 
     fun shareReport(mode: ReportShareMode) {
         if (shareBusy) return
+        val aggregate = loaded?.aggregate
+        if (aggregate == null || !aggregate.hasShareableData()) {
+            scope.launch { snackbar.show("暂无数据可分享") }
+            shareDialogVisible = false
+            return
+        }
+        if (mode == ReportShareMode.CHARTS && !aggregate.hasShareableChartData()) {
+            scope.launch { snackbar.show("当前口径暂无图表数据") }
+            shareDialogVisible = false
+            return
+        }
         captureMode = mode
         captureReady = false
         shareBusy = true
@@ -309,7 +333,9 @@ fun ReportScreen(
                     layer.toImageBitmap()
                 }
                 ReportShareExporter.share(context, image)
-            } catch (error: Throwable) {
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
                 Log.e("AutoLedger", "报表分享图片生成失败", error)
                 snackbar.showLong("分享图片生成失败，请重试")
             } finally {
@@ -323,7 +349,7 @@ fun ReportScreen(
     val reportCaptureActive = captureMode == ReportShareMode.FULL
     val chartsCaptureActive = captureMode == ReportShareMode.CHARTS
 
-    Box(modifier = modifier.fillMaxSize().background(Color.Transparent)) {
+    Box(modifier = modifier.fillMaxSize().oilPageSurface()) {
         AnimatedContent(
             targetState = frame,
             transitionSpec = { fadeIn(tween(motion)) togetherWith fadeOut(tween(motion)) },
@@ -335,9 +361,9 @@ fun ReportScreen(
             // 首帧还没有数据：给一句轻提示，而不是先画一屏 0 元、空折线、空环图。
             if (snapshot == null) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
+                    OilText(
                         text = "正在统计…",
-                        style = MiuixTheme.textStyles.footnote1,
+                        style = OilTheme.typography.caption,
                         color = TextSecondary,
                     )
                 }
@@ -364,7 +390,7 @@ fun ReportScreen(
                         .then(
                             if (reportCaptureActive) {
                                 Modifier
-                                    .background(LedgerTheme.captureBackground)
+                                    .background(shareBackground)
                                     .padding(12.dp)
                             } else {
                                 Modifier
@@ -400,7 +426,7 @@ fun ReportScreen(
                             .then(
                                 if (chartsCaptureActive) {
                                     Modifier
-                                        .background(LedgerTheme.captureBackground)
+                                        .background(shareBackground)
                                         .padding(12.dp)
                                 } else {
                                     Modifier
@@ -415,8 +441,12 @@ fun ReportScreen(
                                 title = "趋势图表",
                             )
                         }
-                        LineCard(data = frameData, income = snapshot.income)
-                        BarCard(data = frameData, income = snapshot.income)
+                        if (frameData.trend.isEmpty() && frameData.bars.isEmpty()) {
+                            TrendEmptyCard()
+                        } else {
+                            LineCard(data = frameData, income = snapshot.income)
+                            BarCard(data = frameData, income = snapshot.income)
+                        }
                         if (chartsCaptureActive) ShareWatermark()
                     }
 
@@ -454,6 +484,7 @@ fun ReportScreen(
     ReportShareDialog(
         show = shareDialogVisible,
         busy = shareBusy,
+        chartEnabled = hasShareableChartData,
         onDismiss = { if (!shareBusy) shareDialogVisible = false },
         onSelect = ::shareReport,
     )
@@ -496,36 +527,37 @@ private fun ShareReportHeader(
         verticalAlignment = Alignment.Bottom,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
+            OilText(
                 text = "AutoLedger",
-                style = MiuixTheme.textStyles.footnote1,
-                color = LedgerTheme.accent,
+                style = OilTheme.typography.caption,
+                color = CurrentColors.accent,
             )
             Spacer(Modifier.height(2.dp))
-            Text(
+            OilText(
                 text = title + " · " + (if (income) "收入" else "支出"),
-                style = MiuixTheme.textStyles.title3,
-                color = LedgerTheme.text,
+                style = OilTheme.typography.sectionTitle,
+                color = CurrentColors.text,
             )
         }
-        Text(
+        OilText(
             text = data.periodLabel,
-            style = MiuixTheme.textStyles.body2,
-            color = LedgerTheme.textSecondary,
+            style = OilTheme.typography.body,
+            color = CurrentColors.textSecondary,
         )
     }
 }
 
 @Composable
 private fun ShareWatermark() {
+    val colors = OilTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 2.dp, end = 4.dp),
         horizontalArrangement = Arrangement.End,
     ) {
-        Text(
+        OilText(
             text = "由 AutoLedger 生成",
-            style = MiuixTheme.textStyles.footnote2,
-            color = LedgerTheme.textTertiary.copy(alpha = 0.5f),
+            style = OilTheme.typography.label,
+            color = colors.inkMuted,
         )
     }
 }
@@ -537,9 +569,9 @@ private fun ShareDonutCard(data: ReportData, income: Boolean) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Sparkle()
                 Spacer(Modifier.width(8.dp))
-                Text(
+                OilText(
                     text = (if (income) "收入" else "支出") + "分类占比",
-                    style = MiuixTheme.textStyles.body1.copy(color = TextPrimary),
+                    style = OilTheme.typography.body.copy(color = TextPrimary),
                 )
             }
             Spacer(Modifier.height(4.dp))
@@ -552,34 +584,39 @@ private fun ShareDonutCard(data: ReportData, income: Boolean) {
 private fun ReportShareDialog(
     show: Boolean,
     busy: Boolean,
+    chartEnabled: Boolean,
     onDismiss: () -> Unit,
     onSelect: (ReportShareMode) -> Unit,
 ) {
-    AppDialog(
+    OilDialog(
         show = show,
         dismissEnabled = !busy,
         title = "分享报表",
-        summary = "选择图片范围，导出时会自动使用纯白或纯黑底色。",
+        summary = "选择图片范围，导出时会自动铺满 Oil 暖纸色或深墨色背景。",
         onDismissRequest = onDismiss,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ReportShareOption(
-                title = "当前图表",
-                summary = "仅包含当前折线图与柱状图",
-                enabled = !busy,
+                title = "分享当前图表",
+                summary = if (chartEnabled) {
+                    "仅包含当前折线图与柱状图"
+                } else {
+                    "当前口径暂无折线或柱状数据"
+                },
+                enabled = !busy && chartEnabled,
                 onClick = { onSelect(ReportShareMode.CHARTS) },
             )
             ReportShareOption(
-                title = "完整报表",
+                title = "分享完整报表",
                 summary = "包含收支总览、趋势图与分类占比",
                 enabled = !busy,
                 onClick = { onSelect(ReportShareMode.FULL) },
             )
             if (busy) {
-                Text(
+                OilText(
                     text = "正在生成分享图片…",
-                    style = MiuixTheme.textStyles.body2,
-                    color = LedgerTheme.textSecondary,
+                    style = OilTheme.typography.body,
+                    color = CurrentColors.textSecondary,
                 )
             }
         }
@@ -594,7 +631,7 @@ private fun ReportShareOption(
     onClick: () -> Unit,
 ) {
     val onClickOrNull = if (enabled) onClick else null
-    ThemeSurfaceCard(
+    OilCard(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClickOrNull,
     ) {
@@ -603,26 +640,37 @@ private fun ReportShareOption(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
+                OilText(
                     text = title,
-                    style = MiuixTheme.textStyles.body1,
-                    color = if (enabled) LedgerTheme.text else LedgerTheme.textTertiary,
+                    style = OilTheme.typography.body,
+                    color = if (enabled) CurrentColors.text else CurrentColors.textTertiary,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(
+                OilText(
                     text = summary,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = LedgerTheme.textSecondary,
+                    style = OilTheme.typography.caption,
+                    color = CurrentColors.textSecondary,
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Icon(
-                imageVector = MiuixIcons.ChevronForward,
-                contentDescription = null,
-                tint = if (enabled) LedgerTheme.textSecondary else LedgerTheme.textTertiary,
+            ReportChevron(
+                tint = if (enabled) CurrentColors.textSecondary else CurrentColors.textTertiary,
             )
         }
     }
+}
+
+@Composable
+private fun ReportChevron(
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    Image(
+        painter = rememberVectorPainter(OilIcons.ChevronForward),
+        contentDescription = null,
+        modifier = modifier.size(16.dp),
+        colorFilter = ColorFilter.tint(tint),
+    )
 }
 
 @Composable
@@ -635,10 +683,12 @@ private fun PeriodRow(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         CircleArrow(onClick = onPrev, forward = false)
-        Text(
+        OilText(
             text = periodLabel,
-            style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
-            textAlign = TextAlign.Center,
+            style = OilTheme.typography.body.copy(
+                color = TextPrimary,
+                textAlign = TextAlign.Center,
+            ),
             modifier = Modifier.weight(1f),
         )
         CircleArrow(onClick = onNext, forward = true)
@@ -649,29 +699,12 @@ private fun PeriodRow(
 
 @Composable
 private fun CircleArrow(onClick: () -> Unit, forward: Boolean) {
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(CircleShape)
-                .border(1.dp, CardBorder, CircleShape)
-                .background(LedgerTheme.surface),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = if (forward) MiuixIcons.ChevronForward else MiuixIcons.ChevronBackward,
-                contentDescription = if (forward) "下一周期" else "上一周期",
-                tint = TextSecondary,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-    }
+    com.eta.autoledger.ui.components.OilIconButton(
+        icon = if (forward) OilIcons.ChevronForward else OilIcons.ChevronBackward,
+        contentDescription = if (forward) "下一周期" else "上一周期",
+        onClick = onClick,
+        size = 48.dp,
+    )
 }
 
 @Composable
@@ -692,9 +725,10 @@ private fun ModePill(income: Boolean, onMode: (Boolean) -> Unit) {
                     .clickable { onMode(isIncome) }
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
-                Text(
+                OilText(
                     text = label,
-                    style = TextStyle(fontSize = 12.sp, color = if (selected) LedgerTheme.onAccent else TextSecondary),
+                    style = OilTheme.typography.label,
+                    color = if (selected) CurrentColors.onAccent else TextSecondary,
                 )
             }
         }
@@ -706,7 +740,7 @@ private fun ReportCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    ThemeSurfaceCard(
+    OilCard(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(0.dp),
         content = { content() },
@@ -715,14 +749,14 @@ private fun ReportCard(
 
 @Composable
 private fun Sparkle() {
-    Text(text = "✦", style = MiuixTheme.textStyles.body2.copy(color = AccentBlue))
+    OilText(text = "✦", style = OilTheme.typography.body.copy(color = AccentBlue))
 }
 
 @Composable
 private fun SummaryCard(data: ReportData, tab: Int, income: Boolean) {
     ReportCard {
         Column(modifier = Modifier.padding(16.dp)) {
-            val amountColor = if (income) LedgerTheme.income else LedgerTheme.expense
+            val amountColor = if (income) CurrentColors.income else CurrentColors.expense
             Row {
                 SummaryCell(
                     label = "${data.periodName}${if (income) "收入" else "支出"}（元）",
@@ -743,8 +777,8 @@ private fun SummaryCard(data: ReportData, tab: Int, income: Boolean) {
                     label = "${data.compareLabel}${if (income) "收入" else "支出"}（元）",
                     value = "%+,.2f".format(data.changeAmount),
                     valueColor = when {
-                        data.changeAmount > 0 -> LedgerTheme.income
-                        data.changeAmount < 0 -> LedgerTheme.expense
+                        data.changeAmount > 0 -> CurrentColors.income
+                        data.changeAmount < 0 -> CurrentColors.expense
                         else -> TextSecondary
                     },
                     modifier = Modifier.weight(1f),
@@ -752,7 +786,7 @@ private fun SummaryCard(data: ReportData, tab: Int, income: Boolean) {
                 SummaryCell(
                     label = "收支结余（元）",
                     value = "%+,.2f".format(data.balance),
-                    valueColor = if (data.balance < 0) LedgerTheme.expense else LedgerTheme.income,
+                    valueColor = if (data.balance < 0) CurrentColors.expense else CurrentColors.income,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -768,9 +802,27 @@ private fun SummaryCell(
     valueColor: Color = TextPrimary,
 ) {
     Column(modifier = modifier) {
-        Text(text = label, style = MiuixTheme.textStyles.footnote1, color = TextSecondary)
+        OilText(text = label, style = OilTheme.typography.caption, color = TextSecondary)
         Spacer(Modifier.height(4.dp))
-        Text(text = value, style = MiuixTheme.textStyles.headline2, color = valueColor)
+        OilText(text = value, style = OilTheme.typography.amount, color = valueColor)
+    }
+}
+
+@Composable
+private fun TrendEmptyCard() {
+    ReportCard {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Sparkle()
+                Spacer(Modifier.width(8.dp))
+                OilText(
+                    text = "趋势图表",
+                    style = OilTheme.typography.bodyStrong,
+                    color = TextPrimary,
+                )
+            }
+            ChartEmptyState("当前周期还没有可绘制的趋势或对比数据")
+        }
     }
 }
 
@@ -781,13 +833,17 @@ private fun LineCard(data: ReportData, income: Boolean) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Sparkle()
                 Spacer(Modifier.width(8.dp))
-                Text(
+                OilText(
                     text = "${data.periodName}趋势",
-                    style = MiuixTheme.textStyles.body1.copy(color = TextPrimary),
+                    style = OilTheme.typography.body.copy(color = TextPrimary),
                 )
             }
             Spacer(Modifier.height(8.dp))
-            LineChart(points = data.trend, income = income)
+            if (data.trend.isEmpty()) {
+                ChartEmptyState("当前周期还没有趋势数据")
+            } else {
+                LineChart(points = data.trend, income = income)
+            }
         }
     }
 }
@@ -803,9 +859,18 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
     var chartSize by remember { mutableStateOf(IntSize.Zero) }
     var selected by remember(points) { mutableStateOf<Int?>(null) }
     val textMeasurer = rememberTextMeasurer()
-    val lineColor = AccentBlue
-    val gridColor = LedgerTheme.chartGrid
-    val labelStyle =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary)
+    val lineColor = if (income) CurrentColors.income else CurrentColors.expense
+    val gridColor = CurrentColors.chartGrid
+    val labelStyle = OilTheme.typography.label.copy(
+        color = TextSecondary,
+        fontFamily = FontFamily.Monospace,
+        fontFeatureSettings = "tnum",
+    )
+    val bubbleValueStyle = OilTheme.typography.label.copy(
+        color = CurrentColors.onAccent,
+        fontFamily = FontFamily.Monospace,
+        fontFeatureSettings = "tnum",
+    )
     val bubbleWidth = with(density) { 108.dp.toPx() }
     val bubbleHeight = with(density) { 44.dp.toPx() }
 
@@ -884,7 +949,7 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                 if (guideIndex in points.indices) {
                     val gx = xAt(guideIndex)
                     drawLine(
-                        color = LedgerTheme.divider,
+                        color = CurrentColors.divider,
                         start = Offset(gx, padTop),
                         end = Offset(gx, chartSize.height - padBottom),
                         strokeWidth = 1.dp.toPx(),
@@ -894,7 +959,7 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                 points.forEachIndexed { index, point ->
                     val center = Offset(xAt(index), yAt(point.value, max))
                     // 端点用 onAccent：浅色主题下是白点压在蓝线上，深色主题下是深点压在亮蓝线上，两个方向都清晰
-                    drawCircle(LedgerTheme.onAccent, radius = 4.dp.toPx(), center = center)
+                    drawCircle(CurrentColors.onAccent, radius = 4.dp.toPx(), center = center)
                     drawCircle(lineColor, radius = 2.5.dp.toPx(), center = center)
                 }
             }
@@ -911,17 +976,17 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
                         .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
                         .width(108.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(AccentBlue)
+                        .background(lineColor)
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                 ) {
                     Column {
-                        Text(
+                        OilText(
                             text = "${points[index].label}${if (income) "收入" else "支出"}",
-                            style = MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent),
+                            style = OilTheme.typography.label.copy(color = CurrentColors.onAccent),
                         )
-                        Text(
+                        OilText(
                             text = "¥ %,.2f".format(points[index].value),
-                            style = MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent),
+                            style = bubbleValueStyle,
                         )
                     }
                 }
@@ -932,10 +997,12 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
             modifier = Modifier.fillMaxWidth().padding(start = 44.dp, top = 4.dp, end = 8.dp),
         ) {
             points.forEach { point ->
-                Text(
+                OilText(
                     text = point.label,
-                    style =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
-                    textAlign = TextAlign.Center,
+                    style = OilTheme.typography.label.copy(
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                    ),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -950,13 +1017,17 @@ private fun BarCard(data: ReportData, income: Boolean) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Sparkle()
                 Spacer(Modifier.width(8.dp))
-                Text(
+                OilText(
                     text = "${if (income) "收入" else "支出"}趋势",
-                    style = MiuixTheme.textStyles.body1.copy(color = TextPrimary),
+                    style = OilTheme.typography.body.copy(color = TextPrimary),
                 )
             }
             Spacer(Modifier.height(8.dp))
-            BarChart(points = data.bars, income = income)
+            if (data.bars.isEmpty()) {
+                ChartEmptyState("当前周期还没有对比数据")
+            } else {
+                BarChart(points = data.bars, income = income)
+            }
         }
     }
 }
@@ -965,8 +1036,18 @@ private fun BarCard(data: ReportData, income: Boolean) {
 private fun BarChart(points: List<TrendPoint>, income: Boolean) {
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
-    val labelStyle =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary)
-    val gridColor = LedgerTheme.chartGrid
+    val labelStyle = OilTheme.typography.label.copy(
+        color = TextSecondary,
+        fontFamily = FontFamily.Monospace,
+        fontFeatureSettings = "tnum",
+    )
+    val bubbleValueStyle = OilTheme.typography.label.copy(
+        color = CurrentColors.onAccent,
+        fontFamily = FontFamily.Monospace,
+        fontFeatureSettings = "tnum",
+    )
+    val gridColor = CurrentColors.chartGrid
+    val barColor = if (income) CurrentColors.income else CurrentColors.expense
     val padLeftDp = 44.dp
     val chartHeight = 176.dp
     var chartSize by remember { mutableStateOf(IntSize.Zero) }
@@ -1042,7 +1123,7 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
                     val isActive = index == activeIndex
                     val isLast = index == points.lastIndex
                     drawRoundRect(
-                        color = if (isActive || isLast) AccentBlue else LedgerTheme.chartMuted,
+                        color = if (isActive || isLast) barColor else CurrentColors.chartMuted,
                         topLeft = Offset(x, bottom - barHeight),
                         size = Size(barWidth, barHeight),
                         cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx()),
@@ -1071,17 +1152,17 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
                         .offset { IntOffset(left.roundToInt(), topY.roundToInt()) }
                         .width(112.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(AccentBlue)
+                        .background(barColor)
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                 ) {
                     Column {
-                        Text(
+                        OilText(
                             text = "¥ %,.2f".format(points[index].value),
-                            style = MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent),
+                            style = bubbleValueStyle,
                         )
-                        Text(
+                        OilText(
                             text = points[index].label,
-                            style = MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.onAccent),
+                            style = OilTheme.typography.label.copy(color = CurrentColors.onAccent),
                         )
                     }
                 }
@@ -1092,10 +1173,12 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
             modifier = Modifier.fillMaxWidth().padding(start = padLeftDp, top = 4.dp, end = 4.dp),
         ) {
             points.forEach { point ->
-                Text(
+                OilText(
                     text = point.label,
-                    style =MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
-                    textAlign = TextAlign.Center,
+                    style = OilTheme.typography.label.copy(
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                    ),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -1122,23 +1205,17 @@ private fun DonutCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Sparkle()
                 Spacer(Modifier.width(8.dp))
-                Text(
+                OilText(
                     text = "${if (income) "收入" else "支出"}分类构成",
-                    style = MiuixTheme.textStyles.body1.copy(color = TextPrimary),
+                    style = OilTheme.typography.body.copy(color = TextPrimary),
                 )
                 Spacer(Modifier.weight(1f))
                 SubCategoryPill(subCategory = subCategory, onSelect = onSubCategory)
             }
             Spacer(Modifier.height(4.dp))
-            if (subCategory && data.categories.isEmpty()) {
-                Text(
-                    text = "暂无子分类数据",
-                    style = MiuixTheme.textStyles.body2,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = dimens.gapLarge * 2),
+            if (data.categories.isEmpty()) {
+                ChartEmptyState(
+                    if (subCategory) "当前周期还没有子分类数据" else "当前周期还没有分类数据",
                 )
             } else {
                 DonutChart(slices = data.categories, income = income)
@@ -1168,6 +1245,30 @@ private fun DonutCard(
 }
 
 @Composable
+private fun ChartEmptyState(message: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(112.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        OilText(
+            text = "暂无数据",
+            style = OilTheme.typography.bodyStrong,
+            color = TextPrimary,
+        )
+        Spacer(Modifier.height(6.dp))
+        OilText(
+            text = message,
+            style = OilTheme.typography.caption,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
 private fun SubCategoryPill(subCategory: Boolean, onSelect: (Boolean) -> Unit) {
     Row(
         modifier = Modifier
@@ -1184,9 +1285,9 @@ private fun SubCategoryPill(subCategory: Boolean, onSelect: (Boolean) -> Unit) {
                     .clickable { onSelect(isSub) }
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
-                Text(
+                OilText(
                     text = label,
-                    style =MiuixTheme.textStyles.footnote2.copy(color = if (selected) LedgerTheme.onAccent else TextSecondary),
+                    style =OilTheme.typography.label.copy(color = if (selected) CurrentColors.onAccent else TextSecondary),
                 )
             }
         }
@@ -1196,9 +1297,13 @@ private fun SubCategoryPill(subCategory: Boolean, onSelect: (Boolean) -> Unit) {
 @Composable
 private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
     val textMeasurer = rememberTextMeasurer()
-    val labelStyle =MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.textSecondary)
-    val centerAmountStyle = MiuixTheme.textStyles.main.copy(color = TextPrimary)
-    val centerLabelStyle =MiuixTheme.textStyles.footnote2.copy(color = LedgerTheme.textTertiary)
+    val labelStyle = OilTheme.typography.label.copy(
+        color = CurrentColors.textSecondary,
+        fontFamily = FontFamily.Monospace,
+        fontFeatureSettings = "tnum",
+    )
+    val centerAmountStyle = OilTheme.typography.amount.copy(color = TextPrimary)
+    val centerLabelStyle =OilTheme.typography.label.copy(color = CurrentColors.textTertiary)
     val total = slices.sumOf { it.amount }
     Box(modifier = Modifier.fillMaxWidth().height(272.dp)) {
         Canvas(modifier = Modifier.matchParentSize()) {
@@ -1370,37 +1475,39 @@ private fun CategoryRow(
                 .padding(vertical = dimens.gapSmall / 2),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
+            OilText(
                 text = "$rank",
-                style = TextStyle(fontSize = 12.sp, color = TextSecondary),
+                style = OilTheme.typography.label.copy(color = TextSecondary),
                 modifier = Modifier.width(20.dp),
             )
-            ThemeIconBadge(size = 38.dp, borderColor = slice.color) {
-                Text(text = slice.emoji, fontSize = 17.sp)
+            OilIconBadge(size = 38.dp, borderColor = slice.color) {
+                OilText(text = slice.emoji, style = OilTheme.typography.sectionTitle)
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
+                    OilText(
                         text = slice.displayName,
-                        style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+                        style = OilTheme.typography.body.copy(color = TextPrimary),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(
+                    OilText(
                         text = "${slice.count}笔",
-                        style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
+                        style = OilTheme.typography.label.copy(color = TextSecondary),
                     )
                     Spacer(Modifier.weight(1f))
-                    Text(
+                    OilText(
                         text = "%.2f%% · ¥ %,.2f".format(slice.percent, slice.amount),
-                        style = TextStyle(fontSize = 12.sp, color = TextPrimary),
+                        style = OilTheme.typography.label.copy(
+                            color = TextPrimary,
+                            fontFamily = FontFamily.Monospace,
+                            fontFeatureSettings = "tnum",
+                        ),
                     )
                     if (detailEnabled) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronForward,
-                            contentDescription = null,
+                        ReportChevron(
                             tint = TextSecondary,
                             modifier = Modifier
                                 .size(14.dp)
@@ -1455,9 +1562,9 @@ private fun CategoryRow(
                         .padding(vertical = dimens.gap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
+                    OilText(
                         text = "查看分类明细",
-                        style = MiuixTheme.textStyles.footnote1.copy(color = AccentBlue),
+                        style = OilTheme.typography.caption.copy(color = AccentBlue),
                     )
                 }
             }
@@ -1474,16 +1581,20 @@ private fun SubCategoryRow(share: SubCategoryShare) {
             .padding(vertical = dimens.gapSmall),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
+        OilText(
             text = share.name?.takeIf { it.isNotBlank() } ?: "未分类",
-            style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+            style = OilTheme.typography.caption.copy(color = TextSecondary),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Text(
+        OilText(
             text = "%.2f%% · ¥ %,.2f · %d笔".format(share.percent, share.total, share.count),
-            style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
+            style = OilTheme.typography.label.copy(
+                color = TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontFeatureSettings = "tnum",
+            ),
         )
     }
 }
@@ -1691,20 +1802,20 @@ private fun categoryEmoji(category: String): String = when (category) {
 }
 
 private fun categoryColor(category: String): Color = when (category) {
-    "餐饮" -> LedgerTheme.chart3
-    "购物" -> LedgerTheme.chart4
+    "餐饮" -> CurrentColors.chart3
+    "购物" -> CurrentColors.chart4
     "转账" -> AccentBlue
-    "交通" -> LedgerTheme.chart5
-    "红包" -> LedgerTheme.danger
-    "旅行" -> LedgerTheme.chart5
-    "医疗" -> LedgerTheme.danger
-    "教育" -> LedgerTheme.chart4
-    "娱乐" -> LedgerTheme.chart3
-    "薪资", "工资" -> LedgerTheme.chart2
-    "理财", "投资" -> LedgerTheme.chart4
-    "退款" -> LedgerTheme.chart2
-    "提现", "充值" -> LedgerTheme.chart3
-    else -> LedgerTheme.chart5
+    "交通" -> CurrentColors.chart5
+    "红包" -> CurrentColors.danger
+    "旅行" -> CurrentColors.chart5
+    "医疗" -> CurrentColors.danger
+    "教育" -> CurrentColors.chart4
+    "娱乐" -> CurrentColors.chart3
+    "薪资", "工资" -> CurrentColors.chart2
+    "理财", "投资" -> CurrentColors.chart4
+    "退款" -> CurrentColors.chart2
+    "提现", "充值" -> CurrentColors.chart3
+    else -> CurrentColors.chart5
 }
 
 @Composable
@@ -1732,7 +1843,7 @@ private fun CategoryDetailDialog(
     val maxListHeight = with(LocalDensity.current) {
         LocalWindowInfo.current.containerSize.height.toDp() * 0.5f
     }
-    AppDialog(
+    OilDialog(
         show = show,
         title = "${slice.emoji} ${slice.name} 明细",
         summary = "%.2f%% · ¥ %,.2f · %d笔".format(slice.percent, slice.amount, slice.count),
@@ -1743,9 +1854,9 @@ private fun CategoryDetailDialog(
     ) {
         Box(modifier = Modifier.fillMaxWidth().heightIn(max = maxListHeight)) {
             if (entries.isEmpty()) {
-                Text(
+                OilText(
                     text = "该分类在此期间没有账目",
-                    style = MiuixTheme.textStyles.body2,
+                    style = OilTheme.typography.body,
                     color = TextSecondary,
                     modifier = Modifier.padding(vertical = 8.dp),
                 )
@@ -1764,7 +1875,7 @@ private fun CategoryDetailDialog(
             }
         }
         Spacer(Modifier.height(16.dp))
-        TextButton(
+        OilButton(
             text = "关闭",
             onClick = onDismiss,
             modifier = Modifier.fillMaxWidth(),
@@ -1778,22 +1889,22 @@ private fun DetailEntryRow(entry: LedgerEntry) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(LedgerTheme.surfaceVariant)
+            .background(CurrentColors.surfaceVariant)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
+            OilText(
                 text = entry.note.ifBlank { entry.category },
-                style = MiuixTheme.textStyles.body1,
+                style = OilTheme.typography.body,
                 color = TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))
-            Text(
+            OilText(
                 text = detailTimeLabel(entry),
-                style = MiuixTheme.textStyles.footnote2,
+                style = OilTheme.typography.label,
                 color = TextSecondary,
             )
         }
@@ -1803,10 +1914,10 @@ private fun DetailEntryRow(entry: LedgerEntry) {
             "other" -> ""
             else -> "-"
         }
-        Text(
+        OilText(
             text = sign + "¥" + "%,.2f".format(entry.amount),
-            style = MiuixTheme.textStyles.title4,
-            color = if (entry.type == "income") LedgerTheme.income else TextPrimary,
+            style = OilTheme.typography.amount,
+            color = if (entry.type == "income") CurrentColors.income else TextPrimary,
         )
     }
 }

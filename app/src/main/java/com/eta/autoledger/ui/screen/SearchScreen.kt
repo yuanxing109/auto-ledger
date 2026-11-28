@@ -1,5 +1,10 @@
 package com.eta.autoledger.ui.screen
 
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.theme.oilPageSurface
+import com.eta.autoledger.ui.components.OilText
+import com.eta.autoledger.ui.OilIcons
+import com.eta.autoledger.ui.OilIcon
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import com.eta.autoledger.ui.LocalDimens
@@ -58,20 +63,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.InputField
-import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eta.autoledger.data.CategoryStore
-import com.eta.autoledger.ui.components.AppDialog
-import com.eta.autoledger.ui.components.CategoryChip
+import com.eta.autoledger.ui.components.OilDialog
+import com.eta.autoledger.ui.components.OilChoiceChip
+import com.eta.autoledger.ui.components.OilIconButton
+import com.eta.autoledger.ui.components.OilTextField
+import com.eta.autoledger.ui.components.OilTopBar
 import com.eta.autoledger.ui.components.EntryEditDialog
-import com.eta.autoledger.ui.components.drawRowSurface
+import com.eta.autoledger.ui.components.drawOilRowSurface
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.ui.LedgerTheme
@@ -186,46 +186,28 @@ fun SearchScreen(onClose: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LedgerTheme.page)
+            .oilPageSurface()
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        // ① 返回独占一行：搜索框不再被挤成一条缝
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .padding(start = 8.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            ) {
-                Icon(
-                    imageVector = MiuixIcons.Back,
-                    contentDescription = "返回",
-                    tint = LedgerTheme.text,
-                )
-            }
-            Spacer(Modifier.width(2.dp))
-            Text("搜索账单", style = MiuixTheme.textStyles.title3, color = LedgerTheme.text)
-        }
+        OilTopBar(
+            title = "搜索账单",
+            navigationIcon = OilIcons.Back,
+            onNavigationClick = onClose,
+            applyStatusBarInset = false,
+        )
 
-        // ② Miuix 搜索框（全宽，300ms 防抖在 LaunchedEffect 里）
+        // ② Oil 搜索框（全宽，300ms 防抖在 LaunchedEffect 里）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            InputField(
-                query = keyword,
-                onQueryChange = { keyword = it },
-                onSearch = { },
-                expanded = false,
-                onExpandedChange = { },
-                label = "搜索备注 / 商户 / 分类",
+            OilTextField(
+                value = keyword,
+                onValueChange = { keyword = it },
+                placeholder = "搜索备注 / 商户 / 分类",
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -283,27 +265,27 @@ fun SearchScreen(onClose: () -> Unit) {
                 .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("共 ${results.size} 笔", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary))
+            OilText("共 ${results.size} 笔", style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary))
             Spacer(Modifier.width(8.dp))
-            Text("·", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.divider))
+            OilText("·", style = OilTheme.typography.caption.copy(color = LedgerTheme.divider))
             Spacer(Modifier.width(8.dp))
-            Text(
+            OilText(
                 text = "支出 ¥${money(expenseSum)}",
-                style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.text),
+                style = OilTheme.typography.caption.copy(color = LedgerTheme.text),
             )
             if (incomeSum > 0) {
                 Spacer(Modifier.width(8.dp))
-                Text("·", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.divider))
+                OilText("·", style = OilTheme.typography.caption.copy(color = LedgerTheme.divider))
                 Spacer(Modifier.width(8.dp))
-                Text("收入 ¥${money(incomeSum)}", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.income))
+                OilText("收入 ¥${money(incomeSum)}", style = OilTheme.typography.caption.copy(color = LedgerTheme.income))
             }
             if (transferCount > 0) {
                 Spacer(Modifier.width(8.dp))
-                Text("·", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.divider))
+                OilText("·", style = OilTheme.typography.caption.copy(color = LedgerTheme.divider))
                 Spacer(Modifier.width(8.dp))
-                Text(
+                OilText(
                     "内部转账 $transferCount 笔不计收支",
-                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
+                    style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary),
                 )
             }
         }
@@ -317,13 +299,17 @@ fun SearchScreen(onClose: () -> Unit) {
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("🔍", fontSize = 40.sp)
+                    OilText("🔍", style = OilTheme.typography.sectionTitle)
                     Spacer(Modifier.height(10.dp))
-                    Text("没有匹配的账单", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = LedgerTheme.text)
+                    OilText(
+                        text = "没有匹配的账单",
+                        style = OilTheme.typography.bodyStrong,
+                        color = LedgerTheme.text,
+                    )
                     Spacer(Modifier.height(4.dp))
-                    Text(
+                    OilText(
                         "试试减少筛选条件，或换个关键字",
-                        style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textSecondary),
+                        style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary),
                     )
                     if (activeCount > 0 || keyword.isNotEmpty()) {
                         Spacer(Modifier.height(14.dp))
@@ -337,7 +323,7 @@ fun SearchScreen(onClose: () -> Unit) {
                                 }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                         ) {
-                            Text("清除全部筛选", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.accent))
+                            OilText("清除全部筛选", style = OilTheme.typography.caption.copy(color = LedgerTheme.accent))
                         }
                     }
                 }
@@ -382,9 +368,9 @@ fun SearchScreen(onClose: () -> Unit) {
                 }
                 if (truncated) {
                     item(key = "truncated") {
-                        Text(
+                        OilText(
                             text = "⚠️ 已显示前 $SEARCH_LIMIT 条，收窄条件可看更早的账单",
-                            style = MiuixTheme.textStyles.footnote1,
+                            style = OilTheme.typography.caption,
                             color = LedgerTheme.textSecondary,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -448,7 +434,7 @@ fun SearchScreen(onClose: () -> Unit) {
     }
 
     // 常驻组合、只切 show：外面用 if (showFilter) 包起来的话，一点「应用」组件就被移出组合，
-    // AppDialog 接管的退场动画没机会播（底部面板会直接消失）。
+    // OilDialog 接管的退场动画没机会播（底部面板会直接消失）。
     FilterSheet(
         show = showFilter,
         range = range,
@@ -572,10 +558,10 @@ private fun DayHeader(dayTitle: String, dayExpense: Double) {
             .padding(top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(dayTitle, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+        OilText(dayTitle, style = OilTheme.typography.caption, color = LedgerTheme.textSecondary)
         Spacer(Modifier.weight(1f))
         if (dayExpense > 0) {
-            Text("支出 ${money(dayExpense)}", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+            OilText("支出 ${money(dayExpense)}", style = OilTheme.typography.caption, color = LedgerTheme.textSecondary)
         }
     }
 }
@@ -601,7 +587,7 @@ private fun Chip(
             .clickable { onClick() }
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        Text(text, style = MiuixTheme.textStyles.footnote1, color = fg)
+        OilText(text, style = OilTheme.typography.caption, color = fg)
     }
 }
 
@@ -624,7 +610,7 @@ private fun AmountBox(
         BasicTextField(
             value = value,
             onValueChange = { input -> onChange(input.filter { it.isDigit() || it == '.' }) },
-            textStyle = MiuixTheme.textStyles.body1.copy(color = LedgerTheme.text, fontWeight = FontWeight.Medium),
+            textStyle = OilTheme.typography.bodyStrong.copy(color = LedgerTheme.text),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             cursorBrush = SolidColor(LedgerTheme.accent),
@@ -632,7 +618,7 @@ private fun AmountBox(
             decorationBox = { inner ->
                 Box {
                     if (value.isEmpty()) {
-                        Text(hint, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+                        OilText(hint, style = OilTheme.typography.caption, color = LedgerTheme.textSecondary)
                     }
                     inner()
                 }
@@ -664,36 +650,36 @@ private fun ResultRow(
             .clip(rowShape)
             // 背景 + 描边合成一次绘制：省掉 border 那条 modifier 的独立绘制节点，
             // 也让 outline 只计算一次（滚动时每行都在走这段）。
-            .drawBehind { drawRowSurface(rowShape, rowBg, rowBorder) }
+            .drawBehind { drawOilRowSurface(rowShape, rowBg, rowBorder) }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
+            OilText(
                 text = if (entry.isTransfer) "内部转账" else entry.note.ifBlank { entry.category },
-                style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.Medium),
+                style = OilTheme.typography.bodyStrong,
                 color = LedgerTheme.text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(3.dp))
-            Text(
+            OilText(
                 text = if (entry.isTransfer) {
                     "${entry.note.ifBlank { entry.category }} · $stamp · ${entry.source}"
                 } else {
                     "${formatCategoryLabel(entry.category, entry.subCategory)} · $stamp · ${entry.source}"
                 },
-                style = MiuixTheme.textStyles.footnote1,
+                style = OilTheme.typography.caption,
                 color = LedgerTheme.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(10.dp))
-        Text(
+        OilText(
             text = (if (income) "+" else if (other) "" else "-") + "¥" + money(entry.amount),
-            style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.SemiBold),
+            style = OilTheme.typography.bodyStrong,
             color = when {
                 entry.isTransfer -> LedgerTheme.textSecondary
                 income -> LedgerTheme.income
@@ -751,9 +737,9 @@ private fun FilterSheet(
         }.getOrNull()
     }
 
-    // 收编到统一 AppDialog：底部半屏面板用 align=BottomCenter + heightFraction，
+    // 收编到统一 OilDialog：底部半屏面板用 align=BottomCenter + heightFraction，
     // 只圆上面两角；面板自身铺满宽度、内容区自己撑高，所以 contentPadding 传 0。
-    AppDialog(
+    OilDialog(
         show = show,
         align = Alignment.BottomCenter,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
@@ -776,11 +762,11 @@ private fun FilterSheet(
                     .align(Alignment.CenterHorizontally)
                     .width(40.dp)
                     .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
+                    .clip(RoundedCornerShape(4.dp))
                     .background(LedgerTheme.divider),
             )
             Spacer(Modifier.height(14.dp))
-            Text("筛选", style = MiuixTheme.textStyles.main.copy(fontWeight = FontWeight.SemiBold, color = LedgerTheme.text))
+            OilText("筛选", style = OilTheme.typography.pageTitle.copy(color = LedgerTheme.text))
         }
 
         // ---- 可滚动内容区（weight 占满剩余高度，内容超长上下滑动）----
@@ -829,7 +815,7 @@ private fun FilterSheet(
                     ) {
                         cats.forEach { name ->
                             // selected 用纯分类名比较；图标与文字分开传
-                            CategoryChip(
+                            OilChoiceChip(
                                 text = name,
                                 icon = CategoryStore.emoji(name),
                                 selected = name in categories,
@@ -851,7 +837,7 @@ private fun FilterSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 AmountBox(modifier = Modifier.weight(1f), value = minAmount, hint = "最低", onChange = onMin)
-                Text("—", style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary))
+                OilText("—", style = OilTheme.typography.caption.copy(color = LedgerTheme.textTertiary))
                 AmountBox(modifier = Modifier.weight(1f), value = maxAmount, hint = "最高", onChange = onMax)
             }
 
@@ -891,7 +877,7 @@ private fun FilterSheet(
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                Text("重置", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+                OilText("重置", style = OilTheme.typography.caption, color = LedgerTheme.textSecondary)
             }
             val applyInteraction = remember { MutableInteractionSource() }
             val applyPressed by applyInteraction.collectIsPressedAsState()
@@ -909,9 +895,9 @@ private fun FilterSheet(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
+                OilText(
                     text = if (preview == null) "应用" else "应用（${preview} 条）",
-                    style = MiuixTheme.textStyles.button,
+                    style = OilTheme.typography.bodyStrong,
                     color = LedgerTheme.onAccent,
                 )
             }
@@ -921,5 +907,10 @@ private fun FilterSheet(
 
 @Composable
 private fun SectionLabel(text: String) {
-    SmallTitle(text = text, modifier = Modifier.padding(bottom = 8.dp))
+    OilText(
+        text = text,
+        style = OilTheme.typography.caption,
+        color = OilTheme.colors.inkMuted,
+        modifier = Modifier.padding(bottom = 8.dp),
+    )
 }

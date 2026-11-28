@@ -13,7 +13,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import com.eta.autoledger.service.HealthJobService
 import com.eta.autoledger.ui.LedgerApp
-import com.eta.autoledger.ui.AppRoot
 import com.eta.autoledger.ui.share.ReportShareExporter
 
 class MainActivity : ComponentActivity() {
@@ -46,12 +45,10 @@ class MainActivity : ComponentActivity() {
         ensureNotificationPermission()
         consumeOpenAdd(intent)
         setContent {
-            AppRoot {
-                LedgerApp(
-                    openAiSettings = intent.getBooleanExtra(EXTRA_OPEN_AI_SETTINGS, false),
-                    openAddRequest = openAddRequest,
-                )
-            }
+            LedgerApp(
+                openAiSettings = intent.getBooleanExtra(EXTRA_OPEN_AI_SETTINGS, false),
+                openAddRequest = openAddRequest,
+            )
         }
     }
 

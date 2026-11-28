@@ -1,5 +1,7 @@
 package com.eta.autoledger.ui.window
 
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.components.OilText
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -37,9 +39,6 @@ import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.theme.LedgerDimens
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
-import top.yukonga.miuix.kmp.basic.SnackbarResult
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /*
  * 全局轻提示。
@@ -47,11 +46,15 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 为什么不用 Toast：系统 Toast 挂在 WindowManager 顶层，会盖住底部导航、
  * 无法带「撤销」这类操作按钮，Android 13+ 还要 POST_NOTIFICATIONS 权限。
  *
- * 为什么自己维护队列而不用 Miuix 的 SnackbarHostState：它的 SnackbarHost 内部是
- * LazyColumn，几条并发 show 会像列表项一样一条条堆在屏幕中间（连着删 5 笔就是
- * 5 条灰白横条），而且默认配色不跟随项目色板。这里改成「同一时刻只有一条」，
+ * 为什么自己维护队列：通用 SnackbarHost 常用 LazyColumn，几条并发 show 会像
+ * 列表项一样一条条堆在屏幕中间（连着删 5 笔就是 5 条灰白横条）。这里改成「同一时刻只有一条」，
  * 新提示直接顶掉旧的，界面只有一个悬浮卡片。
  */
+internal enum class SnackbarResult {
+    ActionPerformed,
+    Dismissed,
+}
+
 class LedgerSnackbar internal constructor() {
 
     /** 当前这一条；同一时刻最多一条，新的直接顶掉旧的。 */
@@ -180,9 +183,9 @@ private fun SnackbarCard(
             .padding(horizontal = dimens.gapLarge, vertical = dimens.gapSmall),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
+        OilText(
             text = item.message,
-            style = MiuixTheme.textStyles.body2,
+            style = OilTheme.typography.body,
             color = LedgerTheme.text,
             modifier = Modifier.weight(1f),
         )
@@ -201,9 +204,9 @@ private fun SnackbarCard(
                     .padding(horizontal = dimens.gapSmall),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
+                OilText(
                     text = label,
-                    style = MiuixTheme.textStyles.footnote1,
+                    style = OilTheme.typography.caption,
                     color = LedgerTheme.accent,
                 )
             }

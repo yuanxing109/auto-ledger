@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
  *
  * cache 文件先完整写入磁盘，再交给 FileProvider。分享目标可能延迟读取 URI，
  * 因此清理采用“延时删除 + Activity 销毁兜底”的方式，而不是启动 chooser 后立刻删除。
+ * 文件放在专用 `report-shares/` 子目录，避免为了单个 URI 暴露整个 cacheDir。
  */
 internal object ReportShareExporter {
 
@@ -33,18 +34,22 @@ internal object ReportShareExporter {
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     suspend fun share(context: Context, image: ImageBitmap) {
-        val file = withContext(Dispatchers.IO) {
-            writePng(context, image.asAndroidBitmap())
-        }
-        val send = sendIntent(context, file)
-        withContext(Dispatchers.Main.immediate) {
-            val chooser = Intent.createChooser(send, "分享报表").apply {
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val file = targetFile(context)
+        try {
+            withContext(Dispatchers.IO) {
+                writePng(image.asAndroidBitmap(), file)
             }
-            context.startActivity(chooser)
+            val send = sendIntent(context, file)
+            withContext(Dispatchers.Main.immediate) {
+                val chooser = Intent.createChooser(send, "分享报表").apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(chooser)
+            }
+        } finally {
+            scheduleCleanup(file)
         }
-        scheduleCleanup(file)
     }
 
     internal fun fileUri(context: Context, file: File) =
@@ -60,21 +65,23 @@ internal object ReportShareExporter {
         }
     }
 
-    private fun writePng(context: Context, bitmap: Bitmap): File {
-        require(!bitmap.isRecycled) { "分享图片已释放" }
+    private fun targetFile(context: Context): File {
         val unique = System.currentTimeMillis().toString() + "_" +
             UUID.randomUUID().toString().take(8)
         val dir = File(context.cacheDir, DIRECTORY_NAME).apply { mkdirs() }
-        val target = File(dir, FILE_PREFIX + unique + ".png")
+        return File(dir, FILE_PREFIX + unique + ".png")
+    }
+
+    private fun writePng(bitmap: Bitmap, target: File) {
+        require(!bitmap.isRecycled) { "分享图片已释放" }
         if (target.exists()) target.delete()
-        return try {
+        try {
             FileOutputStream(target).use { out ->
                 check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
                     "PNG 编码失败"
                 }
             }
             check(target.length() > 0L) { "PNG 文件为空" }
-            target
         } catch (error: Throwable) {
             target.delete()
             throw error
@@ -82,6 +89,13 @@ internal object ReportShareExporter {
     }
 
     fun cleanup(context: Context) {
+        val appContext = context.applicationContext
+        cleanupScope.launch {
+            cleanupStale(appContext)
+        }
+    }
+
+    private fun cleanupStale(context: Context) {
         val now = System.currentTimeMillis()
         File(context.cacheDir, DIRECTORY_NAME)
             .listFiles { file -> file.name.startsWith(FILE_PREFIX) && file.name.endsWith(".png") }

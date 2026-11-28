@@ -1,5 +1,7 @@
 package com.eta.autoledger.ui.components
 
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.components.OilText
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,8 +46,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 自然语言记账输入框。模型解析成功后只把结果交给调用方，不直接写库。
@@ -74,7 +74,7 @@ fun AiQuickEntryDialog(
         onDismiss()
     }
 
-    AppDialog(
+    OilDialog(
         show = show,
         title = "AI 帮我记",
         summary = "用自然语言告诉我你怎么花的钱，例如：昨天中午吃饭花了 35，或者 打车 18.5",
@@ -84,9 +84,9 @@ fun AiQuickEntryDialog(
         panelColor = LedgerTheme.surface,
         onDismissRequest = ::dismissAndCancel,
     ) {
-        Text(
+        OilText(
             text = "描述这笔账",
-            style = MiuixTheme.textStyles.footnote1,
+            style = OilTheme.typography.caption,
             color = LedgerTheme.textSecondary,
         )
         Spacer(Modifier.height(dimens.gapSmall))
@@ -99,7 +99,7 @@ fun AiQuickEntryDialog(
                 }
             },
             enabled = !loading,
-            textStyle = MiuixTheme.textStyles.body1.copy(color = LedgerTheme.text),
+            textStyle = OilTheme.typography.body.copy(color = LedgerTheme.text),
             cursorBrush = SolidColor(LedgerTheme.accent),
             singleLine = false,
             minLines = 3,
@@ -118,9 +118,9 @@ fun AiQuickEntryDialog(
             decorationBox = { inner ->
                 Box {
                     if (text.isEmpty()) {
-                        Text(
+                        OilText(
                             text = "例如：昨天打车 18.5",
-                            style = MiuixTheme.textStyles.body1,
+                            style = OilTheme.typography.body,
                             color = LedgerTheme.textTertiary,
                         )
                     }
@@ -130,9 +130,9 @@ fun AiQuickEntryDialog(
         )
         inlineError?.let {
             Spacer(Modifier.height(dimens.gapSmall))
-            Text(
+            OilText(
                 text = it,
-                style = MiuixTheme.textStyles.footnote1,
+                style = OilTheme.typography.caption,
                 color = LedgerTheme.danger,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
@@ -186,9 +186,9 @@ fun AiQuickEntryDialog(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
+            OilText(
                 text = if (loading) "正在解析…" else "填入表单",
-                style = MiuixTheme.textStyles.button,
+                style = OilTheme.typography.bodyStrong,
                 color = if (submitEnabled) LedgerTheme.onAccent else LedgerTheme.textTertiary,
             )
         }

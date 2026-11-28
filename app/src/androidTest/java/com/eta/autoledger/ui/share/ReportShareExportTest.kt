@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -13,9 +14,9 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -24,6 +25,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.eta.autoledger.ui.theme.OilPalette
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -63,11 +65,11 @@ class ReportShareExportTest {
                                     drawLayer(layer)
                                     drawn.countDown()
                                 }
-                                .background(Color.White),
+                                .background(OilPalette.light.page),
                         ) {
                             BasicText(
                                 text = "AutoLedger report",
-                                style = TextStyle(color = Color.Black),
+                                style = TextStyle(color = OilPalette.light.ink),
                             )
                         }
                     }
@@ -133,6 +135,9 @@ class ReportShareExportTest {
         assertTrue(png.size() > 8)
         val decoded = BitmapFactory.decodeByteArray(png.toByteArray(), 0, png.size())
         assertNotNull(decoded)
-        assertTrue(decoded.getPixel(8, 8) != 0)
+        val backgroundPixel = decoded.getPixel(8, 8)
+        assertTrue(backgroundPixel != 0)
+        assertEquals(255, AndroidColor.alpha(backgroundPixel))
+        assertEquals(OilPalette.light.page.toArgb(), backgroundPixel)
     }
 }

@@ -1,8 +1,11 @@
 package com.eta.autoledger.settings
 
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.components.OilButton
+import com.eta.autoledger.ui.components.OilButtonVariant
+import com.eta.autoledger.ui.components.OilText
 import android.Manifest
 import android.os.Build
-import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.window.LocalSnackbar
 import androidx.compose.runtime.LaunchedEffect
 import com.eta.autoledger.util.SystemAccess
@@ -30,15 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.AppPrefs
-import com.eta.autoledger.ui.components.AppDialog
+import com.eta.autoledger.ui.components.OilDialog
 import com.eta.autoledger.data.LedgerRepository
 
 @Composable
@@ -82,11 +81,11 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
         beat++
     }
 
-    SettingsPageColumn {
-        HintText("自动记账靠下面这些系统开关。哪一项没开，对应通道就会静默失效——排查「为什么没记账」时按这个顺序看。")
+    OilSettingsPageColumn {
+        OilHintText("自动记账靠下面这些系统开关。哪一项没开，对应通道就会静默失效——排查「为什么没记账」时按这个顺序看。")
 
-        SettingsCard {
-            ArrowPreference(
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "一键修复",
                 summary = when {
                     !secureOk -> "未授权自愈（先执行下方 adb 命令，再回来点这里）"
@@ -105,8 +104,8 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
                     }
                 },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "adb 授权自愈",
                 summary = if (secureOk) {
                     "✅ 已授权：通道被系统关掉会自动写回"
@@ -124,8 +123,8 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
             )
         }
 
-        SettingsCard {
-            ArrowPreference(
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "通知使用权",
                 summary = if (listenerOk) {
                     "✅ 已开启（通知通道工作中）"
@@ -134,8 +133,8 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
                 },
                 onClick = { SystemAccess.openNotificationListener(context) },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "短信权限",
                 summary = if (smsOk) "✅ 已授权（短信通道工作中）" else "⚠️ 未授权（短信通道不工作）",
                 onClick = {
@@ -143,22 +142,22 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
                     else smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
                 },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "无障碍截图服务",
                 summary = if (accessOk) "✅ 已开启（截屏免录屏授权）" else "⚠️ 未开启（截屏记账走 MediaProjection 兜底）",
                 onClick = { SystemAccess.openAccessibility(context) },
             )
         }
 
-        SettingsCard {
-            ArrowPreference(
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "电池优化白名单",
                 summary = if (batteryOk) "✅ 无限制（不会被省电策略限制）" else "⚠️ 受限（国产 ROM 可能解绑后台服务）",
                 onClick = { SystemAccess.openBattery(context) },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "自启动 / 后台运行",
                 summary = "部分系统需要手动允许自启动与后台弹出界面",
                 onClick = {
@@ -169,8 +168,8 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
                 },
             )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                RowDivider()
-                ArrowPreference(
+                OilSettingsDivider()
+                OilSettingsRow(
                     title = "精确闹钟",
                     summary = if (exactOk) "✅ 已允许（日报/提醒准时）" else "⚠️ 未允许（提醒会推迟到系统空闲）",
                     onClick = { SystemAccess.openExactAlarm(context) },
@@ -178,14 +177,14 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
             }
         }
 
-        SettingsCard {
-            ArrowPreference(
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "通知总开关",
                 summary = if (notifOk) "✅ 已开启" else "⚠️ 已关闭（入库通知与撤销按钮都不可用）",
                 onClick = { SystemAccess.openAppNotificationSettings(context) },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "「自动记账」通知渠道",
                 summary = when {
                     !autoChannelExists -> "ℹ️ 尚未创建（点一下：先建渠道，再打开系统设置）"
@@ -194,8 +193,8 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
                 },
                 onClick = { SystemAccess.openChannel(context, SystemAccess.CHANNEL_AUTO) },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "「识图记账」通知渠道",
                 summary = when {
                     !shotChannelExists -> "ℹ️ 尚未创建（点一下：先建渠道，再打开系统设置）"
@@ -206,18 +205,18 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
             )
         }
 
-        SettingsCard {
-            InfoRow("运行模式", if (moduleOk) "Root 增强（LSPosed）" else "标准（通知 + 短信）")
-            RowDivider()
-            InfoRow("通知通道最近入账", formatStamp(prefs.lastNotifyAt))
-            RowDivider()
-            InfoRow("短信通道最近入账", formatStamp(prefs.lastSmsAt))
+        OilSettingsGroup {
+            OilInfoRow("运行模式", if (moduleOk) "Root 增强（LSPosed）" else "标准（通知 + 短信）")
+            OilSettingsDivider()
+            OilInfoRow("通知通道最近入账", formatStamp(prefs.lastNotifyAt))
+            OilSettingsDivider()
+            OilInfoRow("短信通道最近入账", formatStamp(prefs.lastSmsAt))
         }
 
-        HintText("改完回到这一页，状态会在 1.5 秒内自动刷新。若「最近入账」长期显示「从未」，说明通道没通，先查上面标 ⚠️ 的项。")
+        OilHintText("改完回到这一页，状态会在 1.5 秒内自动刷新。若「最近入账」长期显示「从未」，说明通道没通，先查上面标 ⚠️ 的项。")
 
         // 危险操作区：放页尾 + danger 文字，避免在「功能」页被误触
-        SettingsCard {
+        OilSettingsGroup {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -226,55 +225,46 @@ internal fun SystemAccessPage(prefs: AppPrefs) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
+                    OilText(
                         text = "清空记账数据",
-                        style = MiuixTheme.textStyles.body1.copy(color = LedgerTheme.danger),
+                        style = OilTheme.typography.body.copy(color = OilTheme.colors.danger),
                     )
                     Spacer(Modifier.height(2.dp))
-                    Text(
+                    OilText(
                         text = "删除全部账目，操作不可恢复",
-                        style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+                        style = OilTheme.typography.caption.copy(color = OilTheme.colors.inkMuted),
                     )
                 }
             }
         }
     }
 
-    AppDialog(
+    OilDialog(
         show = showClearConfirm,
         title = "清空所有账目？",
         summary = "该操作不可恢复，确定要删除全部记账数据吗？",
         maxWidth = 420.dp,
         outsideMargin = DpSize(24.dp, 24.dp),
-        panelColor = LedgerTheme.surface,
         onDismissRequest = { showClearConfirm = false },
     ) {
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(
-                modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp))
-                    .background(LedgerTheme.inset).clickable { showClearConfirm = false },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("取消", style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
-            }
-            Box(
-                modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp))
-                    .background(LedgerTheme.surfaceVariant).clickable {
+            OilButton(
+                text = "取消",
+                variant = OilButtonVariant.Secondary,
+                onClick = { showClearConfirm = false },
+                modifier = Modifier.weight(1f),
+            )
+            OilButton(
+                text = "清空",
+                variant = OilButtonVariant.Danger,
+                onClick = {
                         scope.launch { LedgerRepository.clear(context) }
                         showClearConfirm = false
                         scope.launch { snackbar.show("已清空记账数据") }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "清空",
-                    style = MiuixTheme.textStyles.footnote1.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = LedgerTheme.danger,
-                    ),
-                )
-            }
+                },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

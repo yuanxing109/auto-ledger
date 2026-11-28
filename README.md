@@ -25,7 +25,7 @@ AutoLedger 是一个面向 Android 的本地优先记账应用。它通过通知
 | KSP | `2.3.12` |
 | compileSdk | `37.2` |
 | minSdk / targetSdk | `27` / `37` |
-| UI | Jetpack Compose + Miuix `0.9.5-beta03` |
+| UI | Jetpack Compose + 自有 Oil UI 组件与 Token |
 | 数据 | Room `2.8.5` + Flow |
 | 后台任务 | WorkManager、JobScheduler、AlarmManager |
 

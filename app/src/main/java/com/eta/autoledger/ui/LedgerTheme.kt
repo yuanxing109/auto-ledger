@@ -5,18 +5,17 @@ import com.eta.autoledger.ui.theme.LedgerColors
 import com.eta.autoledger.ui.theme.LedgerPalette
 
 /**
- * 自绘侧的语义色入口 —— P0 之后它只是 [LedgerPalette] 的转发层，不再是第二个色源。
+ * 自绘侧和尚未迁移页面的语义色兼容入口。
  *
  * 存在的理由：`Canvas` 的 `DrawScope`、`Modifier.drawWithCache` 的 lambda、函数默认参数、
  * 以及图表库的 `Colors` 配置都拿不到 `CompositionLocal`，只有普通 getter 能同时满足。
  *
  * 三条使用规则（`tools/check-ui-consistency.sh` 会查）：
- * 1. **Composable 里优先用 `MiuixTheme.colorScheme.<槽>`**，与本类同名同值；
+ * 1. **新的 Composable 优先使用 `OilTheme.colors`**；
  * 2. 本类只允许出现在 Canvas / drawWithCache / 图表配置 / 非 Composable 工具函数里；
  * 3. 任何地方都不得再写 `Color(0x…)`，色值只能住在 [LedgerPalette]。
  *
- * [dark] 由 `AppTheme` 在每次重组时写入，与 Miuix 的 `ThemeController` 用同一个判定结果，
- * 所以自绘与 Miuix 组件不会出现"半深半浅"。
+ * [dark] 由 `AppTheme` 在每次重组时写入，所有读取方使用同一份 Oil 色板。
  */
 object LedgerTheme {
 
@@ -75,9 +74,6 @@ object LedgerTheme {
 
     /** 自定义全局背景图上的主题可读性遮罩。 */
     val backgroundOverlay: Color get() = colors.backgroundOverlay
-
-    /** 报表截图分享使用的纯白/纯黑底。 */
-    val captureBackground: Color get() = colors.captureBackground
 
     /** 卡片统一柔和阴影色。 */
     val cardShadow: Color get() = colors.cardShadow

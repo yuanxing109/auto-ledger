@@ -1,5 +1,9 @@
 package com.eta.autoledger.settings
 
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.components.OilText
+import com.eta.autoledger.ui.OilIcons
+import com.eta.autoledger.ui.OilIcon
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,23 +56,18 @@ import com.eta.autoledger.data.MoneyPatterns
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
 import com.eta.autoledger.ui.theme.LedgerDimens
-import com.eta.autoledger.ui.components.AppDialog
-import com.eta.autoledger.ui.components.ThemeSurfaceCard
+import com.eta.autoledger.ui.components.OilDialog
+import com.eta.autoledger.ui.components.OilCard
+import com.eta.autoledger.ui.components.OilIconButton
+import com.eta.autoledger.ui.components.OilButton
+import com.eta.autoledger.ui.components.OilButtonVariant
+import com.eta.autoledger.ui.components.OilTextField
 import com.eta.autoledger.ui.window.LocalSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.Switch
-import top.yukonga.miuix.kmp.basic.SwitchDefaults
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 高级解析规则管理页（设置 → 自动记账 → 高级解析规则）。
@@ -130,23 +129,23 @@ fun RuleManagePage() {
         }
     }
 
-    SettingsPageColumn {
+    OilSettingsPageColumn {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(pageTitle, style = MiuixTheme.textStyles.title3, color = TextPrimary)
+                OilText(pageTitle, style = OilTheme.typography.sectionTitle, color = OilTheme.colors.ink)
                 Spacer(Modifier.height(4.dp))
-                Text(
+                OilText(
                     pageSummary,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = TextSecondary,
+                    style = OilTheme.typography.caption,
+                    color = OilTheme.colors.inkMuted,
                 )
             }
             if (tab != 2) {
-                IconButton(onClick = { editorSeed = null; editorShow = true }) {
-                    Icon(
-                        imageVector = MiuixIcons.Add,
+                OilIconButton(onClick = { editorSeed = null; editorShow = true }) {
+                    OilIcon(
+                        imageVector = OilIcons.Add,
                         contentDescription = "新建规则",
-                        tint = AccentBlue,
+                        tint = OilTheme.colors.accent,
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -164,31 +163,31 @@ fun RuleManagePage() {
             GlobalWordLibraryContent(prefs)
         } else {
             if (!loaded) {
-                HintText("正在加载规则…")
+                OilHintText("正在加载规则…")
             } else if (visible.isEmpty()) {
-                SettingsCard {
+                OilSettingsGroup {
                     Column(Modifier.fillMaxWidth().padding(dimens.cardPadding)) {
-                        Text(
+                        OilText(
                             if (tab == 0) "没有系统规则" else "还没有自定义规则",
-                            style = MiuixTheme.textStyles.body1,
-                            color = TextPrimary,
+                            style = OilTheme.typography.body,
+                            color = OilTheme.colors.ink,
                         )
                         Spacer(Modifier.height(4.dp))
-                        Text(
+                        OilText(
                             if (tab == 0) {
                                 "内置规则会在应用启动时自动播种。"
                             } else {
                                 "点右上角「+」新建一条，例如把某条固定话术的短信判为收入。"
                             },
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = TextSecondary,
+                            style = OilTheme.typography.caption,
+                            color = OilTheme.colors.inkMuted,
                         )
                     }
                 }
             } else {
-                SettingsCard {
+                OilSettingsGroup {
                     visible.forEachIndexed { index, rule ->
-                        if (index > 0) RowDivider()
+                        if (index > 0) OilSettingsDivider()
                         RuleRow(
                             rule = rule,
                             onToggle = { toggle(rule, it) },
@@ -202,7 +201,7 @@ fun RuleManagePage() {
                 }
             }
 
-            HintText("执行顺序：全局词库拥有最高一票否决权 → 我的自定义规则 → 系统默认规则。")
+            OilHintText("执行顺序：全局词库拥有最高一票否决权 → 我的自定义规则 → 系统默认规则。")
         }
     }
 
@@ -240,25 +239,25 @@ private fun GlobalWordLibraryContent(prefs: AppPrefs) {
     var ignoreInput by remember { mutableStateOf("") }
     var forceInput by remember { mutableStateOf("") }
 
-    HintText(
+    OilHintText(
         "当一条短信同时包含拦截词和认账词时，以认账词为准。\n" +
             "例：「已支付」在认账词里，所以「花呗已支付 46.94 元」仍会入账。",
     )
-    HintText(
+    OilHintText(
         "执行顺序：全局词库过滤(拦截/认账) -> 我的自定义规则 -> 系统默认规则。" +
             "全局词库拥有最高的一票否决权。",
     )
 
-    SettingsCard {
+    OilSettingsGroup {
         Column(modifier = Modifier.padding(dimens.cardPadding)) {
-            Text(
+            OilText(
                 "忽略（拦截）关键词",
-                style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+                style = OilTheme.typography.body.copy(color = OilTheme.colors.ink),
             )
             Spacer(Modifier.height(dimens.gapSmall / 2))
-            Text(
+            OilText(
                 "短信里出现这些词就不记账。「下单」「先用后付」这类只是占额度、钱还没扣。",
-                style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+                style = OilTheme.typography.caption.copy(color = OilTheme.colors.inkMuted),
             )
             Spacer(Modifier.height(dimens.gap))
             KeywordChips(
@@ -286,16 +285,16 @@ private fun GlobalWordLibraryContent(prefs: AppPrefs) {
         }
     }
 
-    SettingsCard {
+    OilSettingsGroup {
         Column(modifier = Modifier.padding(dimens.cardPadding)) {
-            Text(
+            OilText(
                 "强制认账关键词",
-                style = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+                style = OilTheme.typography.body.copy(color = OilTheme.colors.ink),
             )
             Spacer(Modifier.height(dimens.gapSmall / 2))
-            Text(
+            OilText(
                 "出现这些词就认定钱真的动了，即使同时命中拦截词也会入账。",
-                style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary),
+                style = OilTheme.typography.caption.copy(color = OilTheme.colors.inkMuted),
             )
             Spacer(Modifier.height(dimens.gap))
             KeywordChips(
@@ -323,8 +322,8 @@ private fun GlobalWordLibraryContent(prefs: AppPrefs) {
         }
     }
 
-    SettingsCard {
-        ArrowPreference(
+    OilSettingsGroup {
+        OilSettingsRow(
             title = "恢复默认词库",
             summary = "把两组词都还原成内置预设，你手动加的会被清掉",
             onClick = {
@@ -335,7 +334,7 @@ private fun GlobalWordLibraryContent(prefs: AppPrefs) {
         )
     }
 
-    HintText("修改即时生效，下一条短信或通知就会按新词库判断。")
+    OilHintText("修改即时生效，下一条短信或通知就会按新词库判断。")
 }
 
 private fun addKeyword(
@@ -360,9 +359,9 @@ private fun addKeyword(
 private fun KeywordChips(words: Set<String>, onRemove: (String) -> Unit) {
     val dimens = LocalDimens.current
     if (words.isEmpty()) {
-        Text(
+        OilText(
             "还没有任何词，短信将完全走内置规则。",
-            style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary),
+            style = OilTheme.typography.caption.copy(color = OilTheme.colors.inkFaint),
         )
         return
     }
@@ -377,8 +376,8 @@ private fun KeywordChips(words: Set<String>, onRemove: (String) -> Unit) {
                 modifier = Modifier
                     .heightIn(min = LedgerDimens.minTouch)
                     .clip(shape)
-                    .background(LedgerTheme.inset)
-                    .border(1.dp, LedgerTheme.borderSoft, shape)
+                    .background(OilTheme.colors.surfaceMuted)
+                    .border(1.dp, OilTheme.colors.line, shape)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = LocalIndication.current,
@@ -387,14 +386,14 @@ private fun KeywordChips(words: Set<String>, onRemove: (String) -> Unit) {
                     .padding(horizontal = dimens.gap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
+                OilText(
                     word,
-                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.text),
+                    style = OilTheme.typography.caption.copy(color = OilTheme.colors.ink),
                 )
                 Spacer(Modifier.width(dimens.gapSmall / 2))
-                Text(
+                OilText(
                     "×",
-                    style = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.textTertiary),
+                    style = OilTheme.typography.caption.copy(color = OilTheme.colors.inkFaint),
                 )
             }
         }
@@ -409,62 +408,41 @@ private fun KeywordInput(
     onValueChange: (String) -> Unit,
     onSubmit: () -> Unit,
 ) {
-    val dimens = LocalDimens.current
-    val shape = RoundedCornerShape(dimens.radiusSmall)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = LedgerDimens.minTouch)
-            .clip(shape)
-            .background(LedgerTheme.inset)
-            .border(1.dp, LedgerTheme.borderSoft, shape)
-            .padding(start = dimens.gap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(modifier = Modifier.weight(1f)) {
-            if (value.isEmpty()) {
-                Text(
-                    placeholder,
-                    style = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.textTertiary),
+    val enabled = value.isNotBlank()
+    OilTextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = placeholder,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+        trailingContent = {
+            Box(
+                modifier = Modifier
+                    .heightIn(min = LedgerDimens.minTouch)
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (enabled) OilTheme.colors.accent else OilTheme.colors.surfacePressed,
+                    )
+                    .clickable(enabled = enabled, onClickLabel = "添加词条", onClick = onSubmit)
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                OilText(
+                    "添加",
+                    style = OilTheme.typography.caption,
+                    color = if (enabled) OilTheme.colors.onAccent else OilTheme.colors.inkFaint,
                 )
             }
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                textStyle = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.text),
-                cursorBrush = SolidColor(LedgerTheme.accent),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onSubmit() }),
-            )
-        }
-        Spacer(Modifier.width(dimens.gapSmall))
-        val enabled = value.isNotBlank()
-        Box(
-            modifier = Modifier
-                .height(LedgerDimens.minTouch)
-                .clip(RoundedCornerShape(dimens.radiusSmall))
-                .background(if (enabled) LedgerTheme.accent else LedgerTheme.surfaceVariant)
-                .clickable(enabled = enabled, onClickLabel = "添加词条", onClick = onSubmit)
-                .padding(horizontal = dimens.cardPadding),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                "添加",
-                style = MiuixTheme.textStyles.footnote1.copy(
-                    color = if (enabled) LedgerTheme.onAccent else LedgerTheme.textTertiary,
-                ),
-            )
-        }
-    }
+        },
+    )
 }
 
 @Composable
 private fun RuleTabStrip(tab: Int, systemCount: Int, userCount: Int, onTab: (Int) -> Unit) {
     val dimens = LocalDimens.current
     val shape = RoundedCornerShape(dimens.radiusCard)
-    ThemeSurfaceCard(
+    OilCard(
         shape = shape,
         contentPadding = PaddingValues(4.dp),
     ) {
@@ -479,7 +457,7 @@ private fun RuleTabStrip(tab: Int, systemCount: Int, userCount: Int, onTab: (Int
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(dimens.radiusSmall))
-                    .background(if (selected) LedgerTheme.surfacePressed else LedgerTheme.surface)
+                    .background(if (selected) OilTheme.colors.surfacePressed else OilTheme.colors.surface)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = LocalIndication.current,
@@ -487,10 +465,10 @@ private fun RuleTabStrip(tab: Int, systemCount: Int, userCount: Int, onTab: (Int
                     .padding(vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
+                OilText(
                     item.second?.let { "${item.first} $it" } ?: item.first,
-                    style = MiuixTheme.textStyles.body2,
-                    color = if (selected) AccentBlue else TextSecondary,
+                    style = OilTheme.typography.body,
+                    color = if (selected) OilTheme.colors.accent else OilTheme.colors.inkMuted,
                 )
             }
         }
@@ -518,20 +496,14 @@ private fun RuleRow(rule: RuleEntity, onToggle: (Boolean) -> Unit, onEdit: (() -
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(rule.name, style = MiuixTheme.textStyles.title4, color = TextPrimary)
+            OilText(rule.name, style = OilTheme.typography.bodyStrong, color = OilTheme.colors.ink)
             Spacer(Modifier.height(2.dp))
-            Text(ruleSubtitle(rule), style = MiuixTheme.textStyles.footnote1, color = TextSecondary)
+            OilText(ruleSubtitle(rule), style = OilTheme.typography.caption, color = OilTheme.colors.inkMuted)
         }
         Spacer(Modifier.width(12.dp))
-        Switch(
+        com.eta.autoledger.ui.components.OilSwitch(
             checked = rule.enabled,
             onCheckedChange = onToggle,
-            colors = SwitchDefaults.switchColors(
-                checkedThumbColor = LedgerTheme.surface,
-                uncheckedThumbColor = LedgerTheme.textSecondary,
-                checkedTrackColor = LedgerTheme.accent,
-                uncheckedTrackColor = LedgerTheme.divider,
-            ),
         )
     }
 }
@@ -576,11 +548,11 @@ private fun RuleEditorDialog(
     var testResult by remember(show) { mutableStateOf<String?>(null) }
     var error by remember(show) { mutableStateOf<String?>(null) }
 
-    AppDialog(
+    OilDialog(
         show = show,
         maxWidth = 520.dp,
         outsideMargin = DpSize(20.dp, 24.dp),
-        panelColor = LedgerTheme.surface,
+        panelColor = OilTheme.colors.surface,
         onDismissRequest = onDismiss,
     ) {
         Column(
@@ -590,10 +562,10 @@ private fun RuleEditorDialog(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
+            OilText(
                 if (seed == null) "新建规则" else "编辑规则",
-                style = MiuixTheme.textStyles.body1,
-                color = TextPrimary,
+                style = OilTheme.typography.body,
+                color = OilTheme.colors.ink,
             )
 
             EditorField(
@@ -610,7 +582,7 @@ private fun RuleEditorDialog(
                 placeholder = "留空表示全部应用，如 com.tencent.mm",
             )
 
-            Text("规则类型", style = MiuixTheme.textStyles.footnote1, color = TextSecondary)
+            OilText("规则类型", style = OilTheme.typography.caption, color = OilTheme.colors.inkMuted)
             ChoiceRow(
                 options = listOf(
                     "短信" to RuleType.SMS,
@@ -621,7 +593,7 @@ private fun RuleEditorDialog(
                 onSelect = { type = it },
             )
 
-            Text("收支方向", style = MiuixTheme.textStyles.footnote1, color = TextSecondary)
+            OilText("收支方向", style = OilTheme.typography.caption, color = OilTheme.colors.inkMuted)
             ChoiceRow(
                 options = listOf(
                     "不指定" to "",
@@ -675,29 +647,23 @@ private fun RuleEditorDialog(
 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("命中后自动入账", style = MiuixTheme.textStyles.body2, color = TextPrimary)
+                    OilText("命中后自动入账", style = OilTheme.typography.body, color = OilTheme.colors.ink)
                     Spacer(Modifier.height(2.dp))
-                    Text(
+                    OilText(
                         "关闭则只提示，不写入账单",
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = TextSecondary,
+                        style = OilTheme.typography.caption,
+                        color = OilTheme.colors.inkMuted,
                     )
                 }
-                Switch(
+                com.eta.autoledger.ui.components.OilSwitch(
                     checked = autoRecord,
                     onCheckedChange = { autoRecord = it },
-                    colors = SwitchDefaults.switchColors(
-                        checkedThumbColor = LedgerTheme.surface,
-                        uncheckedThumbColor = LedgerTheme.textSecondary,
-                        checkedTrackColor = LedgerTheme.accent,
-                        uncheckedTrackColor = LedgerTheme.divider,
-                    ),
                 )
             }
 
-            RowDivider()
+            OilSettingsDivider()
 
-            Text("测试此规则", style = MiuixTheme.textStyles.body2, color = TextPrimary)
+            OilText("测试此规则", style = OilTheme.typography.body, color = OilTheme.colors.ink)
             EditorField(
                 label = "粘贴一条短信或通知原文",
                 value = testBody,
@@ -738,11 +704,11 @@ private fun RuleEditorDialog(
                 },
             )
             testResult?.let {
-                Text(it, style = MiuixTheme.textStyles.footnote1, color = AccentBlue)
+                OilText(it, style = OilTheme.typography.caption, color = OilTheme.colors.accent)
             }
 
             error?.let {
-                Text(it, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.danger)
+                OilText(it, style = OilTheme.typography.caption, color = OilTheme.colors.danger)
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -796,32 +762,14 @@ private fun EditorField(
     placeholder: String,
     minLines: Int = 1,
 ) {
-    val dimens = LocalDimens.current
-    Column(Modifier.fillMaxWidth()) {
-        Text(label, style = MiuixTheme.textStyles.footnote1, color = TextSecondary)
-        Spacer(Modifier.height(6.dp))
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(dimens.radiusSmall))
-                .background(LedgerTheme.inset)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-                .heightIn(min = (minLines * 20).dp),
-            textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
-            cursorBrush = SolidColor(AccentBlue),
-            singleLine = minLines == 1,
-            decorationBox = { inner ->
-                Box {
-                    if (value.isEmpty()) {
-                        Text(placeholder, style = MiuixTheme.textStyles.body2, color = TextSecondary)
-                    }
-                    inner()
-                }
-            },
-        )
-    }
+    OilTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label,
+        placeholder = placeholder,
+        singleLine = minLines == 1,
+        minLines = minLines,
+    )
 }
 
 @Composable
@@ -839,7 +787,7 @@ private fun ChoiceRow(options: List<Pair<String, String>>, selected: String, onS
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(dimens.radiusSmall))
-                    .background(if (active) LedgerTheme.surfacePressed else LedgerTheme.inset)
+                    .background(if (active) OilTheme.colors.surfacePressed else OilTheme.colors.surfaceMuted)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = LocalIndication.current,
@@ -847,10 +795,10 @@ private fun ChoiceRow(options: List<Pair<String, String>>, selected: String, onS
                     .padding(vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
+                OilText(
                     label,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = if (active) AccentBlue else TextSecondary,
+                    style = OilTheme.typography.caption,
+                    color = if (active) OilTheme.colors.accent else OilTheme.colors.inkMuted,
                 )
             }
         }
@@ -865,31 +813,16 @@ private fun DialogButton(
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val dimens = LocalDimens.current
-    val shape = RoundedCornerShape(dimens.radiusSmall)
-    val bg = when {
-        danger -> LedgerTheme.surfaceVariant
-        primary -> AccentBlue
-        else -> LedgerTheme.inset
-    }
-    val fg = when {
-        danger -> LedgerTheme.danger
-        primary -> LedgerTheme.onAccent
-        else -> TextPrimary
-    }
-    Box(
-        modifier = modifier
-            .height(LedgerDimens.minTouch)
-            .clip(shape)
-            .background(bg)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = LocalIndication.current,
-            ) { onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text, style = MiuixTheme.textStyles.button, color = fg)
-    }
+    OilButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier,
+        variant = when {
+            danger -> OilButtonVariant.Danger
+            primary -> OilButtonVariant.Primary
+            else -> OilButtonVariant.Secondary
+        },
+    )
 }
 
 // ── 纯函数区：JSON 组装/解析、测试匹配 ─────────────────────────────

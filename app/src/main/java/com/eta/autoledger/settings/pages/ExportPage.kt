@@ -1,6 +1,8 @@
 package com.eta.autoledger.settings
 
-import com.eta.autoledger.ui.LedgerTheme
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.components.OilButton
+import com.eta.autoledger.ui.components.OilText
 import com.eta.autoledger.ui.window.LocalSnackbar
 import android.app.DatePickerDialog
 import android.content.Intent
@@ -29,18 +31,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Calendar
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.data.CsvImporter
 import com.eta.autoledger.data.XlsxExporter
 import com.eta.autoledger.data.LedgerRepository
@@ -112,10 +108,13 @@ internal fun ExportPage() {
         }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
     }
 
-    SettingsPageColumn {
-        SettingsCard {
+    OilSettingsPageColumn {
+        OilSettingsGroup {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("导出范围", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+                OilText(
+                    "导出范围",
+                    style = OilTheme.typography.label.copy(color = OilTheme.colors.inkMuted),
+                )
                 Spacer(Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -128,7 +127,7 @@ internal fun ExportPage() {
                                 .weight(1f)
                                 .height(40.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(if (selected) AccentBlue else LedgerTheme.inset)
+                                .background(if (selected) OilTheme.colors.accent else OilTheme.colors.surfaceMuted)
                                 .clickable {
                                     range = item
                                     // 选范围即回填日期，避免用户还要自己算月初月末
@@ -138,34 +137,38 @@ internal fun ExportPage() {
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
+                            OilText(
                                 text = item.label,
-                                style = MiuixTheme.textStyles.footnote1.copy(
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (selected) LedgerTheme.onAccent else LedgerTheme.text,
-                                ),
+                                style = if (selected) {
+                                    OilTheme.typography.bodyStrong.copy(color = OilTheme.colors.onAccent)
+                                } else {
+                                    OilTheme.typography.caption.copy(color = OilTheme.colors.ink)
+                                },
                             )
                         }
                     }
                 }
                 if (range != ExportRange.CUSTOM) {
                     Spacer(Modifier.height(8.dp))
-                    Text(
+                    OilText(
                         text = "已按所选范围自动填好起止日期，仍可手动微调。",
-                        style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary),
+                        style = OilTheme.typography.caption.copy(color = OilTheme.colors.inkMuted),
                     )
                 }
             }
         }
 
-        SettingsCard {
-            ArrowPreference(title = "开始时间", summary = start.ifEmpty { "请选择" }, onClick = { pickDate { start = it } })
-            RowDivider()
-            ArrowPreference(title = "结束时间", summary = end.ifEmpty { "请选择" }, onClick = { pickDate { end = it } })
+        OilSettingsGroup {
+            OilSettingsRow(title = "开始时间", summary = start.ifEmpty { "请选择" }, onClick = { pickDate { start = it } })
+            OilSettingsDivider()
+            OilSettingsRow(title = "结束时间", summary = end.ifEmpty { "请选择" }, onClick = { pickDate { end = it } })
         }
-        SettingsCard {
+        OilSettingsGroup {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("导出格式", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+                OilText(
+                    "导出格式",
+                    style = OilTheme.typography.label.copy(color = OilTheme.colors.inkMuted),
+                )
                 Spacer(Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -177,40 +180,37 @@ internal fun ExportPage() {
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(if (selected) LedgerTheme.surfacePressed else LedgerTheme.surfaceVariant)
+                                .background(if (selected) OilTheme.colors.surfacePressed else OilTheme.colors.surfaceMuted)
                                 .border(
                                     1.dp,
-                                    if (selected) AccentBlue else LedgerTheme.border,
+                                    if (selected) OilTheme.colors.accent else OilTheme.colors.line,
                                     RoundedCornerShape(16.dp),
                                 )
                                 .clickable { format = item }
                                 .padding(horizontal = 12.dp, vertical = 12.dp),
                         ) {
-                            Text(
+                            OilText(
                                 item.label,
-                                style = TextStyle(
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (selected) AccentBlue else TextPrimary,
+                                style = OilTheme.typography.bodyStrong.copy(
+                                    color = if (selected) OilTheme.colors.accent else OilTheme.colors.ink,
                                 ),
                             )
                             Spacer(Modifier.height(2.dp))
-                            Text(item.hint, style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary))
+                            OilText(
+                                item.hint,
+                                style = OilTheme.typography.caption.copy(color = OilTheme.colors.inkMuted),
+                            )
                         }
                     }
                 }
             }
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (working) LedgerTheme.accentPressed else AccentBlue)
-                .clickable(enabled = !working) {
+        OilButton(
+            text = if (working) "正在导出…" else "导出",
+            onClick = {
                     if (start.isEmpty() || end.isEmpty()) {
                         scope.launch { snackbar.show("请先选择开始时间和结束时间") }
-                        return@clickable
+                        return@OilButton
                     }
                     val targetFormat = format
                     working = true
@@ -239,7 +239,7 @@ internal fun ExportPage() {
                                     )
                                     val file = File(dir, "账单_$fileStamp.${targetFormat.extension}")
                                     if (targetFormat == ExportFormat.Csv) {
-                                        file.writeText("\uFEFF" + CsvImporter.export(entries), Charsets.UTF_8)
+                                            file.writeText("\uFEFF" + CsvImporter.export(entries), Charsets.UTF_8)
                                     } else {
                                         XlsxExporter.write(entries, file)
                                     }
@@ -271,18 +271,10 @@ internal fun ExportPage() {
                             scope.launch { snackbar.show("导出失败：${error.message}") }
                         }
                     }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                if (working) "正在导出…" else "导出",
-                style = TextStyle(
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    // working 态使用实色 accentPressed，沿用主色文字保证层级清晰
-                    color = if (working) LedgerTheme.accent else LedgerTheme.onAccent,
-                ),
-            )
-        }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !working,
+            loading = working,
+        )
     }
 }

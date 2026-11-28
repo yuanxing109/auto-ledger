@@ -23,8 +23,15 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import com.eta.autoledger.ui.rememberMotionDuration
-import com.eta.autoledger.ui.components.AppDialog
-import com.eta.autoledger.ui.components.ThemeIconBadge
+import com.eta.autoledger.ui.components.OilDialog
+import com.eta.autoledger.ui.components.OilIconBadge
+import com.eta.autoledger.ui.components.OilScaffold
+import com.eta.autoledger.ui.components.OilBottomBar
+import com.eta.autoledger.ui.components.OilCard
+import com.eta.autoledger.ui.components.OilNavItem
+import com.eta.autoledger.ui.components.OilText
+import com.eta.autoledger.ui.components.OilTopBar
+import com.eta.autoledger.ui.components.OilTabBar
 import com.eta.autoledger.ui.theme.LedgerDimens
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -80,19 +87,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.eta.autoledger.data.CategoryStore
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.icon.extended.Home
-import top.yukonga.miuix.kmp.icon.extended.GridView
-import top.yukonga.miuix.kmp.icon.extended.Photos
-import top.yukonga.miuix.kmp.icon.extended.Scan
-import top.yukonga.miuix.kmp.icon.extended.Settings
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.eta.autoledger.ui.screen.AddScreen
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.screenshot.VisionHelper
@@ -102,6 +96,8 @@ import com.eta.autoledger.ui.screen.HomeScreen
 import com.eta.autoledger.ui.screen.ReportScreen
 import com.eta.autoledger.ui.screen.SearchScreen
 import com.eta.autoledger.ui.theme.AppTheme
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.theme.LocalOilWallpaperActive
 import com.eta.autoledger.ui.window.LedgerSnackbar
 import com.eta.autoledger.ui.window.LedgerSnackbarHost
 import com.eta.autoledger.ui.window.LocalSnackbar
@@ -116,8 +112,7 @@ private data class Tab(
 fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
     val context = LocalContext.current
     val prefs = remember { AppPrefs.get(context) }
-    // 全站唯一主题根：解析「外观」模式 → 灌 Miuix 色板/字体槽 → 同步自绘色板。
-    // 之后任何页面都不许再包 MiuixTheme / MaterialTheme，否则深色会出现两套色。
+    // 全站唯一主题根：解析「外观」模式并注入 Oil 色板与字体 Token。
     AppTheme(mode = prefs.themeMode) {
         var selected by rememberSaveable { mutableIntStateOf(0) }
         var showSettings by rememberSaveable { mutableStateOf(openAiSettings) }
@@ -189,9 +184,9 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
         var reportTab by rememberSaveable { mutableIntStateOf(1) }
         val reportShareRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
         val tabs = listOf(
-            Tab("记账", MiuixIcons.Home),
-            Tab("记一笔", MiuixIcons.Add),
-            Tab("报表", MiuixIcons.GridView),
+            Tab("记账", OilIcons.Home),
+            Tab("记一笔", OilIcons.Add),
+            Tab("报表", OilIcons.GridView),
         )
 
         // 系统「移除动画」开关：开发者选项 / 无障碍里的 animator_duration_scale 为 0 时，
@@ -205,9 +200,13 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
             showSearch -> 2
             else -> 0
         }
-        CompositionLocalProvider(LocalSnackbar provides snackbar) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                LedgerBackdrop(path = prefs.customBackgroundPath)
+        OilAppShell {
+            CompositionLocalProvider(
+                LocalSnackbar provides snackbar,
+                LocalOilWallpaperActive provides prefs.customBackgroundPath.isNotBlank(),
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LedgerBackdrop(path = prefs.customBackgroundPath)
                 AnimatedContent(
                     targetState = overlay,
                     transitionSpec = { fadeIn(tween(overlayDuration)) togetherWith fadeOut(tween(overlayDuration)) },
@@ -221,32 +220,59 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
 
                         2 -> SearchScreen(onClose = { showSearch = false })
 
-                        else -> Scaffold(
+                        else -> OilScaffold(
                             containerColor = Color.Transparent,
                             topBar = {
                                 if (selected == 2) {
-                                    ReportTopBar(
-                                        tab = reportTab,
-                                        onTab = { reportTab = it },
-                                        onShare = { reportShareRequests.tryEmit(Unit) },
-                                    )
+                                    Column {
+                                        OilTopBar(
+                                            title = "收支报表",
+                                            actions = {
+                                                com.eta.autoledger.ui.components.OilIconButton(
+                                                    icon = ReportShareIcon,
+                                                    contentDescription = "分享报表",
+                                                    onClick = { reportShareRequests.tryEmit(Unit) },
+                                                )
+                                            },
+                                        )
+                                        OilTabBar(
+                                            labels = listOf("周报", "月报", "年报"),
+                                            selectedIndex = reportTab,
+                                            onSelected = { reportTab = it },
+                                        )
+                                    }
                                 } else {
-                                    LedgerTopBar(
+                                    OilTopBar(
                                         title = tabs[selected].label,
-                                        isHome = selected == 0,
-                                        showAi = selected != 2,
-                                        onBack = if (selected == 1) ({ selected = 0 }) else null,
-                                        onAi = { showAiSheet = true },
-                                        onSettings = {
-                                            settingsPage = SettingsPage.Main
-                                            showSettings = true
+                                        navigationIcon = if (selected == 1) OilIcons.Back else null,
+                                        onNavigationClick = { selected = 0 },
+                                        actions = {
+                                            com.eta.autoledger.ui.components.OilIconButton(
+                                                icon = AiScanIcon,
+                                                contentDescription = "AI识图",
+                                                onClick = { showAiSheet = true },
+                                            )
+                                            if (selected == 0) {
+                                                com.eta.autoledger.ui.components.OilIconButton(
+                                                    icon = OilIcons.Settings,
+                                                    contentDescription = "设置",
+                                                    onClick = {
+                                                        settingsPage = SettingsPage.Main
+                                                        showSettings = true
+                                                    },
+                                                )
+                                            }
                                         },
                                     )
                                 }
                             },
                             bottomBar = {
                                 if (selected != 1) {
-                                    LedgerBottomBar(selected = selected, onSelect = { selected = it })
+                                    OilBottomBar(
+                                        items = tabs.map { OilNavItem(it.label, it.icon) },
+                                        selectedIndex = selected,
+                                        onSelected = { selected = it },
+                                    )
                                 }
                             },
                         ) { padding ->
@@ -291,14 +317,15 @@ fun LedgerApp(openAiSettings: Boolean = false, openAddRequest: Int = 0) {
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
 
-                // 常驻组合、只切 show：这样关闭时 AppDialog 内部能播完退场再摘掉窗口。
-                // 外面再包一层 if (showAiSheet) 的话，一点关闭组件就被移出组合，退场动画没机会播。
-                AiActionSheet(
-                    show = showAiSheet,
-                    onDismiss = { showAiSheet = false },
-                    onCamera = { captureVision() },
-                    onGallery = { pickImageVision() },
-                )
+                    // 常驻组合、只切 show：这样关闭时 OilDialog 内部能播完退场再摘掉窗口。
+                    // 外面再包一层 if (showAiSheet) 的话，一点关闭组件就被移出组合，退场动画没机会播。
+                    AiActionSheet(
+                        show = showAiSheet,
+                        onDismiss = { showAiSheet = false },
+                        onCamera = { captureVision() },
+                        onGallery = { pickImageVision() },
+                    )
+                }
             }
         }
     }
@@ -312,7 +339,7 @@ private fun LedgerBackdrop(path: String) {
             if (path.isBlank()) null else runCatching { decodeBackgroundBitmap(path) }.getOrNull()
         }
     }
-    Box(modifier = Modifier.fillMaxSize().background(LedgerTheme.page)) {
+    Box(modifier = Modifier.fillMaxSize().background(OilTheme.colors.page)) {
         val image = bitmap
         if (image != null) {
             Image(
@@ -321,7 +348,6 @@ private fun LedgerBackdrop(path: String) {
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-            Box(modifier = Modifier.fillMaxSize().background(LedgerTheme.backgroundOverlay))
         }
     }
 }
@@ -359,296 +385,55 @@ private fun AiActionSheet(
     onGallery: () -> Unit,
 ) {
     val dimens = LocalDimens.current
-    AppDialog(
+    OilDialog(
         show = show,
         widthFraction = 0.88f,
         outsideMargin = DpSize(dimens.cardPadding, dimens.cardPadding),
         insideMargin = DpSize(dimens.cardPadding, dimens.cardPadding),
-        panelColor = LedgerTheme.surface,
+        title = "识图记账",
+        summary = "拍照或上传账单图片，交给已配置的 AI 解析。",
         onDismissRequest = onDismiss,
     ) {
-        Text(
-            text = "识图记账",
-            style = MiuixTheme.textStyles.title3,
-            color = LedgerTheme.text,
-        )
-        Spacer(Modifier.height(dimens.gapSmall))
-        Text(
-            text = "拍照或上传账单图片，交给已配置的 AI 解析。",
-            style = MiuixTheme.textStyles.footnote1,
-            color = LedgerTheme.textSecondary,
-        )
-        Spacer(Modifier.height(dimens.cardPadding))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(dimens.gap),
         ) {
-            SheetOption(MiuixIcons.Scan, "拍照识图", Modifier.weight(1f), onCamera)
-            SheetOption(MiuixIcons.Photos, "上传图片识图", Modifier.weight(1f), onGallery)
+            AiSheetOption(OilIcons.Scan, "拍照识图", Modifier.weight(1f), onCamera)
+            AiSheetOption(OilIcons.Photos, "上传图片识图", Modifier.weight(1f), onGallery)
         }
     }
 }
 
 @Composable
-private fun SheetOption(
+private fun AiSheetOption(
     icon: ImageVector,
     label: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val dimens = LocalDimens.current
-    val shape = RoundedCornerShape(dimens.radiusCard)
-    Column(
-        modifier = modifier
-            .clip(shape)
-            .background(LedgerTheme.inset)
-            .border(1.dp, LedgerTheme.borderSoft, shape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = LocalIndication.current,
-                onClick = onClick,
-            )
-            .padding(horizontal = dimens.gap, vertical = dimens.gap),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    OilCard(
+        modifier = modifier,
+        onClick = onClick,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
     ) {
-        ThemeIconBadge(size = dimens.gapLarge, borderColor = LedgerTheme.accent) {
-            Icon(
+        OilIconBadge(
+            size = 48.dp,
+            borderColor = OilTheme.colors.accent,
+            backgroundColor = OilTheme.colors.surfaceMuted,
+        ) {
+            OilIcon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = LedgerTheme.accent,
-                modifier = Modifier.size(dimens.cardPadding),
+                tint = OilTheme.colors.accent,
+                modifier = Modifier.size(22.dp),
             )
         }
-        Spacer(Modifier.height(dimens.gapSmall))
-        Text(
+        Spacer(Modifier.height(12.dp))
+        OilText(
             text = label,
-            style = MiuixTheme.textStyles.title4,
-            color = LedgerTheme.text,
+            style = OilTheme.typography.bodyStrong,
+            color = OilTheme.colors.ink,
             maxLines = 1,
         )
-    }
-}
-
-@Composable
-private fun LedgerTopBar(
-    title: String,
-    isHome: Boolean,
-    showAi: Boolean,
-    onBack: (() -> Unit)? = null,
-    onSettings: () -> Unit = {},
-    onAi: () -> Unit = {},
-) {
-    val barShape = RoundedCornerShape(50)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 12.dp)
-            .padding(top = 8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(barShape)
-                .background(LedgerTheme.surface),
-        ) {
-            if (onBack != null) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 4.dp),
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Back,
-                        contentDescription = "返回",
-                    )
-                }
-            }
-            Text(
-                text = title,
-                style = MiuixTheme.textStyles.title4,
-                modifier = Modifier.align(Alignment.Center),
-            )
-            if (showAi) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = onAi) {
-                        Icon(
-                            imageVector = AiScanIcon,
-                            contentDescription = "AI识图",
-                            // ImageVector 里的 SolidColor 会被 tint 覆盖；不显式给色时默认 LocalContentColor（黑），深色主题下会消失
-                            tint = LedgerTheme.text,
-                        )
-                    }
-                    if (isHome) {
-                        IconButton(onClick = onSettings) {
-                            Icon(
-                                imageVector = MiuixIcons.Settings,
-                                contentDescription = "设置",
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(LedgerTheme.divider),
-        )
-    }
-}
-
-@Composable
-private fun ReportTopBar(
-    tab: Int,
-    onTab: (Int) -> Unit,
-    onShare: () -> Unit,
-) {
-    val barShape = RoundedCornerShape(LocalDimens.current.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 12.dp)
-            .padding(top = 8.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(barShape)
-                .background(LedgerTheme.surface)
-                .padding(bottom = 12.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-            ) {
-                Text(
-                    text = "收支报表",
-                    style = MiuixTheme.textStyles.title3,
-                    modifier = Modifier.align(Alignment.Center),
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(LedgerDimens.minTouch)
-                        .clip(CircleShape)
-                        .clickable(onClick = onShare),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = ReportShareIcon,
-                        contentDescription = "分享报表",
-                        tint = LedgerTheme.textSecondary,
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectableGroup()
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                listOf("周报", "月报", "年报").forEachIndexed { index, label ->
-                    val selected = tab == index
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = LedgerDimens.minTouch)
-                            .clip(RoundedCornerShape(LocalDimens.current.radiusSmall))
-                            .background(
-                                if (selected) LedgerTheme.surfacePressed
-                                else Color.Transparent,
-                            )
-                            .selectable(
-                                selected = selected,
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = LocalIndication.current,
-                                role = Role.Tab,
-                                onClick = { onTab(index) },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = label,
-                            style = MiuixTheme.textStyles.title4.copy(
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (selected) LedgerTheme.accent else LedgerTheme.textSecondary,
-                            ),
-                        )
-                    }
-                }
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(LedgerTheme.divider),
-        )
-    }
-}
-
-@Composable
-private fun LedgerBottomBar(selected: Int, onSelect: (Int) -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(
-                elevation = 8.dp,
-                ambientColor = LedgerTheme.cardShadow,
-                spotColor = LedgerTheme.cardShadow,
-                clip = false,
-            )
-            .background(LedgerTheme.surface)
-            .navigationBarsPadding()
-    ) {
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LedgerTheme.divider))
-        Row(
-            modifier = Modifier.fillMaxWidth().height(64.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            DockTab("记账", MiuixIcons.Home, selected == 0, Modifier.weight(1f)) { onSelect(0) }
-            DockTab("记一笔", MiuixIcons.Add, selected == 1, Modifier.weight(1f)) { onSelect(1) }
-            DockTab("报表", MiuixIcons.GridView, selected == 2, Modifier.weight(1f)) { onSelect(2) }
-        }
-    }
-}
-
-@Composable
-private fun DockTab(
-    label: String,
-    icon: ImageVector,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val color = if (selected) LedgerTheme.accent else LedgerTheme.textSecondary
-    Column(
-        modifier = modifier
-            .fillMaxHeight()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = LocalIndication.current,
-                onClick = onClick,
-            ),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(imageVector = icon, contentDescription = label, tint = color)
-        Spacer(Modifier.height(2.dp))
-        Text(label, style = MiuixTheme.textStyles.footnote2, color = color)
     }
 }

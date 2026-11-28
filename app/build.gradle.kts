@@ -95,10 +95,11 @@ android {
 }
 
 dependencies {
-    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.5-beta03")
-    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.5-beta03")
-    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.5-beta03")
-    // 纯 Compose 图表库（无 AndroidView 互操作），替换报表页三套自绘 Canvas
+    // Oil UI 直接构建在 Compose Foundation/UI 上，不再借用第三方组件库的传递依赖。
+    implementation("androidx.compose.ui:ui:1.13.0-rc01")
+    implementation("androidx.compose.foundation:foundation:1.13.0-rc01")
+    implementation("androidx.compose.animation:animation:1.13.0-rc01")
+    implementation("androidx.compose.runtime:runtime:1.13.0-rc01")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.1")

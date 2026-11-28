@@ -1,5 +1,13 @@
 package com.eta.autoledger.settings
 
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.theme.oilPageSurface
+import com.eta.autoledger.ui.components.OilText
+import com.eta.autoledger.ui.components.OilIconButton
+import com.eta.autoledger.ui.components.OilScaffold
+import com.eta.autoledger.ui.components.OilButton
+import com.eta.autoledger.ui.OilIcons
+import com.eta.autoledger.ui.OilIcon
 import androidx.core.content.edit
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
@@ -79,20 +87,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.icon.extended.ChevronForward
-import top.yukonga.miuix.kmp.icon.extended.Search
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import com.eta.autoledger.ui.components.AppDialog
-import com.eta.autoledger.ui.components.ThemeSurfaceCard
-import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.eta.autoledger.ui.components.OilDialog
+import com.eta.autoledger.ui.components.OilCard
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.ImportDedup
 import com.eta.autoledger.data.CsvImporter
@@ -159,7 +155,7 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
         if (parent == null) onClose() else page = parent
     }
 
-    Scaffold(
+    OilScaffold(
         containerColor = Color.Transparent,
         topBar = {
             SettingsTopBar(title = page.title, onBack = {
@@ -171,7 +167,7 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Transparent)
+                .oilPageSurface()
                 .padding(padding),
         ) {
             AnimatedContent(
@@ -232,54 +228,42 @@ fun SettingsScreen(initialPage: SettingsPage = SettingsPage.Main, onClose: () ->
 
 @Composable
 private fun SettingsTopBar(title: String, onBack: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(LedgerTheme.surface)
-            .statusBarsPadding()
-            .padding(horizontal = 4.dp, vertical = 4.dp)
-            .height(48.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(imageVector = MiuixIcons.Back, contentDescription = "返回", tint = TextPrimary)
-        }
-        Text(
-            text = title,
-            style = MiuixTheme.textStyles.main.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary),
-        )
-    }
+    com.eta.autoledger.ui.components.OilTopBar(
+        title = title,
+        navigationIcon = OilIcons.Back,
+        onNavigationClick = onBack,
+    )
 }
 
 @Composable
 private fun MainPage(onOpen: (SettingsPage) -> Unit) {
-    SettingsPageColumn {
+    OilSettingsPageColumn {
         // 常用：记账、提醒与个性化
-        SettingsCard {
+        OilSettingsGroup {
             SettingsNavigationRow(
                 title = "自动记账",
                 summary = "读取收支信息，自动生成账单",
                 onClick = { onOpen(SettingsPage.Auto) },
             )
-            RowDivider()
+            OilSettingsDivider()
             SettingsNavigationRow(
                 title = "记账设置",
                 summary = "分类管理与预算",
                 onClick = { onOpen(SettingsPage.LedgerSettings) },
             )
-            RowDivider()
+            OilSettingsDivider()
             SettingsNavigationRow(
                 title = "通知与提醒",
                 summary = "每日提醒、周期账单与单笔通知",
                 onClick = { onOpen(SettingsPage.Notifications) },
             )
-            RowDivider()
+            OilSettingsDivider()
             SettingsNavigationRow(
                 title = "数据与备份",
                 summary = "导入、导出与 WebDAV 云备份",
                 onClick = { onOpen(SettingsPage.DataBackup) },
             )
-            RowDivider()
+            OilSettingsDivider()
             SettingsNavigationRow(
                 title = "外观与小部件",
                 summary = "主题模式与桌面收支卡片",
@@ -288,19 +272,19 @@ private fun MainPage(onOpen: (SettingsPage) -> Unit) {
         }
 
         // 系统与支持：高级能力、权限和版本信息
-        SettingsCard {
+        OilSettingsGroup {
             SettingsNavigationRow(
                 title = "AI 与高级功能",
                 summary = "截屏记账、AI 识图与模型配置",
                 onClick = { onOpen(SettingsPage.Features) },
             )
-            RowDivider()
+            OilSettingsDivider()
             SettingsNavigationRow(
                 title = "权限与后台",
                 summary = "通知使用权、电池白名单、通知渠道与数据清理",
                 onClick = { onOpen(SettingsPage.SysAccess) },
             )
-            RowDivider()
+            OilSettingsDivider()
             SettingsNavigationRow(
                 title = "关于",
                 summary = "版本信息、开源许可与安全设置",
@@ -337,12 +321,12 @@ private fun SettingsNavigationRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MiuixTheme.textStyles.title4, color = LedgerTheme.text)
+            OilText(text = title, style = OilTheme.typography.bodyStrong, color = LedgerTheme.text)
             Spacer(Modifier.height(LedgerDimens.xs))
-            Text(text = summary, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+            OilText(text = summary, style = OilTheme.typography.caption, color = LedgerTheme.textSecondary)
         }
-        Icon(
-            imageVector = MiuixIcons.ChevronForward,
+        OilIcon(
+            imageVector = OilIcons.ChevronForward,
             contentDescription = null,
             tint = arrowColor,
             modifier = Modifier.size(18.dp),
@@ -353,58 +337,58 @@ private fun SettingsNavigationRow(
 /** 「记账设置」分组页：分类 + 预算。 */
 @Composable
 private fun LedgerSettingsPage(onOpen: (SettingsPage) -> Unit) {
-    SettingsPageColumn {
-        SettingsCard {
-            ArrowPreference(
+    OilSettingsPageColumn {
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "记账分类管理",
                 summary = "管理支出、收入和其他分类",
                 onClick = { onOpen(SettingsPage.Categories) },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "预算管理",
                 summary = "预算金额与起始日",
                 onClick = { onOpen(SettingsPage.Budget) },
             )
         }
-        HintText("分类决定自动记账时账单被归到哪里；预算只影响首页预算卡片。")
+        OilHintText("分类决定自动记账时账单被归到哪里；预算只影响首页预算卡片。")
     }
 }
 
 /** 「数据与备份」分组页：导入 / 导出 / 云备份。 */
 @Composable
 private fun DataBackupPage(onOpen: (SettingsPage) -> Unit) {
-    SettingsPageColumn {
-        SettingsCard {
-            ArrowPreference(
+    OilSettingsPageColumn {
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "导入数据",
                 summary = "支持 Excel / CSV 账单",
                 onClick = { onOpen(SettingsPage.Import) },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "导出数据",
                 summary = "导出 CSV / XLSX 账单文件",
                 onClick = { onOpen(SettingsPage.Export) },
             )
         }
-        SettingsCard {
-            ArrowPreference(
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "云备份",
                 summary = "备份到 WebDAV（坚果云 / 群晖等），换机可恢复",
                 onClick = { onOpen(SettingsPage.Backup) },
             )
         }
-        HintText("导入用于把别的 App 的账单搬进来；云备份用于换机和防丢。")
+        OilHintText("导入用于把别的 App 的账单搬进来；云备份用于换机和防丢。")
     }
 }
 
 /** 「外观与小部件」分组页：主题 + 桌面小部件。 */
 @Composable
 private fun AppearanceWidgetPage(prefs: AppPrefs, onOpen: (SettingsPage) -> Unit) {
-    SettingsPageColumn {
-        SettingsCard {
-            ArrowPreference(
+    OilSettingsPageColumn {
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "外观",
                 summary = when (prefs.themeMode) {
                     "light" -> "浅色"
@@ -413,8 +397,8 @@ private fun AppearanceWidgetPage(prefs: AppPrefs, onOpen: (SettingsPage) -> Unit
                 },
                 onClick = { onOpen(SettingsPage.Appearance) },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "添加桌面小部件",
                 summary = "在桌面展示今日与本月收支",
                 onClick = { onOpen(SettingsPage.Widget) },
@@ -432,16 +416,16 @@ private fun AboutPage() {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull() ?: "—"
     }
-    SettingsPageColumn {
-        SettingsCard {
-            InfoRow(title = "版本", value = versionName)
-            RowDivider()
-            InfoRow(title = "包名", value = context.packageName)
+    OilSettingsPageColumn {
+        OilSettingsGroup {
+            OilInfoRow(title = "版本", value = versionName)
+            OilSettingsDivider()
+            OilInfoRow(title = "包名", value = context.packageName)
         }
-        SettingsCard {
-            InfoRow(title = "开源许可", value = "Miuix · Compose · Room · Vico")
+        OilSettingsGroup {
+            OilInfoRow(title = "开源许可", value = "Oil UI · Compose · Room · Vico")
         }
-        HintText(
+        OilHintText(
             "隐私说明：账目、分类、预算、周期账单全部存放在本机数据库，本 App 不设服务器、不做账号体系、不上传统计数据。\n" +
                 "以下两种情况才会产生网络请求，且只发往你自己填写的地址：\n" +
                 "1）配置 AI 模型后使用识图记账，截图会发给你选的模型服务商；\n" +
@@ -473,17 +457,17 @@ private fun AutoPage(
             scope.launch { snackbar.show("未授予短信权限，短信记账不会生效") }
         }
     }
-    SettingsPageColumn {
-        HintText("读取收支信息，自动生成账单。")
-        SettingsCard {
-            ArrowPreference(
+    OilSettingsPageColumn {
+        OilHintText("读取收支信息，自动生成账单。")
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "通知使用权",
                 summary = if (ledgerListenerGranted) "已开启，正在监听账单通知" else "未开启，点击授予通知使用权",
                 onClick = { LedgerNotificationListener.openSettings(context) },
             )
         }
-        SettingsCard {
-            SwitchPreference(
+        OilSettingsGroup {
+            OilSwitchSettingsRow(
                 title = "短信记账",
                 summary = if (smsGranted) "解析银行与服务号短信里的收支信息" else "未授予短信权限，点击开关授权",
                 checked = prefs.smsEnabled && smsGranted,
@@ -495,40 +479,40 @@ private fun AutoPage(
                     }
                 },
             )
-            RowDivider()
-            SwitchPreference(
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "支付宝",
                 summary = "解析支付宝账单通知",
                 checked = prefs.alipayEnabled,
                 onCheckedChange = { prefs.alipayEnabled = it },
             )
-            RowDivider()
-            SwitchPreference(
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "微信",
                 summary = "解析微信支付账单通知",
                 checked = prefs.wechatEnabled,
                 onCheckedChange = { prefs.wechatEnabled = it },
             )
-            RowDivider()
-            SwitchPreference(
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "其他",
                 summary = "云闪付、抖音、快手、滴滴、美团支付等",
                 checked = prefs.otherEnabled,
                 onCheckedChange = { prefs.otherEnabled = it },
             )
-            RowDivider()
-            SwitchPreference(
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "截屏记账",
                 summary = "接收系统截屏并交给 AI 解析",
                 checked = prefs.screenshotEnabled,
                 onCheckedChange = { prefs.screenshotEnabled = it },
             )
         }
-        SettingsCard {
-            ArrowPreference(title = "账单导入", summary = "手动导入微信、支付宝账单", onClick = onImport)
+        OilSettingsGroup {
+            OilSettingsRow(title = "账单导入", summary = "手动导入微信、支付宝账单", onClick = onImport)
         }
-        SettingsCard {
-            ArrowPreference(
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "高级解析规则",
                 summary = "系统内置与自定义规则，可启停、可测试",
                 onClick = onManageRules,
@@ -540,11 +524,11 @@ private fun AutoPage(
 @Composable
 private fun NotificationsPage(prefs: AppPrefs, onDaily: () -> Unit, onSingle: () -> Unit) {
     val context = LocalContext.current
-    SettingsPageColumn {
-        SettingsCard {
-            ArrowPreference(title = "每日记账提醒", summary = prefs.reminderTime, onClick = onDaily)
-            RowDivider()
-            SwitchPreference(
+    OilSettingsPageColumn {
+        OilSettingsGroup {
+            OilSettingsRow(title = "每日记账提醒", summary = prefs.reminderTime, onClick = onDaily)
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "记账日报",
                 summary = "每日固定时间提醒",
                 checked = prefs.dailyReminder,
@@ -554,8 +538,8 @@ private fun NotificationsPage(prefs: AppPrefs, onDaily: () -> Unit, onSingle: ()
                     else ReminderScheduler.cancelDaily(context)
                 },
             )
-            RowDivider()
-            SwitchPreference(
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "记账周报",
                 summary = "每周一上午接收",
                 checked = prefs.weeklyReport,
@@ -564,8 +548,8 @@ private fun NotificationsPage(prefs: AppPrefs, onDaily: () -> Unit, onSingle: ()
                     if (it) ReminderScheduler.scheduleWeekly(context) else ReminderScheduler.cancelWeekly(context)
                 },
             )
-            RowDivider()
-            SwitchPreference(
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "记账月报",
                 summary = "每月一号上午接收",
                 checked = prefs.monthlyReport,
@@ -575,8 +559,8 @@ private fun NotificationsPage(prefs: AppPrefs, onDaily: () -> Unit, onSingle: ()
                 },
             )
         }
-        SettingsCard {
-            ArrowPreference(title = "单笔记账通知", summary = "生成自动账单时的提醒方式", onClick = onSingle)
+        OilSettingsGroup {
+            OilSettingsRow(title = "单笔记账通知", summary = "生成自动账单时的提醒方式", onClick = onSingle)
         }
     }
 }
@@ -584,9 +568,9 @@ private fun NotificationsPage(prefs: AppPrefs, onDaily: () -> Unit, onSingle: ()
 @Composable
 private fun DailyReminderPage(prefs: AppPrefs) {
     val context = LocalContext.current
-    SettingsPageColumn {
-        SettingsCard {
-            ArrowPreference(
+    OilSettingsPageColumn {
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "提醒时间",
                 summary = prefs.reminderTime,
                 onClick = {
@@ -603,9 +587,9 @@ private fun DailyReminderPage(prefs: AppPrefs) {
                 },
             )
         }
-        HintText("选择通知方式（可多选）")
-        SettingsCard {
-            SwitchPreference(
+        OilHintText("选择通知方式（可多选）")
+        OilSettingsGroup {
+            OilSwitchSettingsRow(
                 title = "超级岛提醒",
                 summary = "每日提醒以实况通知呈现",
                 checked = prefs.islandDaily,
@@ -622,30 +606,30 @@ private fun SingleNotifyPage(prefs: AppPrefs) {
         val vendor = IslandNotifier.vendorLabel(IslandNotifier.vendor())
         return if (IslandNotifier.supportsLiveUpdates()) "$vendor · 实况胶囊（免业务ID）" else "$vendor · 系统版本较低"
     }
-    SettingsPageColumn {
-        HintText("生成自动记账单时的通知方式（可多选）。")
-        SettingsCard {
-            SwitchPreference(
+    OilSettingsPageColumn {
+        OilHintText("生成自动记账单时的通知方式（可多选）。")
+        OilSettingsGroup {
+            OilSwitchSettingsRow(
                 title = "超级岛提醒",
                 checked = prefs.islandSingle,
                 onCheckedChange = { prefs.islandSingle = it },
             )
-            RowDivider()
-            SwitchPreference(
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "常驻消息通知",
                 checked = prefs.persistentSingle,
                 onCheckedChange = { prefs.persistentSingle = it },
             )
-            RowDivider()
-            SwitchPreference(
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "不提示",
                 summary = "生成自动记账单时不提示",
                 checked = prefs.singleMuted,
                 onCheckedChange = { prefs.singleMuted = it },
             )
         }
-        SettingsCard {
-            ArrowPreference(
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = "立即发送测试提醒",
                 summary = "在前台发一条实况通知，验证是否上岛",
                 onClick = {
@@ -664,8 +648,8 @@ private fun SingleNotifyPage(prefs: AppPrefs) {
                     )
                 },
             )
-            RowDivider()
-            SwitchPreference(
+            OilSettingsDivider()
+            OilSwitchSettingsRow(
                 title = "超级岛 / 实况提醒",
                 summary = islandSummary(),
                 checked = prefs.islandLiveUpdates,
@@ -684,35 +668,35 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
     var amount by remember { mutableStateOf(prefs.budgetAmount) }
     var showStartDayPicker by remember { mutableStateOf(false) }
 
-    SettingsPageColumn {
-        SettingsCard {
+    OilSettingsPageColumn {
+        OilSettingsGroup {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("预算金额", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+                OilText("预算金额", style = OilTheme.typography.caption.copy(color = TextSecondary))
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("¥", style = TextStyle(fontSize = 22.sp, color = TextPrimary))
+                    OilText("¥", style = OilTheme.typography.amount.copy(color = TextPrimary))
                     Spacer(Modifier.width(8.dp))
                     BasicTextField(
                         value = amount,
                         onValueChange = { amount = it },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        textStyle = TextStyle(fontSize = 28.sp, color = TextPrimary),
+                        textStyle = OilTheme.typography.amount.copy(color = TextPrimary),
                         cursorBrush = SolidColor(AccentBlue),
                     )
                 }
             }
         }
-        SettingsCard {
+        OilSettingsGroup {
             // 预算起始日：发薪日不是 1 号时，本月 = 起始日 ~ 次月起始日前一天
-            ArrowPreference(
+            OilSettingsRow(
                 title = "预算起始日",
                 summary = "${prefs.budgetStartDay} 日" + if (prefs.budgetStartDay == 1) "（自然月）" else "",
                 onClick = { showStartDayPicker = true },
             )
         }
-        SettingsCard {
-            SwitchPreference(
+        OilSettingsGroup {
+            OilSwitchSettingsRow(
                 title = "首页显示预算卡片",
                 summary = "开启后，预算进度会显示在首页核心资产卡底部",
                 checked = prefs.homeBudgetCard,
@@ -732,28 +716,22 @@ private fun BudgetPage(prefs: AppPrefs, onDone: () -> Unit) {
                     .clickable(onClick = onDone),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("取消", style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
+                OilText("取消", style = OilTheme.typography.body.copy(color = TextSecondary))
             }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(AccentBlue)
-                    .clickable {
-                        prefs.budgetAmount = amount
-                        scope.launch { snackbar.show("预算已保存") }
-                        onDone()
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("保存", style = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.onAccent))
-            }
+            OilButton(
+                text = "保存",
+                onClick = {
+                    prefs.budgetAmount = amount
+                    scope.launch { snackbar.show("预算已保存") }
+                    onDone()
+                },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 
     // 常驻组合、只切 show：外面用 if 包起来的话，一点选或点遮罩组件就被移出组合，
-    // AppDialog 接管的退场动画没机会播。
+    // OilDialog 接管的退场动画没机会播。
     StartDayPickerDialog(
         show = showStartDayPicker,
         selected = prefs.budgetStartDay,
@@ -778,11 +756,11 @@ private fun StartDayPickerDialog(
     onDismiss: () -> Unit,
     onPick: (Int) -> Unit,
 ) {
-    AppDialog(show = show, title = "预算起始日", onDismissRequest = onDismiss) {
+    OilDialog(show = show, title = "预算起始日", onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
+            OilText(
                 text = "选发薪日；预算周期 = 该日 ~ 次月该日前一天。1 号即自然月。",
-                style = MiuixTheme.textStyles.footnote1,
+                style = OilTheme.typography.caption,
                 color = LedgerTheme.textSecondary,
             )
             Spacer(Modifier.height(16.dp))
@@ -805,9 +783,9 @@ private fun StartDayPickerDialog(
                                 .clickable { onPick(day) },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
+                            OilText(
                                 text = day.toString(),
-                                style = MiuixTheme.textStyles.body2.copy(
+                                style = OilTheme.typography.body.copy(
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                     color = if (isSelected) LedgerTheme.onAccent else LedgerTheme.text,
                                 ),
@@ -828,7 +806,7 @@ private fun StartDayPickerDialog(
                     .clickable(onClick = onDismiss),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("取消", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+                OilText("取消", style = OilTheme.typography.caption, color = LedgerTheme.textSecondary)
             }
         }
     }
@@ -905,8 +883,8 @@ private fun ImportPage() {
             },
         )
     }
-    SettingsPageColumn {
-        HintText("支持导入 Excel / CSV 格式，推荐单次 1MB 以内。")
+    OilSettingsPageColumn {
+        OilHintText("支持导入 Excel / CSV 格式，推荐单次 1MB 以内。")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ImportPlatformCard("微信", "账单导入教程", Modifier.weight(1f)) {
                 guideFor = "微信"
@@ -918,24 +896,16 @@ private fun ImportPage() {
                 guideFor = "其他平台"
             }
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(AccentBlue)
-                .clickable {
-                    launcher.launch(arrayOf("*/*"))
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("本地文件导入", style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
-        }
+        OilButton(
+            text = "本地文件导入",
+            onClick = { launcher.launch(arrayOf("*/*")) },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 
     // 教程卡说明对话框：给出可执行的导出路径，而不是一句空提示。
     // 常驻组合、只切 show：外面用 guideFor?.let { } 包起来的话，一点「知道了」组件就被移出组合，
-    // AppDialog 接管的退场动画播不出来。关闭后 guideFor 置 null，这里留住最后一次的平台名。
+    // OilDialog 接管的退场动画播不出来。关闭后 guideFor 置 null，这里留住最后一次的平台名。
     var lastGuideFor by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(guideFor) { if (guideFor != null) lastGuideFor = guideFor }
     lastGuideFor?.let { platform ->
@@ -945,7 +915,7 @@ private fun ImportPage() {
             else -> "各银行/电商 App 一般在「我的 → 账单 / 订单」里提供导出或邮件发送 CSV/Excel；" +
                     "也可以在对应 App 内搜索「账单导出」查看官方指引。"
         }
-        AppDialog(
+        OilDialog(
             show = guideFor != null,
             title = "$platform 账单导出",
             maxWidth = 420.dp,
@@ -953,30 +923,24 @@ private fun ImportPage() {
             onDismissRequest = { guideFor = null },
         ) {
             Spacer(Modifier.height(10.dp))
-            Text(steps, style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+            OilText(steps, style = OilTheme.typography.caption, color = LedgerTheme.textSecondary)
             Spacer(Modifier.height(16.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(LedgerTheme.accent)
-                    .clickable { guideFor = null },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("知道了", style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
-            }
+            OilButton(
+                text = "知道了",
+                onClick = { guideFor = null },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
 
 @Composable
 private fun ImportPlatformCard(title: String, summary: String, modifier: Modifier, onClick: () -> Unit) {
-    ThemeSurfaceCard(modifier = modifier, onClick = onClick) {
+    OilCard(modifier = modifier, onClick = onClick) {
         Column {
-            Text(title, style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
+            OilText(title, style = OilTheme.typography.bodyStrong.copy(color = TextPrimary))
             Spacer(Modifier.height(4.dp))
-            Text(summary, style = MiuixTheme.textStyles.footnote2.copy(color = TextSecondary))
+            OilText(summary, style = OilTheme.typography.caption.copy(color = TextSecondary))
         }
     }
 }
@@ -984,18 +948,18 @@ private fun ImportPlatformCard(title: String, summary: String, modifier: Modifie
 /** 导出格式：CSV / XLSX 共用同一份筛选结果，只是编码器不同。 */
 @Composable
 private fun FeaturesPage(prefs: AppPrefs, onAi: () -> Unit) {
-    SettingsPageColumn {
-        SettingsCard {
-            SwitchPreference(
+    OilSettingsPageColumn {
+        OilSettingsGroup {
+            OilSwitchSettingsRow(
                 title = "截屏记账",
                 summary = "控制中心快捷开关 + AI 识图",
                 checked = prefs.screenshotEnabled,
                 onCheckedChange = { prefs.screenshotEnabled = it },
             )
-            RowDivider()
-            ArrowPreference(title = "AI 模型与自动化", summary = "配置模型、Key 与 Prompt", onClick = onAi)
+            OilSettingsDivider()
+            OilSettingsRow(title = "AI 模型与自动化", summary = "配置模型、Key 与 Prompt", onClick = onAi)
         }
-        HintText("「清空记账数据」已移到「权限与后台」页底部，避免误触。")
+        OilHintText("「清空记账数据」已移到「权限与后台」页底部，避免误触。")
     }
 }
 
@@ -1060,22 +1024,22 @@ private fun AiPage(prefs: AppPrefs) {
         }
     }
 
-    SettingsPageColumn {
-        HintText("您的数据仅发送至您配置的本地/第三方大模型，本 App 不保存截图。")
+    OilSettingsPageColumn {
+        OilHintText("您的数据仅发送至您配置的本地/第三方大模型，本 App 不保存截图。")
 
-        SettingsCard {
+        OilSettingsGroup {
             Column(modifier = Modifier.padding(dimens.cardPadding)) {
-                Text(
+                OilText(
                     "API URL / Base URL",
-                    style = MiuixTheme.textStyles.footnote1,
+                    style = OilTheme.typography.caption,
                     color = LedgerTheme.textSecondary,
                 )
                 Spacer(Modifier.height(dimens.gapSmall))
                 SettingsInput(value = baseUrl, placeholder = "https://api.openai.com/v1", onValueChange = { baseUrl = it })
                 Spacer(Modifier.height(dimens.gap))
-                Text(
+                OilText(
                     "API Key",
-                    style = MiuixTheme.textStyles.footnote1,
+                    style = OilTheme.typography.caption,
                     color = LedgerTheme.textSecondary,
                 )
                 Spacer(Modifier.height(dimens.gapSmall))
@@ -1086,9 +1050,9 @@ private fun AiPage(prefs: AppPrefs) {
                     visualTransformation = PasswordVisualTransformation(),
                 )
                 Spacer(Modifier.height(dimens.gap))
-                Text(
+                OilText(
                     "Model Name",
-                    style = MiuixTheme.textStyles.footnote1,
+                    style = OilTheme.typography.caption,
                     color = LedgerTheme.textSecondary,
                 )
                 Spacer(Modifier.height(dimens.gapSmall))
@@ -1100,18 +1064,18 @@ private fun AiPage(prefs: AppPrefs) {
                         prefs.aiModel = value.trim()
                     },
                     trailingContent = {
-                        IconButton(
+                        OilIconButton(
                             onClick = { requestModels() },
                         ) {
                             if (fetchingModels) {
-                                Text(
+                                OilText(
                                     text = "…",
-                                    style = MiuixTheme.textStyles.body2,
+                                    style = OilTheme.typography.body,
                                     color = LedgerTheme.textTertiary,
                                 )
                             } else {
-                                Icon(
-                                    imageVector = MiuixIcons.Search,
+                                OilIcon(
+                                    imageVector = OilIcons.Search,
                                     contentDescription = "获取模型列表",
                                     tint = LedgerTheme.accent,
                                 )
@@ -1120,9 +1084,9 @@ private fun AiPage(prefs: AppPrefs) {
                     },
                 )
                 Spacer(Modifier.height(dimens.gapSmall))
-                Text(
+                OilText(
                     "输入后自动保存。右侧按钮可读取 /models 列表，也允许使用列表中不存在的自定义模型名。",
-                    style = MiuixTheme.textStyles.footnote1,
+                    style = OilTheme.typography.caption,
                     color = LedgerTheme.textSecondary,
                 )
                 Spacer(Modifier.height(dimens.gap))
@@ -1136,20 +1100,20 @@ private fun AiPage(prefs: AppPrefs) {
                         .clickable(enabled = !testingConnection) { checkConnection() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
+                    OilText(
                         text = if (testingConnection) "测试中…" else "测试连接",
-                        style = MiuixTheme.textStyles.body2,
+                        style = OilTheme.typography.body,
                         color = if (testingConnection) LedgerTheme.textTertiary else LedgerTheme.text,
                     )
                 }
             }
         }
 
-        SettingsCard {
+        OilSettingsGroup {
             Column(modifier = Modifier.padding(dimens.cardPadding)) {
-                Text(
+                OilText(
                     "Prompt 提示词",
-                    style = MiuixTheme.textStyles.footnote1,
+                    style = OilTheme.typography.caption,
                     color = LedgerTheme.textSecondary,
                 )
                 Spacer(Modifier.height(dimens.gapSmall))
@@ -1163,32 +1127,26 @@ private fun AiPage(prefs: AppPrefs) {
                         .background(LedgerTheme.inset)
                         .border(1.dp, LedgerTheme.borderSoft, RoundedCornerShape(dimens.radiusCard))
                         .padding(dimens.gap),
-                    textStyle = MiuixTheme.textStyles.footnote1.copy(color = LedgerTheme.text),
+                    textStyle = OilTheme.typography.caption.copy(color = LedgerTheme.text),
                     cursorBrush = SolidColor(AccentBlue),
                 )
             }
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(LedgerDimens.minTouch)
-                .clip(RoundedCornerShape(dimens.radiusCard))
-                .background(AccentBlue)
-                .clickable {
-                    prefs.aiBaseUrl = baseUrl
-                    prefs.aiKey = key
-                    prefs.aiModel = model.trim()
-                    prefs.aiPrompt = prompt
-                    scope.launch { snackbar.show("AI 配置已保存") }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("保存配置", style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.SemiBold, color = LedgerTheme.onAccent))
-        }
+        OilButton(
+            text = "保存配置",
+            onClick = {
+                prefs.aiBaseUrl = baseUrl
+                prefs.aiKey = key
+                prefs.aiModel = model.trim()
+                prefs.aiPrompt = prompt
+                scope.launch { snackbar.show("AI 配置已保存") }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 
-    AppDialog(
+    OilDialog(
         show = showModels,
         title = "选择模型",
         summary = "点击模型即可填入输入框，也可以手动输入列表之外的模型名。",
@@ -1220,16 +1178,16 @@ private fun AiPage(prefs: AppPrefs) {
                         .padding(horizontal = dimens.gap, vertical = dimens.gapSmall),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
+                    OilText(
                         text = name,
-                        style = MiuixTheme.textStyles.body2,
+                        style = OilTheme.typography.body,
                         color = if (selected) LedgerTheme.accent else LedgerTheme.text,
                         modifier = Modifier.weight(1f),
                     )
                     if (selected) {
-                        Text(
+                        OilText(
                             text = "当前",
-                            style = MiuixTheme.textStyles.footnote1,
+                            style = OilTheme.typography.caption,
                             color = LedgerTheme.accent,
                         )
                     }
@@ -1262,12 +1220,12 @@ private fun SettingsInput(
                 .weight(1f)
                 .padding(vertical = 12.dp),
             singleLine = true,
-            textStyle = MiuixTheme.textStyles.body2.copy(color = TextPrimary),
+            textStyle = OilTheme.typography.body.copy(color = TextPrimary),
             cursorBrush = SolidColor(AccentBlue),
             visualTransformation = visualTransformation,
             decorationBox = { inner ->
                 Box {
-                    if (value.isEmpty()) Text(placeholder, style = MiuixTheme.textStyles.body2.copy(color = TextSecondary))
+                    if (value.isEmpty()) OilText(placeholder, style = OilTheme.typography.body.copy(color = TextSecondary))
                     inner()
                 }
             },
@@ -1319,10 +1277,10 @@ private fun AppearancePage(prefs: AppPrefs) {
             }
         }
     }
-    SettingsPageColumn {
-        SettingsCard {
+    OilSettingsPageColumn {
+        OilSettingsGroup {
             modes.forEachIndexed { index, entry ->
-                if (index > 0) RowDivider()
+                if (index > 0) OilSettingsDivider()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1331,27 +1289,27 @@ private fun AppearancePage(prefs: AppPrefs) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
+                        OilText(
                             text = entry.second.first,
-                            style = TextStyle(fontSize = 15.sp, color = TextPrimary),
+                            style = OilTheme.typography.body.copy(color = TextPrimary),
                         )
                         Spacer(Modifier.height(2.dp))
-                        Text(
+                        OilText(
                             text = entry.second.second,
-                            style = TextStyle(fontSize = 12.sp, color = TextSecondary),
+                            style = OilTheme.typography.caption.copy(color = TextSecondary),
                         )
                     }
                     if (prefs.themeMode == entry.first) {
-                        Text(
+                        OilText(
                             text = "✓",
-                            style = MiuixTheme.textStyles.body1.copy(color = AccentBlue),
+                            style = OilTheme.typography.body.copy(color = AccentBlue),
                         )
                     }
                 }
             }
         }
-        SettingsCard {
-            ArrowPreference(
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = if (importingBackground) "正在导入背景图…" else "自定义背景图",
                 summary = if (prefs.customBackgroundPath.isBlank()) {
                     "从相册选择一张图片作为全局背景"
@@ -1363,10 +1321,10 @@ private fun AppearancePage(prefs: AppPrefs) {
                 },
             )
             if (prefs.customBackgroundPath.isNotBlank()) {
-                RowDivider()
-                ArrowPreference(
+                OilSettingsDivider()
+                OilSettingsRow(
                     title = "恢复默认背景",
-                    summary = "改用跟随主题的淡强调色渐变",
+                    summary = "恢复跟随主题的 Oil 纯色画布",
                     onClick = {
                         val previous = prefs.customBackgroundPath
                         prefs.customBackgroundPath = ""
@@ -1380,7 +1338,7 @@ private fun AppearancePage(prefs: AppPrefs) {
                 )
             }
         }
-        HintText("深色模式下页面背景、卡片、文字与强调色都会跟随切换；小部件仍使用自身配色。")
+        OilHintText("深色模式下页面背景、卡片、文字与强调色都会跟随切换；小部件仍使用自身配色。")
     }
 }
 
@@ -1406,11 +1364,11 @@ private fun BackupPage(prefs: AppPrefs) {
         }
     }
 
-    SettingsPageColumn {
+    OilSettingsPageColumn {
         // 快捷模板：小白不必自己去查 WebDAV 地址长什么样
-        SettingsCard {
+        OilSettingsGroup {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("快捷模板", style = TextStyle(fontSize = 12.sp, color = TextSecondary))
+                OilText("快捷模板", style = OilTheme.typography.caption.copy(color = TextSecondary))
                 Spacer(Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1438,21 +1396,21 @@ private fun BackupPage(prefs: AppPrefs) {
             }
         }
 
-        SettingsCard {
+        OilSettingsGroup {
             DavField(
                 label = "目录地址",
                 hint = "https://dav.jianguoyun.com/dav/auto-ledger",
                 value = prefs.davUrl,
                 onChange = { prefs.davUrl = it },
             )
-            RowDivider()
+            OilSettingsDivider()
             DavField(
                 label = "账号",
                 hint = "坚果云登录邮箱 / 群晖用户名",
                 value = prefs.davUser,
                 onChange = { prefs.davUser = it },
             )
-            RowDivider()
+            OilSettingsDivider()
             DavField(
                 label = "应用密码",
                 hint = "坚果云要填「应用密码」，不是登录密码",
@@ -1462,16 +1420,16 @@ private fun BackupPage(prefs: AppPrefs) {
             )
         }
 
-        SettingsCard {
-            ArrowPreference(
+        OilSettingsGroup {
+            OilSettingsRow(
                 title = if (busy) "处理中…" else "立即备份",
                 summary = "把全部账目编码成 JSON 上传，云端同名文件会被覆盖",
                 onClick = {
                     run("正在备份") { com.eta.autoledger.data.BackupRunner.backup(context, prefs) }
                 },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "从云端恢复",
                 summary = "读取云端最新备份，先出预览再决定合并哪些",
                 onClick = {
@@ -1499,8 +1457,8 @@ private fun BackupPage(prefs: AppPrefs) {
                     }
                 },
             )
-            RowDivider()
-            ArrowPreference(
+            OilSettingsDivider()
+            OilSettingsRow(
                 title = "测试连接",
                 summary = "建目录 + 上传探针文件，验证地址与凭据",
                 onClick = {
@@ -1526,8 +1484,8 @@ private fun BackupPage(prefs: AppPrefs) {
             )
         }
 
-        SettingsCard {
-            SwitchPreference(
+        OilSettingsGroup {
+            OilSwitchSettingsRow(
                 title = "每天自动备份",
                 summary = "系统空闲且有网络时执行，间隔至少 20 小时",
                 checked = prefs.davAuto,
@@ -1536,11 +1494,11 @@ private fun BackupPage(prefs: AppPrefs) {
                     if (it) com.eta.autoledger.service.BackupJobService.schedule(context)
                 },
             )
-            RowDivider()
-            InfoRow(title = "上次结果", value = lastResult.ifBlank { "尚未备份" })
+            OilSettingsDivider()
+            OilInfoRow(title = "上次结果", value = lastResult.ifBlank { "尚未备份" })
         }
 
-        HintText(
+        OilHintText(
             "坚果云：网页版「账户信息 → 安全选项 → 添加应用密码」，用那串密码填上面的「应用密码」。\n" +
                 "群晖：控制面板启用 WebDAV Server 后，地址填 https://你的域名:5006/备份目录。\n" +
                 "备份文件为 JSON（不是数据库文件），换机后先装 App，再点「从云端恢复」即可。",
@@ -1593,9 +1551,9 @@ private fun DavTemplateChip(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
+        OilText(
             text = title,
-            style = MiuixTheme.textStyles.footnote1.copy(
+            style = OilTheme.typography.caption.copy(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (selected) LedgerTheme.onAccent else LedgerTheme.text,
             ),
@@ -1612,7 +1570,7 @@ private fun DavField(
     secret: Boolean = false,
 ) {
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-        Text(text = label, style = MiuixTheme.textStyles.footnote1.copy(color = TextSecondary))
+        OilText(text = label, style = OilTheme.typography.caption.copy(color = TextSecondary))
         Spacer(Modifier.height(6.dp))
         Box(
             modifier = Modifier
@@ -1622,9 +1580,9 @@ private fun DavField(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             if (value.isEmpty()) {
-                Text(
+                OilText(
                     text = hint,
-                    style = TextStyle(fontSize = 12.sp, color = LedgerTheme.textSecondary),
+                    style = OilTheme.typography.caption.copy(color = LedgerTheme.textSecondary),
                     maxLines = 1,
                 )
             }
@@ -1632,7 +1590,7 @@ private fun DavField(
                 value = value,
                 onValueChange = onChange,
                 singleLine = true,
-                textStyle = MiuixTheme.textStyles.footnote1.copy(color = TextPrimary),
+                textStyle = OilTheme.typography.caption.copy(color = TextPrimary),
                 cursorBrush = SolidColor(AccentBlue),
                 visualTransformation = if (secret) {
                     androidx.compose.ui.text.input.PasswordVisualTransformation()

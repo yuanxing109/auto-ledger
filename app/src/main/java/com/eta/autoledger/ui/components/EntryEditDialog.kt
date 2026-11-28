@@ -1,5 +1,7 @@
 package com.eta.autoledger.ui.components
 
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.components.OilText
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,11 +37,6 @@ import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.LedgerEntry
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 账目编辑弹窗（首页与搜索页共用）。
@@ -49,7 +46,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 数据写入交给调用方的 [onSave] / [onDelete] —— 首页走 HomeViewModel（带撤销），
  * 搜索页直接走 LedgerRepository（Room Flow 自己会刷新结果）。
  *
- * 调用方负责「常驻组合、只切状态」，否则 [AppDialog] 的退场动画没机会播。
+ * 调用方负责「常驻组合、只切状态」，否则 [OilDialog] 的退场动画没机会播。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -79,35 +76,35 @@ fun EntryEditDialog(
     val transferLocked = entry.isTransfer
     var releaseConfirm by remember(show, entry.id) { mutableStateOf(false) }
 
-    AppDialog(
+    OilDialog(
         show = show,
         title = "编辑账目",
         maxWidth = 560.dp,
         onDismissRequest = onDismiss,
     ) {
         if (transferLocked) {
-            Text(
+            OilText(
                 "这笔记录已参与内部转账配对。解除合并后才能修改金额、分类和备注。",
-                style = MiuixTheme.textStyles.footnote1,
+                style = OilTheme.typography.caption,
                 color = LedgerTheme.textSecondary,
             )
             Spacer(Modifier.height(8.dp))
         }
-        Text(
+        OilText(
             "金额",
-            style = MiuixTheme.textStyles.footnote1,
+            style = OilTheme.typography.caption,
             color = if (amountError && !transferLocked) LedgerTheme.danger else LedgerTheme.textSecondary,
         )
         Spacer(Modifier.height(8.dp))
         if (transferLocked) {
-            Text(
+            OilText(
                 text = "¥ %.2f".format(entry.amount),
-                style = MiuixTheme.textStyles.title2,
+                style = OilTheme.typography.sectionTitle,
                 color = LedgerTheme.text,
                 modifier = Modifier.fillMaxWidth(),
             )
         } else {
-            TextField(
+            OilTextField(
                 value = amount,
                 onValueChange = { input ->
                     amount = input.filter { it.isDigit() || it == '.' }
@@ -120,20 +117,20 @@ fun EntryEditDialog(
         }
         if (amountError && !transferLocked) {
             Spacer(Modifier.height(4.dp))
-            Text(
+            OilText(
                 "金额格式不正确，请输入大于 0 的数字，如 12.50",
-                style = MiuixTheme.textStyles.footnote1,
+                style = OilTheme.typography.caption,
                 color = LedgerTheme.danger,
             )
         }
 
         Spacer(Modifier.height(14.dp))
-        Text("分类", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+        OilText("分类", style = OilTheme.typography.caption, color = LedgerTheme.textSecondary)
         Spacer(Modifier.height(8.dp))
         if (transferLocked) {
-            Text(
+            OilText(
                 text = "原始分类：$category",
-                style = MiuixTheme.textStyles.body2,
+                style = OilTheme.typography.body,
                 color = LedgerTheme.textSecondary,
             )
         } else {
@@ -144,7 +141,7 @@ fun EntryEditDialog(
                 ) {
                     options.forEach { name ->
                         // selected 用纯分类名比较（不用带 emoji 的展示串），图标与文字分开传
-                        CategoryChip(
+                        OilChoiceChip(
                             text = name,
                             icon = CategoryStore.emoji(name),
                             selected = name == category,
@@ -156,19 +153,20 @@ fun EntryEditDialog(
         }
 
         Spacer(Modifier.height(14.dp))
-        Text("备注", style = MiuixTheme.textStyles.footnote1, color = LedgerTheme.textSecondary)
+        OilText("备注", style = OilTheme.typography.caption, color = LedgerTheme.textSecondary)
         Spacer(Modifier.height(8.dp))
         if (transferLocked) {
-            Text(
+            OilText(
                 text = note.ifBlank { "无备注" },
-                style = MiuixTheme.textStyles.body2,
+                style = OilTheme.typography.body,
                 color = LedgerTheme.textSecondary,
             )
         } else {
-            TextField(
+            OilTextField(
                 value = note,
                 onValueChange = { note = it },
                 modifier = Modifier.fillMaxWidth(),
+                placeholder = "添加备注",
                 singleLine = false,
                 maxLines = 3,
             )
@@ -181,92 +179,76 @@ fun EntryEditDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("内部转账", style = MiuixTheme.textStyles.body2, color = LedgerTheme.text)
+                    OilText("内部转账", style = OilTheme.typography.body, color = LedgerTheme.text)
                     Spacer(Modifier.height(2.dp))
-                    Text(
+                    OilText(
                         "两笔资金划转不计入日常收支",
-                        style = MiuixTheme.textStyles.footnote1,
+                        style = OilTheme.typography.caption,
                         color = LedgerTheme.textSecondary,
                     )
                 }
                 Spacer(Modifier.width(12.dp))
-                TextButton(
+                OilButton(
                     text = "解除合并",
                     onClick = { releaseConfirm = true },
+                    variant = OilButtonVariant.Secondary,
                 )
             }
         }
 
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(
+            OilButton(
                 text = "删除",
                 onClick = onDelete,
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.textButtonColors(
-                    color = LedgerTheme.surfaceVariant,
-                    textColor = LedgerTheme.danger,
-                ),
+                variant = OilButtonVariant.Danger,
             )
-            TextButton(
+            OilButton(
                 text = if (transferLocked) "关闭" else "取消",
                 onClick = onDismiss,
                 modifier = Modifier.weight(1f),
+                variant = OilButtonVariant.Secondary,
             )
-            val saveInteraction = remember { MutableInteractionSource() }
-            val savePressed by saveInteraction.collectIsPressedAsState()
-            val buttonShape = RoundedCornerShape(LocalDimens.current.radiusCapsule)
             if (!transferLocked) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .clip(buttonShape)
-                        .background(if (savePressed) LedgerTheme.accentPressed else LedgerTheme.accent)
-                        .clickable(
-                            interactionSource = saveInteraction,
-                            indication = LocalIndication.current,
-                            onClick = {
-                                val parsed = amount.toDoubleOrNull()
-                                if (parsed == null || parsed <= 0.0) {
-                                    amountError = true
-                                    return@clickable
-                                }
-                                onSave(parsed, category, note)
-                            },
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("保存", color = LedgerTheme.onAccent)
-                }
+                OilButton(
+                    text = "保存",
+                    onClick = {
+                        val parsed = amount.toDoubleOrNull()
+                        if (parsed == null || parsed <= 0.0) {
+                            amountError = true
+                        } else {
+                            onSave(parsed, category, note)
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
 
     if (releaseConfirm) {
-        AppDialog(
+        OilDialog(
             show = releaseConfirm,
             title = "解除内部转账合并？",
             summary = "两笔记录会恢复原有分类，并重新计入日常收支统计。",
             onDismissRequest = { releaseConfirm = false },
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TextButton(
+                OilButton(
                     text = "取消",
                     onClick = { releaseConfirm = false },
                     modifier = Modifier.weight(1f),
+                    variant = OilButtonVariant.Secondary,
                 )
-                TextButton(
+                OilButton(
                     text = "解除合并",
                     onClick = {
                         releaseConfirm = false
                         onReleaseTransfer?.invoke()
                     },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColors(
-                        color = LedgerTheme.danger,
-                        textColor = LedgerTheme.onAccent,
-                    ),
+                    variant = OilButtonVariant.Danger,
                 )
             }
         }

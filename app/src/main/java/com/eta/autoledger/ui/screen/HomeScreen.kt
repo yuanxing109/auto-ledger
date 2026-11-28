@@ -1,27 +1,7 @@
 package com.eta.autoledger.ui.screen
 
-import com.eta.autoledger.ui.model.DayGroupUi
-import com.eta.autoledger.ui.model.EntryUi
-import com.eta.autoledger.ui.model.formatCategoryLabel
-import com.eta.autoledger.ui.LedgerTheme
-import com.eta.autoledger.ui.window.LocalSnackbar
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
-import com.eta.autoledger.ui.LocalDimens
-import com.eta.autoledger.ui.theme.heroAmountStyle
-import com.eta.autoledger.ui.theme.LedgerDimens
-import com.eta.autoledger.util.AppDateFormats
-import top.yukonga.miuix.kmp.icon.extended.Search
-import com.eta.autoledger.ui.components.EntryEditDialog
-import com.eta.autoledger.ui.components.ThemeSurfaceCard
-import com.eta.autoledger.ui.components.ThemeIconBadge
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,43 +14,53 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import java.util.Calendar
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Hide
-import top.yukonga.miuix.kmp.icon.extended.Show
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.eta.autoledger.AppPrefs
 import com.eta.autoledger.data.LedgerEntry
-import com.eta.autoledger.viewmodel.HomeViewModel
 import com.eta.autoledger.data.LedgerRepository
-
-private val AccentBlue: Color get() = LedgerTheme.accent
+import com.eta.autoledger.ui.OilIcons
+import com.eta.autoledger.ui.components.EntryEditDialog
+import com.eta.autoledger.ui.components.OilCard
+import com.eta.autoledger.ui.components.OilCardTone
+import com.eta.autoledger.ui.components.OilIconBadge
+import com.eta.autoledger.ui.components.OilIconButton
+import com.eta.autoledger.ui.components.OilText
+import com.eta.autoledger.ui.model.DayGroupUi
+import com.eta.autoledger.ui.model.EntryUi
+import com.eta.autoledger.ui.model.formatCategoryLabel
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.theme.oilPageSurface
+import com.eta.autoledger.ui.window.LocalSnackbar
+import com.eta.autoledger.util.AppDateFormats
+import com.eta.autoledger.viewmodel.HomeViewModel
+import java.util.Calendar
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 /**
  * 概览卡右上角的日期。提到文件级：原先写在 item 的 lambda 里，
@@ -122,7 +112,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     // 分组已迁到 ViewModel 增量维护：loadMore 追加时只合并新页，不再全量重算。
     // 原实现 remember(entries) 的 key 是整个 List，每次翻页都触发 O(n) 重分组 → 累计 O(n²)。
     val groups = billsState.groups
-    val entryShape = RoundedCornerShape(LocalDimens.current.radiusSmall)
+    val colors = OilTheme.colors
 
     // 触底判断：拿 LazyColumn 的 item 下标与 item 总数比，两者同量纲。
     //
@@ -149,7 +139,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
 
     LazyColumn(
         state = listState,
-        modifier = modifier.fillMaxSize().background(Color.Transparent),
+        modifier = modifier.fillMaxSize().oilPageSurface(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 82.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -176,35 +166,26 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 4.dp, end = 4.dp, top = 8.dp),
+                    .padding(start = 4.dp, end = 4.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(text = "最近账目", style = MiuixTheme.textStyles.title4)
+                OilText(
+                    text = "最近账目",
+                    style = OilTheme.typography.sectionTitle,
+                    color = colors.ink,
+                )
                 Spacer(Modifier.width(8.dp))
-                Text(
+                OilText(
                     text = "共 ${billsState.totalCount} 笔",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                    style = OilTheme.typography.caption,
+                    color = colors.inkMuted,
                 )
                 Spacer(Modifier.weight(1f))
-                // 48dp 透明热区 + 20dp 图标：文字按钮在 48dp 盒内会被挤成竖排，改用图标。
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = LocalIndication.current,
-                            onClick = onSearch,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Search,
-                        contentDescription = "搜索",
-                        tint = LedgerTheme.textSecondary,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+                OilIconButton(
+                    icon = OilIcons.Search,
+                    contentDescription = "搜索",
+                    onClick = onSearch,
+                )
             }
         }
 
@@ -218,12 +199,10 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
                     key = { it.ledger.id },
                     contentType = { "entry" },
                 ) { entry ->
-                    ThemeSurfaceCard(
+                    OilCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .animateItem()
-                            .padding(bottom = 8.dp),
-                        shape = entryShape,
+                            .animateItem(),
                         contentPadding = PaddingValues(0.dp),
                         onClick = { editingEntry = entry.ledger },
                     ) {
@@ -280,13 +259,18 @@ fun HomeScreen(modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
 
 @Composable
 private fun EmptyCard() {
-    ThemeSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-        Text(text = "还没有账目", style = MiuixTheme.textStyles.title3)
-        Spacer(Modifier.height(4.dp))
-        Text(
+    val colors = OilTheme.colors
+    OilCard(modifier = Modifier.fillMaxWidth()) {
+        OilText(
+            text = "还没有账目",
+            style = OilTheme.typography.sectionTitle,
+            color = colors.ink,
+        )
+        Spacer(Modifier.height(6.dp))
+        OilText(
             text = "开启通知记账，或用控制中心截屏记第一笔",
-            style = MiuixTheme.textStyles.body2,
-            color = LedgerTheme.textSecondary,
+            style = OilTheme.typography.body,
+            color = colors.inkMuted,
         )
     }
 }
@@ -306,7 +290,9 @@ private fun CoreAssetCard(
     visible: Boolean,
     onToggle: () -> Unit,
 ) {
-    val dimen = LocalDimens.current
+    val colors = OilTheme.colors
+    val typography = OilTheme.typography
+    val dimen = OilTheme.dimens
     val remaining = (budget - budgetSpent).coerceAtLeast(0.0)
     val progress = if (visible && budget > 0.0) {
         (budgetSpent / budget).toFloat().coerceIn(0f, 1f)
@@ -314,118 +300,127 @@ private fun CoreAssetCard(
         0f
     }
     val budgetLabel = if (budgetStartDay == 1) "月预算" else "本期预算"
-    ThemeSurfaceCard(
+    OilCard(
         modifier = Modifier.fillMaxWidth(),
+        tone = OilCardTone.Hero,
         contentPadding = PaddingValues(0.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = dimen.cardPadding, vertical = dimen.gap)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = dateLabel,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = LedgerTheme.textSecondary,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "本月支出",
-                    style = MiuixTheme.textStyles.body2,
-                    color = LedgerTheme.textSecondary,
-                )
-            }
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(dimen.radiusSmall))
-                    .background(LedgerTheme.inset)
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
+        Column(
+            modifier = Modifier.padding(
+                horizontal = dimen.cardPadding,
+                vertical = dimen.gapLarge,
+            ),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    OilText(
+                        text = dateLabel,
+                        style = typography.caption,
+                        color = colors.onHero,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    OilText(
+                        text = "本月支出",
+                        style = typography.body,
+                        color = colors.onHero,
+                    )
+                }
+                Row(
                     modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(if (autoRecordEnabled) LedgerTheme.income else LedgerTheme.textTertiary),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = if (autoRecordEnabled) "自动记账 ON" else "自动记账 OFF",
-                    style = MiuixTheme.textStyles.footnote2,
-                    color = LedgerTheme.accent,
-                )
+                        .clip(OilTheme.shapes.capsule)
+                        .background(colors.heroMuted)
+                        .padding(horizontal = 11.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(if (autoRecordEnabled) colors.income else colors.warning),
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    OilText(
+                        text = if (autoRecordEnabled) "自动记账开启" else "自动记账关闭",
+                        style = typography.label,
+                        color = colors.onHero,
+                    )
+                }
             }
-        }
 
-        Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = if (visible) "¥ %,.2f".format(monthExpense) else "¥ ****",
-                style = heroAmountStyle(),
-                color = LedgerTheme.text,
-            )
-            IconButton(onClick = onToggle) {
-                Icon(
-                    imageVector = if (visible) MiuixIcons.Show else MiuixIcons.Hide,
+            Spacer(Modifier.height(18.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OilText(
+                    text = if (visible) "¥ %,.2f".format(monthExpense) else "¥ ****",
+                    style = typography.heroAmount,
+                    color = colors.onHero,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.width(12.dp))
+                OilIconButton(
+                    icon = if (visible) OilIcons.Hide else OilIcons.Show,
                     contentDescription = if (visible) "隐藏金额" else "显示金额",
-                    tint = LedgerTheme.textSecondary,
+                    onClick = onToggle,
                 )
             }
-        }
 
-        Spacer(Modifier.height(dimen.gap))
-        Row(horizontalArrangement = Arrangement.spacedBy(dimen.gap)) {
-            HeroMetric(
-                label = "本月收入",
-                value = if (visible) "¥ %,.2f".format(monthIncome) else "¥ ****",
-                valueColor = LedgerTheme.income,
-                modifier = Modifier.weight(1f),
-            )
-            HeroMetric(
-                label = "全部笔数",
-                value = "$totalCount 笔",
-                modifier = Modifier.weight(1f),
-            )
-            HeroMetric(
-                label = "日均支出",
-                value = if (visible) "¥ %,.2f".format(dailyAverageExpense) else "¥ ****",
-                valueColor = LedgerTheme.expense,
-                modifier = Modifier.weight(1f),
-            )
-        }
+            Spacer(Modifier.height(22.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(dimen.gapLarge)) {
+                HeroMetric(
+                    label = "本月收入",
+                    value = if (visible) "¥ %,.2f".format(monthIncome) else "¥ ****",
+                    markerColor = colors.income,
+                    modifier = Modifier.weight(1f),
+                )
+                HeroMetric(
+                    label = "全部笔数",
+                    value = "$totalCount 笔",
+                    markerColor = colors.onHero,
+                    modifier = Modifier.weight(1f),
+                )
+                HeroMetric(
+                    label = "日均支出",
+                    value = if (visible) "¥ %,.2f".format(dailyAverageExpense) else "¥ ****",
+                    markerColor = colors.expense,
+                    modifier = Modifier.weight(1f),
+                )
+            }
 
-        if (showBudget) {
-            Spacer(Modifier.height(dimen.gap))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(0.5.dp)
-                    .background(LedgerTheme.divider),
-            )
-            Spacer(Modifier.height(dimen.gapSmall))
-            Text(
-                text = when {
-                    budget <= 0.0 -> "$budgetLabel 未设置 · 可前往预算管理配置"
-                    visible -> "$budgetLabel ¥ %,.2f · 剩余 ¥ %,.2f".format(budget, remaining)
-                    else -> "$budgetLabel · 金额已隐藏"
-                },
-                style = MiuixTheme.textStyles.footnote1,
-                color = LedgerTheme.textSecondary,
-            )
-            Spacer(Modifier.height(8.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(7.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(LedgerTheme.inset),
-            ) {
+            if (showBudget) {
+                Spacer(Modifier.height(dimen.gapLarge))
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(progress)
-                        .height(7.dp)
-                        .background(LedgerTheme.accent),
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(colors.heroMuted),
                 )
+                Spacer(Modifier.height(dimen.gap))
+                OilText(
+                    text = when {
+                        budget <= 0.0 -> "$budgetLabel 未设置 · 可前往预算管理配置"
+                        visible -> "$budgetLabel ¥ %,.2f · 剩余 ¥ %,.2f".format(budget, remaining)
+                        else -> "$budgetLabel · 金额已隐藏"
+                    },
+                    style = typography.caption,
+                    color = colors.onHero,
+                )
+                Spacer(Modifier.height(9.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(colors.heroMuted),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .height(8.dp)
+                            .background(colors.onHero),
+                    )
+                }
             }
-        }
         }
     }
 }
@@ -435,19 +430,27 @@ private fun HeroMetric(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    valueColor: Color = LedgerTheme.text,
+    markerColor: Color,
 ) {
+    val colors = OilTheme.colors
+    val typography = OilTheme.typography
     Column(modifier = modifier) {
-        Text(
-            text = label,
-            style = MiuixTheme.textStyles.footnote2,
-            color = LedgerTheme.textSecondary,
+        Box(
+            modifier = Modifier
+                .size(width = 16.dp, height = 3.dp)
+                .background(markerColor),
         )
-        Spacer(Modifier.height(3.dp))
-        Text(
+        Spacer(Modifier.height(7.dp))
+        OilText(
+            text = label,
+            style = typography.label,
+            color = colors.onHero,
+        )
+        Spacer(Modifier.height(4.dp))
+        OilText(
             text = value,
-            style = MiuixTheme.textStyles.body2,
-            color = valueColor,
+            style = typography.metric,
+            color = colors.onHero,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -460,22 +463,28 @@ private fun HomeGreeting(nowMillis: Long) {
         Calendar.getInstance().apply { timeInMillis = nowMillis }.get(Calendar.HOUR_OF_DAY)
     }
     val greeting = when (hour) {
-        in 5..11 -> "早上好，今天也要好好记账"
-        in 12..17 -> "下午好，今天的每一笔都值得记下"
-        else -> "晚上好，来复盘今天的收支吧"
+        in 5..11 -> "早上好\n今天也把每一笔记清楚"
+        in 12..17 -> "下午好\n每一笔消费都值得留痕"
+        else -> "晚上好\n来复盘今天的收支"
     }
     val tip = rememberSaveable { HOME_TIPS.random() }
-    Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp)) {
-        Text(
+    val colors = OilTheme.colors
+    val typography = OilTheme.typography
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 2.dp),
+    ) {
+        OilText(
             text = greeting,
-            style = MiuixTheme.textStyles.title2,
-            color = LedgerTheme.text,
+            style = typography.pageTitle,
+            color = colors.ink,
         )
-        Spacer(Modifier.height(4.dp))
-        Text(
+        Spacer(Modifier.height(7.dp))
+        OilText(
             text = tip,
-            style = MiuixTheme.textStyles.body2,
-            color = LedgerTheme.textSecondary,
+            style = typography.body,
+            color = colors.inkMuted,
         )
     }
 }
@@ -499,17 +508,28 @@ private fun DayHeader(group: DayGroupUi) {
             append("含内部转账")
         }
     }
+    val colors = OilTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 4.dp, end = 4.dp, top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = group.dateLabel, style = MiuixTheme.textStyles.title4, modifier = Modifier.weight(1f))
-        Text(
+        OilText(
+            text = group.dateLabel,
+            style = OilTheme.typography.bodyStrong,
+            color = colors.ink,
+            modifier = Modifier.weight(1f),
+        )
+        OilText(
             text = summary,
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+            style = OilTheme.typography.caption.copy(
+                fontFamily = FontFamily.Monospace,
+                fontFeatureSettings = "tnum",
+            ),
+            color = colors.inkMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -517,58 +537,94 @@ private fun DayHeader(group: DayGroupUi) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EntryRow(entry: EntryUi) {
+    val colors = OilTheme.colors
+    val typography = OilTheme.typography
+    val amountColor = when {
+        entry.ledger.isTransfer -> colors.inkMuted
+        entry.signedAmount > 0 -> colors.income
+        else -> colors.expense
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ThemeIconBadge(size = 40.dp, borderColor = entry.categoryColor) {
-            Text(text = entry.emoji, style = MiuixTheme.textStyles.title3)
+        Box {
+            OilIconBadge(
+                size = 44.dp,
+                borderColor = colors.line,
+                backgroundColor = colors.surfaceMuted,
+            ) {
+                OilText(
+                    text = entry.emoji,
+                    style = typography.sectionTitle,
+                    color = colors.ink,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(entry.categoryColor),
+            )
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
+                OilText(
                     text = if (entry.ledger.isTransfer) {
                         "内部转账"
                     } else {
                         formatCategoryLabel(entry.category, entry.ledger.subCategory)
                     },
-                    style = MiuixTheme.textStyles.title3,
+                    style = typography.bodyStrong,
+                    color = colors.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(LedgerDimens.radiusSm))
-                        .background(LedgerTheme.inset)
-                        .border(1.dp, LedgerTheme.accent, RoundedCornerShape(LedgerDimens.radiusSm))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .clip(OilTheme.shapes.capsule)
+                        .background(colors.surfaceMuted)
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
                 ) {
-                    Text(text = entry.source, style = MiuixTheme.textStyles.footnote2, color = LedgerTheme.accent)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .clip(CircleShape)
+                                .background(entry.sourceColor),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        OilText(
+                            text = entry.source,
+                            style = typography.label,
+                            color = colors.inkMuted,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            Text(
+            Spacer(Modifier.height(6.dp))
+            OilText(
                 text = entry.noteLine,
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                style = typography.caption,
+                color = colors.inkMuted,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.width(8.dp))
-        Text(
+        Spacer(Modifier.width(12.dp))
+        OilText(
             text = entry.amountText,
-            style = MiuixTheme.textStyles.title2,
-            color = when {
-                entry.ledger.isTransfer -> LedgerTheme.textSecondary
-                entry.signedAmount > 0 -> LedgerTheme.income
-                else -> LedgerTheme.expense
-            },
+            style = typography.listAmount.copy(textAlign = TextAlign.End),
+            color = amountColor,
+            modifier = Modifier.widthIn(min = 92.dp, max = 144.dp),
+            maxLines = 1,
         )
     }
 }

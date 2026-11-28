@@ -117,7 +117,7 @@ keyPassword=...
 
 1. 先检查能否复用现有页面模式。
 2. 所有颜色从 `LedgerPalette` 读取。
-3. 字号从 `MiuixTheme.textStyles` 或专用金额函数读取。
+3. 字号从 `OilTheme.typography` 读取，金额使用等宽数字槽。
 4. 间距和圆角从 `LedgerDimens` 读取。
 5. 卡片优先使用 `ThemeSurfaceCard`。
 6. 页面背景保持透明，除非页面本身是明确的特殊覆盖层。

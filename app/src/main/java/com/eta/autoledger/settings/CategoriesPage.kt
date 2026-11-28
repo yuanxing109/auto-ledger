@@ -1,5 +1,9 @@
 package com.eta.autoledger.settings
 
+import com.eta.autoledger.ui.theme.OilTheme
+import com.eta.autoledger.ui.components.OilText
+import com.eta.autoledger.ui.OilIcons
+import com.eta.autoledger.ui.OilIcon
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,7 +42,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
@@ -47,18 +50,16 @@ import com.eta.autoledger.data.CategoryStore
 import com.eta.autoledger.data.LedgerRepository
 import com.eta.autoledger.ui.LedgerTheme
 import com.eta.autoledger.ui.LocalDimens
-import com.eta.autoledger.ui.components.AppDialog
-import com.eta.autoledger.ui.components.ThemeIconBadge
+import com.eta.autoledger.ui.components.OilDialog
+import com.eta.autoledger.ui.components.OilIconBadge
+import com.eta.autoledger.ui.components.OilTextField
+import com.eta.autoledger.ui.components.OilButton
+import com.eta.autoledger.ui.components.OilButtonVariant
 import com.eta.autoledger.ui.theme.LedgerDimens
 import com.eta.autoledger.ui.window.LocalSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private data class ManagedCategory(
     val name: String,
@@ -130,8 +131,8 @@ internal fun LedgerCategoriesPage() {
         deleteError = null
     }
 
-    SettingsPageColumn {
-        HintText("一级分类已锁定。点击分类可管理二级子分类。")
+    OilSettingsPageColumn {
+        OilHintText("一级分类已锁定。点击分类可管理二级子分类。")
         CategorySection("支出管理", expense, onManage = { selectedCategory = 0 to it })
         CategorySection("收入管理", income, onManage = { selectedCategory = 1 to it })
         CategorySection("其他管理", other, onManage = { selectedCategory = 2 to it })
@@ -393,13 +394,13 @@ private fun CategorySection(
     items: List<ManagedCategory>,
     onManage: (String) -> Unit,
 ) {
-    Text(
+    OilText(
         text = title,
-        style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.SemiBold),
-        color = LedgerTheme.text,
+        style = OilTheme.typography.bodyStrong,
+        color = OilTheme.colors.ink,
         modifier = Modifier.padding(start = LedgerDimens.xs, top = LedgerDimens.xs),
     )
-    SettingsCard {
+    OilSettingsGroup {
         Column(
             modifier = Modifier.padding(
                 horizontal = LocalDimens.current.gap,
@@ -444,14 +445,14 @@ private fun PrimaryCategoryCell(
             .padding(vertical = dimens.gapSmall),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ThemeIconBadge(size = LedgerDimens.minTouch, borderColor = item.color) {
-            Text(text = item.emoji, style = MiuixTheme.textStyles.title4)
+        OilIconBadge(size = LedgerDimens.minTouch, borderColor = item.color) {
+            OilText(text = item.emoji, style = OilTheme.typography.bodyStrong)
         }
         Spacer(Modifier.height(LedgerDimens.xs))
-        Text(
+        OilText(
             text = item.name,
-            style = MiuixTheme.textStyles.footnote2,
-            color = LedgerTheme.textSecondary,
+            style = OilTheme.typography.caption,
+            color = OilTheme.colors.inkMuted,
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -478,13 +479,13 @@ private fun CategoryDetailSheet(
     }
     val shape = RoundedCornerShape(topStart = dimens.radiusSheet, topEnd = dimens.radiusSheet)
 
-    AppDialog(
+    OilDialog(
         show = show,
         align = Alignment.BottomCenter,
         widthFraction = 1f,
         outsideMargin = DpSize(0.dp, 0.dp),
         insideMargin = DpSize(dimens.cardPadding, dimens.cardPadding),
-        panelColor = LedgerTheme.surface,
+        panelColor = OilTheme.colors.surface,
         shape = shape,
         onDismissRequest = onDismiss,
     ) {
@@ -500,16 +501,16 @@ private fun CategoryDetailSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    ThemeIconBadge(size = 56.dp, borderColor = color) {
-                        Text(text = emoji, style = MiuixTheme.textStyles.title2)
+                    OilIconBadge(size = 56.dp, borderColor = color) {
+                        OilText(text = emoji, style = OilTheme.typography.sectionTitle)
                     }
                     Spacer(Modifier.height(dimens.gapSmall))
-                    Text(text = category, style = MiuixTheme.textStyles.title2, color = LedgerTheme.text)
+                    OilText(text = category, style = OilTheme.typography.sectionTitle, color = OilTheme.colors.ink)
                     Spacer(Modifier.height(dimens.gapSmall))
-                    Text(
+                    OilText(
                         text = "温馨提示 | 默认一级分类无法编辑与删除",
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = LedgerTheme.textSecondary,
+                        style = OilTheme.typography.caption,
+                        color = OilTheme.colors.inkMuted,
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -527,10 +528,10 @@ private fun CategoryDetailSheet(
                         .padding(horizontal = dimens.gap),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
+                    OilText(
                         text = "关闭",
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = LedgerTheme.textSecondary,
+                        style = OilTheme.typography.caption,
+                        color = OilTheme.colors.inkMuted,
                     )
                 }
             }
@@ -540,30 +541,30 @@ private fun CategoryDetailSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(LedgerTheme.divider),
+                    .background(OilTheme.colors.divider),
             )
             Spacer(Modifier.height(dimens.cardPadding))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
+                OilText(
                     text = "子分类",
-                    style = MiuixTheme.textStyles.title4,
-                    color = LedgerTheme.text,
+                    style = OilTheme.typography.bodyStrong,
+                    color = OilTheme.colors.ink,
                 )
                 Spacer(Modifier.width(dimens.gapSmall))
-                Text(
+                OilText(
                     text = "点击管理，可重命名或删除",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = LedgerTheme.textSecondary,
+                    style = OilTheme.typography.caption,
+                    color = OilTheme.colors.inkMuted,
                 )
             }
             Spacer(Modifier.height(dimens.cardPadding))
 
             if (subCategories.isEmpty()) {
-                Text(
+                OilText(
                     text = "暂无二级分类，点击 + 添加。",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = LedgerTheme.textSecondary,
+                    style = OilTheme.typography.caption,
+                    color = OilTheme.colors.inkMuted,
                 )
                 Spacer(Modifier.height(dimens.gap))
             }
@@ -636,26 +637,26 @@ private fun SubCategoryCell(
             .padding(vertical = dimens.gapSmall),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ThemeIconBadge(
+        OilIconBadge(
             size = LedgerDimens.minTouch,
-            borderColor = if (isAdd) LedgerTheme.accent else color,
+            borderColor = if (isAdd) OilTheme.colors.accent else color,
         ) {
             if (isAdd) {
-                Icon(
-                    imageVector = MiuixIcons.Add,
+                OilIcon(
+                    imageVector = OilIcons.Add,
                     contentDescription = "添加$category 子分类",
-                    tint = LedgerTheme.accent,
+                    tint = OilTheme.colors.accent,
                     modifier = Modifier.size(LedgerDimens.lg),
                 )
             } else {
-                Text(text = emoji, style = MiuixTheme.textStyles.title4)
+                OilText(text = emoji, style = OilTheme.typography.bodyStrong)
             }
         }
         Spacer(Modifier.height(LedgerDimens.xs))
-        Text(
+        OilText(
             text = name ?: "添加",
-            style = MiuixTheme.textStyles.footnote2,
-            color = LedgerTheme.textSecondary,
+            style = OilTheme.typography.caption,
+            color = OilTheme.colors.inkMuted,
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -678,63 +679,34 @@ private fun SubCategoryEditorDialog(
     var name by remember(target.sessionId) { mutableStateOf(target.name.orEmpty()) }
     var localError by remember(target.sessionId) { mutableStateOf<String?>(null) }
     val shownError = localError ?: error
-    val shape = RoundedCornerShape(dimens.radiusSmall)
-
-    AppDialog(
+    OilDialog(
         show = show,
         dismissEnabled = !busy,
         title = if (target.name == null) "添加子分类" else "管理子分类",
         summary = "所属一级分类：${target.category}",
         outsideMargin = DpSize(dimens.pagePadding, dimens.cardPadding),
-        panelColor = LedgerTheme.surface,
+        panelColor = OilTheme.colors.surface,
         onDismissRequest = onDismiss,
     ) {
-        BasicTextField(
+        OilTextField(
             value = name,
             onValueChange = {
                 name = it
                 localError = null
                 onClearError()
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(LedgerTheme.inset)
-                .border(1.dp, LedgerTheme.borderSoft, shape)
-                .heightIn(min = LedgerDimens.minTouch)
-                .padding(horizontal = dimens.gap, vertical = dimens.gap),
-            singleLine = true,
+            placeholder = "输入子分类名称",
+            supportingText = shownError,
+            isError = shownError != null,
             enabled = !busy,
-            textStyle = MiuixTheme.textStyles.body2.copy(color = LedgerTheme.text),
-            cursorBrush = SolidColor(LedgerTheme.accent),
-            decorationBox = { inner ->
-                Box {
-                    if (name.isEmpty()) {
-                        Text(
-                            text = "输入子分类名称",
-                            style = MiuixTheme.textStyles.body2,
-                            color = LedgerTheme.textTertiary,
-                        )
-                    }
-                    inner()
-                }
-            },
+            singleLine = true,
         )
-        if (shownError != null) {
-            Spacer(Modifier.height(dimens.gapSmall))
-            Text(
-                text = shownError,
-                style = MiuixTheme.textStyles.footnote1,
-                color = LedgerTheme.danger,
-            )
-        }
         Spacer(Modifier.height(dimens.cardPadding))
         Row(horizontalArrangement = Arrangement.spacedBy(dimens.gap)) {
             if (onDelete != null) {
                 DialogAction(
                     label = "删除",
-                    color = LedgerTheme.danger,
-                    background = LedgerTheme.inset,
+                    variant = OilButtonVariant.Danger,
                     enabled = !busy,
                     modifier = Modifier.weight(1f),
                     onClick = onDelete,
@@ -742,16 +714,14 @@ private fun SubCategoryEditorDialog(
             }
             DialogAction(
                 label = "取消",
-                color = LedgerTheme.textSecondary,
-                background = LedgerTheme.inset,
+                variant = OilButtonVariant.Secondary,
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
                 onClick = onDismiss,
             )
             DialogAction(
                 label = if (busy) "处理中…" else "保存",
-                color = LedgerTheme.onAccent,
-                background = LedgerTheme.accent,
+                variant = OilButtonVariant.Primary,
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
                 onClick = {
@@ -781,13 +751,13 @@ private fun SubCategoryDeleteDialog(
     }
     val shape = RoundedCornerShape(dimens.radiusSmall)
 
-    AppDialog(
+    OilDialog(
         show = show,
         dismissEnabled = !busy,
         title = "迁移并删除",
         summary = "“${request.name}”下有 ${request.billCount} 笔账单引用，是否转移到其他分类？",
         outsideMargin = DpSize(dimens.pagePadding, dimens.cardPadding),
-        panelColor = LedgerTheme.surface,
+        panelColor = OilTheme.colors.surface,
         onDismissRequest = onDismiss,
     ) {
         Column(
@@ -805,10 +775,10 @@ private fun SubCategoryDeleteDialog(
                         .fillMaxWidth()
                         .heightIn(min = LedgerDimens.minTouch)
                         .clip(shape)
-                        .background(if (selected) LedgerTheme.inset else LedgerTheme.surface)
+                        .background(if (selected) OilTheme.colors.surfaceMuted else OilTheme.colors.surface)
                         .border(
                             1.dp,
-                            if (selected) LedgerTheme.accent else LedgerTheme.borderSoft,
+                            if (selected) OilTheme.colors.accent else OilTheme.colors.line,
                             shape,
                         )
                         .selectable(
@@ -820,17 +790,17 @@ private fun SubCategoryDeleteDialog(
                         .padding(horizontal = dimens.gap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
+                    OilText(
                         text = target ?: "未分类",
-                        style = MiuixTheme.textStyles.body2,
-                        color = if (selected) LedgerTheme.accent else LedgerTheme.text,
+                        style = OilTheme.typography.body,
+                        color = if (selected) OilTheme.colors.accent else OilTheme.colors.ink,
                         modifier = Modifier.weight(1f),
                     )
                     if (selected) {
-                        Text(
+                        OilText(
                             text = "已选",
-                            style = MiuixTheme.textStyles.footnote2,
-                            color = LedgerTheme.accent,
+                            style = OilTheme.typography.caption,
+                            color = OilTheme.colors.accent,
                         )
                     }
                 }
@@ -838,26 +808,24 @@ private fun SubCategoryDeleteDialog(
         }
         if (error != null) {
             Spacer(Modifier.height(dimens.gapSmall))
-            Text(
+            OilText(
                 text = error,
-                style = MiuixTheme.textStyles.footnote1,
-                color = LedgerTheme.danger,
+                style = OilTheme.typography.caption,
+                color = OilTheme.colors.danger,
             )
         }
         Spacer(Modifier.height(dimens.cardPadding))
         Row(horizontalArrangement = Arrangement.spacedBy(dimens.gap)) {
             DialogAction(
                 label = "取消",
-                color = LedgerTheme.textSecondary,
-                background = LedgerTheme.inset,
+                variant = OilButtonVariant.Secondary,
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
                 onClick = onDismiss,
             )
             DialogAction(
                 label = if (busy) "迁移中…" else "迁移并删除",
-                color = LedgerTheme.onAccent,
-                background = LedgerTheme.accent,
+                variant = OilButtonVariant.Primary,
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
                 onClick = { onConfirm(destination) },
@@ -869,32 +837,16 @@ private fun SubCategoryDeleteDialog(
 @Composable
 private fun DialogAction(
     label: String,
-    color: Color,
-    background: Color,
+    variant: OilButtonVariant,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val dimens = LocalDimens.current
-    Box(
-        modifier = modifier
-            .heightIn(min = LedgerDimens.minTouch)
-            .clip(RoundedCornerShape(dimens.radiusSmall))
-            .background(background)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = LocalIndication.current,
-                role = Role.Button,
-                enabled = enabled,
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            style = MiuixTheme.textStyles.footnote1,
-            color = color,
-            textAlign = TextAlign.Center,
-        )
-    }
+    OilButton(
+        text = label,
+        onClick = onClick,
+        modifier = modifier,
+        variant = variant,
+        enabled = enabled,
+    )
 }

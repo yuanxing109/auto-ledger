@@ -513,14 +513,17 @@ private fun DayHeader(group: DayGroupUi) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 4.dp, end = 4.dp, top = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
     ) {
         OilText(
             text = group.dateLabel,
             style = OilTheme.typography.bodyStrong,
             color = colors.ink,
-            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.alignByBaseline(),
         )
+        Spacer(Modifier.width(8.dp))
         OilText(
             text = summary,
             style = OilTheme.typography.caption.copy(
@@ -530,6 +533,10 @@ private fun DayHeader(group: DayGroupUi) {
             color = colors.inkMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .alignByBaseline(),
+            textAlign = TextAlign.End,
         )
     }
 }
@@ -588,6 +595,7 @@ private fun EntryRow(entry: EntryUi) {
                 Spacer(Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
+                        .widthIn(max = 120.dp)
                         .clip(OilTheme.shapes.capsule)
                         .background(colors.surfaceMuted)
                         .padding(horizontal = 9.dp, vertical = 4.dp),
@@ -605,6 +613,8 @@ private fun EntryRow(entry: EntryUi) {
                             style = typography.label,
                             color = colors.inkMuted,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
                     }
                 }

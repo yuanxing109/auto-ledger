@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 /** Oil UI 的统一线性图标集，实际颜色统一由调用方 tint。 */
 object OilIcons {
     val Add: ImageVector by lazy { lineIcon("OilAdd") { addCross() } }
+    val Close: ImageVector by lazy { lineIcon("OilClose") { closeCross() } }
     val Back: ImageVector by lazy { lineIcon("OilBack") { chevron(left = true) } }
     val ChevronBackward: ImageVector by lazy { lineIcon("OilChevronBackward") { chevron(left = true) } }
     val ChevronForward: ImageVector by lazy { lineIcon("OilChevronForward") { chevron(left = false) } }
@@ -70,6 +71,13 @@ private fun PathBuilder.addCross() {
     lineTo(12f, 19f)
     moveTo(5f, 12f)
     lineTo(19f, 12f)
+}
+
+private fun PathBuilder.closeCross() {
+    moveTo(6f, 6f)
+    lineTo(18f, 18f)
+    moveTo(18f, 6f)
+    lineTo(6f, 18f)
 }
 
 private fun PathBuilder.chevron(left: Boolean) {

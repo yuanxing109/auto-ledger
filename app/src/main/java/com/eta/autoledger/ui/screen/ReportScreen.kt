@@ -13,6 +13,7 @@ import com.eta.autoledger.ui.components.OilText
 import com.eta.autoledger.ui.theme.OilPalette
 import com.eta.autoledger.ui.theme.OilTheme
 import com.eta.autoledger.ui.theme.oilPageSurface
+import com.eta.autoledger.ui.model.formatCategoryLabel
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -97,6 +98,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -859,8 +861,8 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
     var chartSize by remember { mutableStateOf(IntSize.Zero) }
     var selected by remember(points) { mutableStateOf<Int?>(null) }
     val textMeasurer = rememberTextMeasurer()
-    val lineColor = if (income) CurrentColors.income else CurrentColors.expense
-    val gridColor = CurrentColors.chartGrid
+    val lineColor = CurrentColors.accent
+    val gridColor = CurrentColors.line
     val labelStyle = OilTheme.typography.label.copy(
         color = TextSecondary,
         fontFamily = FontFamily.Monospace,
@@ -917,6 +919,12 @@ private fun LineChart(points: List<TrendPoint>, income: Boolean) {
             ) {
                 if (points.isEmpty() || chartSize.width == 0) return@Canvas
                 val max = (points.maxOfOrNull { it.value } ?: 1.0).coerceAtLeast(1.0)
+                drawLine(
+                    color = gridColor,
+                    start = Offset(padLeft, padTop),
+                    end = Offset(padLeft, chartSize.height - padBottom),
+                    strokeWidth = 1.dp.toPx(),
+                )
                 for (i in 0..4) {
                     val value = max * i / 4.0
                     val y = yAt(value, max)
@@ -1046,7 +1054,7 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
         fontFamily = FontFamily.Monospace,
         fontFeatureSettings = "tnum",
     )
-    val gridColor = CurrentColors.chartGrid
+    val gridColor = CurrentColors.line
     val barColor = if (income) CurrentColors.income else CurrentColors.expense
     val padLeftDp = 44.dp
     val chartHeight = 176.dp
@@ -1095,6 +1103,12 @@ private fun BarChart(points: List<TrendPoint>, income: Boolean) {
                 val bottom = size.height - 6.dp.toPx()
                 val top = 6.dp.toPx()
                 val max = (points.maxOfOrNull { it.value } ?: 1.0).coerceAtLeast(1.0)
+                drawLine(
+                    color = gridColor,
+                    start = Offset(left, top),
+                    end = Offset(left, bottom),
+                    strokeWidth = 1.dp.toPx(),
+                )
                 for (i in 0..4) {
                     val value = max * i / 4.0
                     val y = bottom - (value / max * (bottom - top)).toFloat()
@@ -1297,10 +1311,8 @@ private fun SubCategoryPill(subCategory: Boolean, onSelect: (Boolean) -> Unit) {
 @Composable
 private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
     val textMeasurer = rememberTextMeasurer()
-    val labelStyle = OilTheme.typography.label.copy(
+    val labelStyle = OilTheme.typography.chartLabel.copy(
         color = CurrentColors.textSecondary,
-        fontFamily = FontFamily.Monospace,
-        fontFeatureSettings = "tnum",
     )
     val centerAmountStyle = OilTheme.typography.amount.copy(color = TextPrimary)
     val centerLabelStyle =OilTheme.typography.label.copy(color = CurrentColors.textTertiary)
@@ -1363,9 +1375,16 @@ private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
             )
 
             val outerR = radius + stroke / 2
-            val minGap = 17.dp.toPx()
-            val topLimit = 10.dp.toPx()
-            val bottomLimit = size.height - 10.dp.toPx()
+            val labelHeight = textMeasurer.measure(
+                text = "分类 88.88%",
+                style = labelStyle,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
+                maxLines = 1,
+            ).size.height.toFloat()
+            val minGap = labelHeight + 4.dp.toPx()
+            val topLimit = labelHeight / 2f + 6.dp.toPx()
+            val bottomLimit = size.height - labelHeight / 2f - 6.dp.toPx()
 
             fun resolvePositions(raw: List<Pair<Int, Float>>): List<Pair<Int, Float>> {
                 val sorted = raw.sortedBy { it.second }.toMutableList()
@@ -1411,7 +1430,21 @@ private fun DonutChart(slices: List<CategorySlice>, income: Boolean) {
 
                 val percent = sweeps[i] / 3.6f
                 val label = "${slices[i].displayName} %.2f%%".format(percent)
-                val layout = textMeasurer.measure(label, labelStyle)
+                val availableWidth = if (sign > 0) {
+                    size.width - end.x - 4.dp.toPx()
+                } else {
+                    end.x - 4.dp.toPx()
+                }
+                val layout = textMeasurer.measure(
+                    text = label,
+                    style = labelStyle,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                    maxLines = 1,
+                    constraints = Constraints(
+                        maxWidth = availableWidth.coerceAtLeast(24.dp.toPx()).roundToInt(),
+                    ),
+                )
                 val textLeft = if (sign > 0) end.x + 3.dp.toPx()
                 else end.x - layout.size.width - 3.dp.toPx()
                 drawText(
@@ -1885,6 +1918,14 @@ private fun CategoryDetailDialog(
 
 @Composable
 private fun DetailEntryRow(entry: LedgerEntry) {
+    val note = remember(entry.note) { normalizeDetailNote(entry.note) }
+    val title = remember(entry.note, entry.category) {
+        formatLedgerEntryTitle(entry.note, entry.category)
+    }
+    val showRawNote = title == entry.category &&
+        note.isNotBlank() &&
+        note != entry.category &&
+        !isBankDetailNote(note)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1895,7 +1936,7 @@ private fun DetailEntryRow(entry: LedgerEntry) {
     ) {
         Column(modifier = Modifier.weight(1f)) {
             OilText(
-                text = entry.note.ifBlank { entry.category },
+                text = title,
                 style = OilTheme.typography.body,
                 color = TextPrimary,
                 maxLines = 1,
@@ -1903,9 +1944,15 @@ private fun DetailEntryRow(entry: LedgerEntry) {
             )
             Spacer(Modifier.height(4.dp))
             OilText(
-                text = detailTimeLabel(entry),
+                text = if (showRawNote) {
+                    "$note · ${detailTimeLabel(entry)}"
+                } else {
+                    "${formatCategoryLabel(entry.category, entry.subCategory)} · ${detailTimeLabel(entry)}"
+                },
                 style = OilTheme.typography.label,
                 color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(8.dp))
@@ -1925,3 +1972,106 @@ private fun DetailEntryRow(entry: LedgerEntry) {
 private fun detailTimeLabel(entry: LedgerEntry): String =
     if (entry.timeMillis > 0) AppDateFormats.format(entry.timeMillis, AppDateFormats.dashMonthDayTime)
     else entry.time
+
+private val detailNoteSpaceRegex = Regex("\\s+")
+private val bankEnvelopeRegex = Regex("""^[【\[]?[^】\]]{1,20}(?:银行|信用社)[】\]]?\s*""")
+private val accountRegex = Regex("""您(?:的)?账户\s*[\d*]+\s*""")
+private val detailDateRegex = Regex("""(?:\d{4}[-/年])?\d{1,2}(?:月|[-/])\d{1,2}日?""")
+private val detailTimeRegex = Regex("""(?:上午|下午)?\d{1,2}:\d{2}(?::\d{2})?""")
+private val detailAmountRegex = Regex("""(?:人民币)?\s*[¥￥]?\s*\d[\d,]*(?:\.\d{1,2})?\s*元""")
+private val currencyAmountRegex = Regex("""[¥￥]\s*\d[\d,]*(?:\.\d{1,2})?""")
+private val transactionNoiseRegex = Regex(
+    """发生快捷支付扣款|快捷支付扣款|快捷支付|交易成功|扣款成功|消费成功|消费|转账""",
+)
+private val merchantAfterFlowingRegex = Regex(
+    """(?:在|给|向(?!您))\s*([^，,。；;\n]{1,40}?)\s*(?:消费|扣款|转账|支付)(?=\s*[¥￥]?\s*\d)""",
+)
+private val merchantAfterAmountRegex = Regex(
+    """(?:快捷支付扣款|消费|支付|扣款)(?:人民币)?\s*[¥￥]?\s*\d[\d,]*(?:\.\d{1,2})?\s*元?[，,]\s*([^，,。；;]+)""",
+)
+private val merchantLabelRegex = Regex(
+    """(?:商户(?:名称|信息)?|交易商户|收款方|对方户名)\s*[：:]?""",
+)
+private val leadingMerchantLabelRegex = Regex(
+    """^(?:商户(?:名称|信息)?|交易商户|收款方|对方户名)\s*[：:]""",
+)
+private val bankBalanceNoiseRegex = Regex("""余额|可用额度|积分|客服|如有疑问|账单""")
+private val implausibleMerchantPrefixes = listOf(
+    "余额", "可用额度", "积分", "客服", "如有疑问", "账单", "累计", "交易",
+)
+private val meaninglessDetailTitles = setOf(
+    "消费", "支付", "付款", "扣款", "转账", "余额", "可用额度",
+)
+
+/** 只供报表明细展示，不改变数据库里的原始备注。 */
+internal fun formatLedgerEntryTitle(note: String, fallbackCategory: String): String {
+    val normalized = normalizeDetailNote(note)
+    if (normalized.isBlank()) return fallbackCategory
+    if (!isBankDetailNote(normalized)) return normalized
+
+    extractMerchant(normalized)?.let { return it }
+
+    val cleaned = normalized
+        .replace(bankEnvelopeRegex, "")
+        .replace(accountRegex, "")
+        .replace(detailDateRegex, " ")
+        .replace(detailTimeRegex, " ")
+        .replace(detailAmountRegex, " ")
+        .replace(currencyAmountRegex, " ")
+        .replace(transactionNoiseRegex, " ")
+        .replace(merchantLabelRegex, " ")
+        .replace(bankBalanceNoiseRegex, " ")
+        .replace(detailNoteSpaceRegex, " ")
+        .trim(' ', '，', ',', '。', '.', '；', ';', '：', ':')
+
+    return cleaned.takeIf { it.length >= 2 && it !in meaninglessDetailTitles }
+        ?: fallbackCategory
+}
+
+private fun normalizeDetailNote(note: String): String =
+    note.replace(detailNoteSpaceRegex, " ").trim()
+
+private fun extractMerchant(note: String): String? {
+    val labels = listOf(
+        "商户名称：", "商户名称:",
+        "商户信息：", "商户信息:",
+        "交易商户：", "交易商户:",
+        "收款方：", "收款方:",
+        "对方户名：", "对方户名:",
+        "商户：", "商户:",
+    )
+    labels.forEach { label ->
+        val start = note.indexOf(label, ignoreCase = true)
+        if (start >= 0) {
+            val merchant = note
+                .substring(start + label.length)
+                .substringBefore('，')
+                .substringBefore(',')
+                .substringBefore('。')
+                .substringBefore('；')
+                .substringBefore(';')
+                .trim()
+            if (isPlausibleMerchant(merchant)) return merchant
+        }
+    }
+    val flowing = merchantAfterFlowingRegex.find(note)?.groupValues?.getOrNull(1)?.trim()
+    if (flowing != null && isPlausibleMerchant(flowing)) return flowing
+    return merchantAfterAmountRegex.find(note)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.trim()
+        ?.takeIf(::isPlausibleMerchant)
+}
+
+private fun isPlausibleMerchant(value: String): Boolean {
+    val merchant = value.trim()
+    return merchant.length in 2..40 &&
+        !leadingMerchantLabelRegex.containsMatchIn(merchant) &&
+        implausibleMerchantPrefixes.none { merchant.startsWith(it) } &&
+        merchant !in meaninglessDetailTitles
+}
+
+private fun isBankDetailNote(note: String): Boolean =
+    bankEnvelopeRegex.containsMatchIn(note) ||
+        accountRegex.containsMatchIn(note) ||
+        transactionNoiseRegex.containsMatchIn(note)

@@ -127,14 +127,18 @@ fun OilTextField(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 56.dp)
-                        .padding(horizontal = 15.dp, vertical = 14.dp),
+                        .padding(start = 15.dp, end = if (trailingContent == null) 15.dp else 4.dp),
                     verticalAlignment = if (singleLine) Alignment.CenterVertically else Alignment.Top,
                 ) {
                     if (leadingContent != null) {
                         leadingContent()
                         Spacer(Modifier.size(10.dp))
                     }
-                    Box(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 14.dp),
+                    ) {
                         if (value.isEmpty() && placeholder != null) {
                             OilText(
                                 text = placeholder,
@@ -149,7 +153,7 @@ fun OilTextField(
                         innerTextField()
                     }
                     if (trailingContent != null) {
-                        Spacer(Modifier.size(10.dp))
+                        Spacer(Modifier.size(4.dp))
                         trailingContent()
                     }
                 }

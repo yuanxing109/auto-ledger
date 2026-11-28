@@ -320,7 +320,8 @@ fun AddScreen(modifier: Modifier = Modifier, onDone: () -> Unit = {}) {
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = OilTheme.dimens.pagePadding, vertical = OilTheme.dimens.gap),
+                    .padding(horizontal = OilTheme.dimens.pagePadding)
+                    .padding(top = OilTheme.dimens.gap, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(OilTheme.dimens.gap),
             ) {
                 TypeDateRow(
@@ -943,9 +944,9 @@ private fun CategoryCell(
 ) {
     val colors = OilTheme.colors
     val circleColor = when {
-        selected -> colors.accent
+        selected -> lerp(colors.accent, colors.surfaceRaised, 0.80f)
         category.name == "添加" -> colors.surfaceMuted
-        else -> lerp(category.color, colors.surface, 0.80f)
+        else -> lerp(category.color, colors.surfaceMuted, 0.84f)
     }
     Column(
         modifier = modifier
@@ -958,7 +959,14 @@ private fun CategoryCell(
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .background(circleColor),
+                .background(circleColor)
+                .then(
+                    if (selected) {
+                        Modifier.border(1.5.dp, colors.accent, CircleShape)
+                    } else {
+                        Modifier
+                    },
+                ),
             contentAlignment = Alignment.Center,
         ) {
             if (category.name == "添加") {
@@ -972,7 +980,7 @@ private fun CategoryCell(
                 OilText(
                     text = category.emoji,
                     style = OilTheme.typography.sectionTitle,
-                    color = if (selected) colors.onAccent else colors.ink,
+                    color = colors.ink,
                 )
             }
         }
@@ -993,7 +1001,12 @@ private fun SaveBar(onSave: () -> Unit) {
             .fillMaxWidth()
             .background(OilTheme.colors.canvas)
             .navigationBarsPadding()
-            .padding(horizontal = OilTheme.dimens.pagePadding, vertical = OilTheme.dimens.gap),
+            .padding(
+                start = OilTheme.dimens.pagePadding,
+                end = OilTheme.dimens.pagePadding,
+                top = 12.dp,
+                bottom = 16.dp,
+            ),
     ) {
         OilButton(
             text = "保存这笔",

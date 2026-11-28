@@ -223,6 +223,13 @@ data class OilTypography(
         lineHeight = 19.sp,
         fontFeatureSettings = "tnum",
     ),
+    val chartLabel: TextStyle = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Medium,
+        fontSize = 11.sp,
+        lineHeight = 15.sp,
+        fontFeatureSettings = "tnum",
+    ),
     val listAmount: TextStyle = TextStyle(
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.SemiBold,

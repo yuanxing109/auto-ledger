@@ -34,11 +34,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -58,6 +60,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
@@ -209,6 +212,39 @@ fun SearchScreen(onClose: () -> Unit) {
                 onValueChange = { keyword = it },
                 placeholder = "搜索备注 / 商户 / 分类",
                 modifier = Modifier.fillMaxWidth(),
+                placeholderColor = LedgerTheme.textSecondary,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Search,
+                ),
+                leadingContent = {
+                    OilIcon(
+                        imageVector = OilIcons.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(19.dp),
+                        tint = LedgerTheme.textSecondary,
+                    )
+                },
+                trailingContent = if (keyword.isNotEmpty()) {
+                    {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .clickable { keyword = "" },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            OilIcon(
+                                imageVector = OilIcons.Close,
+                                contentDescription = "清除搜索",
+                                modifier = Modifier.size(18.dp),
+                                tint = LedgerTheme.textSecondary,
+                            )
+                        }
+                    }
+                } else {
+                    null
+                },
             )
         }
 
@@ -747,7 +783,6 @@ private fun FilterSheet(
         heightFraction = 0.9f,
         outsideMargin = DpSize(0.dp, 0.dp),
         contentPadding = PaddingValues(0.dp),
-        modifier = Modifier.navigationBarsPadding(),
         onDismissRequest = onDismiss,
     ) {
         // ---- 固定头部：拖拽条 + 标题 ----
@@ -859,7 +894,8 @@ private fun FilterSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(LedgerTheme.surface)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {

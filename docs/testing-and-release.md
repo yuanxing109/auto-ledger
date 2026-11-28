@@ -95,8 +95,8 @@ bash tools/check-ui-consistency.sh
 `app/build.gradle.kts` 当前默认值：
 
 ```kotlin
-val defaultVersionCode = 1000
-val defaultVersionName = "1.0.0"
+val defaultVersionCode = 1100
+val defaultVersionName = "1.1.0"
 ```
 
 CI 规则：
@@ -112,8 +112,8 @@ Release 由 `softprops/action-gh-release@v2` 创建或更新：
 
 - APK 直接作为 Release Asset。
 - 不使用 ZIP 包装。
-- `main` 构建使用 `v1.0.0` Tag。
-- `v1.0.0` 的标题为 `AutoLedger v1.0.0 正式版`。
+- `main` 构建使用 `v1.1.0` Tag。
+- `v1.1.0` 的标题为 `AutoLedger v1.1.0`。
 - Tag 构建使用真实 Tag。
 - Release Notes 自动生成。
 
@@ -158,5 +158,5 @@ R1 至 R3 违规必须修复。R4 至 R7 警告需要判断是否为本轮新增
 - `main` 是否真的收到 push。
 - Workflow 是否被并发取消。
 - 构建是否在测试或门禁步骤失败。
-- Release Tag 是否仍为 `v1.0.0`。
+- Release Tag 是否仍为 `v1.1.0`。
 - `contents: write` 权限是否被仓库策略覆盖。

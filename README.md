@@ -2,7 +2,7 @@
 
 AutoLedger 是一个面向 Android 的本地优先记账应用。它通过通知监听、短信、截屏和 AI 识图减少手工录入，并将账目保存在本机 Room 数据库中。
 
-当前发布版本为 **v1.0.0**。应用不要求注册账号，也不提供自有云端服务。网络访问仅发生在用户主动配置 AI 模型或 WebDAV 备份之后。
+当前发布版本为 **v1.1.0**。应用不要求注册账号，也不提供自有云端服务。网络访问仅发生在用户主动配置 AI 模型或 WebDAV 备份之后。
 
 ## 功能概览
 
@@ -74,9 +74,9 @@ CI 还会依次构建 debug 与 release APK。详细说明见 [测试与发布](
 
 默认版本定义在 `app/build.gradle.kts`：
 
-- `defaultVersionName = "1.0.0"`
-- `defaultVersionCode = 1000`
-- CI 推送 `main` 时使用 `1000 + GITHUB_RUN_NUMBER` 作为构建号。
+- `defaultVersionName = "1.1.0"`
+- `defaultVersionCode = 1100`
+- CI 推送 `main` 时使用 `1100 + GITHUB_RUN_NUMBER` 作为构建号。
 - 推送 `v*` Tag 时使用 Tag 中的版本名。
 - GitHub Actions 将 APK 直接发布到 GitHub Releases。
 

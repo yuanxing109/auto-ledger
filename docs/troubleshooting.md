@@ -182,7 +182,7 @@ R1 至 R3 会阻断。R4 至 R7 当前是警告。
 - 确认变更已推送到 `main`。
 - 查看 Actions 是否被新的同分支运行取消。
 - 检查 UI 门禁、测试和构建步骤。
-- 检查 GitHub Release 是否已有同 Tag `v1.0.0`。
+- 检查 GitHub Release 是否已有同 Tag `v1.1.0`。
 - 检查 Workflow 的 `contents: write` 权限。
 
 ## 14. 收集日志
